@@ -34,9 +34,12 @@ async function generatePoPdf(req, res) {
     }
 
     // 1. Fetch Purchase Order line items from Lightspeed
-    const poResponse = await fetch(`https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/consignments/${poId}/products`, {
-      headers: { Authorization: `Bearer ${LIGHTSPEED_TOKEN}` }
-    });
+    // Clean the domain just in case https:// or trailing slashes were accidentally included
+const cleanDomain = LIGHTSPEED_DOMAIN.replace(/^https?:\/\//, '').replace(/\/$/, '').replace('.retail.lightspeed.app', '');
+
+const poResponse = await fetch(`https://${cleanDomain}.retail.lightspeed.app/api/2.0/consignments/${poId}/products`, {
+  headers: { Authorization: `Bearer ${LIGHTSPEED_TOKEN}` }
+});
 
     if (!poResponse.ok) {
       return res.status(poResponse.status).send(`Failed to fetch PO ${poId} from Lightspeed`);
@@ -64,6 +67,7 @@ async function generatePoPdf(req, res) {
       const qty = item.received || item.count || 1;
 
       // Fetch individual product details
+      const cleanDomain = LIGHTSPEED_DOMAIN.replace(/^https?:\/\//, '').replace(/\/$/, '').replace('.retail.lightspeed.app', '');
       const prodResponse = await fetch(`https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/products/${item.product_id}`, {
         headers: { Authorization: `Bearer ${LIGHTSPEED_TOKEN}` }
       });
