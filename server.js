@@ -33,22 +33,29 @@ async function generatePoPdf(req, res) {
       return res.status(500).send('Server configuration missing: LIGHTSPEED_DOMAIN or LIGHTSPEED_TOKEN.');
     }
 
-    // 1. Fetch Purchase Order line items from Lightspeed
-    // Clean the domain just in case https:// or trailing slashes were accidentally included
-const cleanDomain = LIGHTSPEED_DOMAIN.replace(/^https?:\/\//, '').replace(/\/$/, '').replace('.retail.lightspeed.app', '');
-
-const poResponse = await fetch(`https://${cleanDomain}.retail.lightspeed.app/api/2.0/consignments/${poId}/products`, {
-headers: { 
-  'Authorization': `Bearer ${LIGHTSPEED_TOKEN}`,
-  'User-Agent': 'HobbyCorner-AveryLabels/1.0',
-  'Accept': 'application/json'
-}
-});
+   // 1. Fetch Purchase Order line items from Lightspeed
+    const poResponse = await fetch(`https://${cleanDomain}.retail.lightspeed.app/api/2.0/consignments/${poId}/products`, {
+      headers: { 
+        'Authorization': `Bearer ${LIGHTSPEED_TOKEN}`,
+        'User-Agent': 'HobbyCorner-AveryLabels/1.0',
+        'Accept': 'application/json'
+      }
+    });
 
     if (!poResponse.ok) {
-      return res.status(poResponse.status).send(`Failed to fetch PO ${poId} from Lightspeed`);
+      const errorText = await poResponse.text();
+      const safeToken = LIGHTSPEED_TOKEN ? LIGHTSPEED_TOKEN.substring(0, 5) + '...' : 'MISSING';
+      
+      return res.status(500).send(`
+        <div style="font-family: sans-serif; padding: 20px;">
+          <h2 style="color: red;">Lightspeed Blocked the Request (${poResponse.status})</h2>
+          <p><b>Lightspeed's Exact Error:</b> ${errorText}</p>
+          <p><b>Token Being Used:</b> ${safeToken}</p>
+          <p><b>Requested URL:</b> https://${cleanDomain}.retail.lightspeed.app/api/2.0/consignments/${poId}/products</p>
+        </div>
+      `);
     }
-
+    
     const poData = await poResponse.json();
     const lineItems = poData.data || [];
 
