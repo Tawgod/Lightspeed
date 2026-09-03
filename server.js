@@ -175,6 +175,7 @@ async function generatePoPdf(req, res) {
 // New route to send PO data to the UI Dashboard
 // Updated route to fetch PO data AND automatically match open customer special orders
 // Route to fetch PO data and automatically match open customer special orders
+// Route to fetch PO data and automatically match open customer special orders
 app.get('/api/po/:poId/data', async (req, res) => {
   try {
     const { poId } = req.params;
@@ -244,51 +245,6 @@ app.get('/api/po/:poId/data', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
-    // 3. Fetch individual product details and attach any automated special order data
-    const enrichedItems = [];
-    for (const item of lineItems) {
-      const prodResponse = await fetch(`https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/products/${item.product_id}`, {
-        headers: { 'Authorization': `Bearer ${LIGHTSPEED_TOKEN}`, 'User-Agent': 'HobbyCorner-AveryLabels/1.0', 'Accept': 'application/json' }
-      });
-      
-      let product = {};
-      if (prodResponse.ok) {
-        const prodData = await prodResponse.json();
-        product = prodData.data || {};
-      }
-
-      // Check if this product has an open customer order waiting for it
-      const matchedOrder = openOrdersMap[item.product_id] || { qty: 0, names: [] };
-
-      enrichedItems.push({
-        id: item.product_id,
-        name: product.name || 'Unknown Product',
-        sku: product.sku || 'UNKNOWN',
-        price: product.price_including_tax ? `$${product.price_including_tax}` : '$0.00',
-        qty: item.received || item.count || 1,
-        autoSoQty: matchedOrder.qty,
-        autoCustomerName: matchedOrder.names.join(', ')
-      });
-    }
-
-    res.json(enrichedItems);
-
-  } catch (error) {
-    console.error('Data Fetch Error:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-    // 3. Send the clean data to the frontend
-    res.json(enrichedItems);
-
-  } catch (error) {
-    console.error('Data Fetch Error:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
 
 // Automatically ensure the templates directory and default files exist
 async function ensureTemplatesExist() {
