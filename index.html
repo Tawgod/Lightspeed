@@ -65,16 +65,49 @@
   </div>
 
   <script>
-    // Grab the PO ID from the URL (e.g., ?poId=12345)
-    const urlParams = new URLSearchParams(window.location.search);
-    const poId = urlParams.get('poId');
+  const urlParams = new URLSearchParams(window.location.search);
+const poId = urlParams.get('poId');
+const loadingDiv = document.getElementById('loading');
+const itemsBody = document.getElementById('itemsBody');
 
-    if (!poId) {
-      document.getElementById('itemsBody').innerHTML = '<tr><td colspan="5" style="color: red; text-align: center;">No PO ID provided in the URL.</td></tr>';
-    } else {
-      // In the next step, we will add the fetch() call here to pull data from your server
-      console.log("Ready to fetch data for PO:", poId);
-    }
+// Array to hold the data we get from the server
+let poItems = [];
+
+if (!poId) {
+  loadingDiv.innerHTML = '<span style="color: red;">No PO ID provided in the URL.</span>';
+  loadingDiv.style.display = 'block';
+} else {
+  loadingDiv.style.display = 'block';
+  
+  // Fetch the data from our new server route
+  fetch(`/api/po/${poId}/data`)
+    .then(response => response.json())
+    .then(data => {
+      poItems = data;
+      loadingDiv.style.display = 'none';
+      itemsBody.innerHTML = '';
+
+      // Build the table rows dynamically
+      data.forEach((item, index) => {
+        itemsBody.innerHTML += `
+          <tr>
+            <td>${item.name}</td>
+            <td>${item.sku}</td>
+            <td>${item.price}</td>
+            <td>
+              <input type="number" class="qty-input" id="qty-${index}" value="${item.qty}" min="0">
+            </td>
+            <td>
+              <button onclick="document.getElementById('qty-${index}').value = 0" style="padding: 4px 8px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">Skip</button>
+            </td>
+          </tr>
+        `;
+      });
+    })
+    .catch(error => {
+      loadingDiv.innerHTML = `<span style="color: red;">Error loading data: ${error.message}</span>`;
+    });
+}
   </script>
 </body>
 </html>
