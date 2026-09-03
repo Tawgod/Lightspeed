@@ -169,8 +169,8 @@ async function generatePoPdf(req, res) {
 }
 
 // Routes must be placed before app.listen!
-app.get('/api/labels/po/:poId', generatePoPdf);
-app.get('/api/labels/po/:poId/pdf', generatePoPdf);
+('/api/labels/po/:poId', generatePoPdf);
+('/api/labels/po/:poId/pdf', generatePoPdf);
 
 // New route to send PO data to the UI Dashboard
 app.get('/api/po/:poId/data', async (req, res) => {
@@ -226,7 +226,6 @@ app.get('/api/templates', async (req, res) => {
     const templates = [];
     
     for (const file of files) {
-      // Only grab standard templates (ignore the _special variations)
       if (file.endsWith('.json') && !file.includes('_special')) {
         const fileData = await fs.readFile(path.join(templatesDir, file), 'utf-8');
         const json = JSON.parse(fileData);
@@ -236,7 +235,8 @@ app.get('/api/templates', async (req, res) => {
     res.json(templates);
   } catch (error) {
     console.error('Template Discovery Error:', error);
-    res.status(500).json({ error: 'Could not read templates directory' });
+    // Send the actual error message to the browser so we can see it!
+    res.status(500).json({ error: error.message, path: path.join(__dirname, 'templates') });
   }
 });
 app.post('/api/labels/generate', async (req, res) => {
