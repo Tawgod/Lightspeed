@@ -114,13 +114,7 @@
           loadingDiv.style.display = 'none';
           itemsBody.innerHTML = '';
 
-         poItems.forEach((item, index) => {
-            // Determine status display
-            let statusBadge = '<span style="color: #28a745;">Stock Item</span>';
-            if (item.autoSoQty > 0) {
-              statusBadge = `<span style="background: #ffc107; padding: 3px 6px; border-radius: 4px; font-weight: bold; font-size: 11px;">SO: ${item.autoCustomerName} (${item.autoSoQty})</span>`;
-            }
-
+       poItems.forEach((item, index) => {
             itemsBody.innerHTML += `
               <tr>
                 <td style="font-size: 12px;">${item.name}</td>
@@ -128,9 +122,14 @@
                 <td>
                   <input type="number" class="qty-input" id="qty-${index}" value="${item.qty}" min="0">
                 </td>
-                <td>${statusBadge}</td>
                 <td>
-                  <button type="button" onclick="document.getElementById('qty-${index}').value = 0" style="padding: 4px 8px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">Skip</button>
+                  <input type="number" class="qty-input" id="soQty-${index}" value="${item.autoSoQty || 0}" min="0">
+                </td>
+                <td>
+                  <input type="text" id="custName-${index}" value="${item.autoCustomerName || ''}" placeholder="Customer Name..." style="padding: 6px; width: 130px;">
+                </td>
+                <td>
+                  <button type="button" onclick="document.getElementById('qty-${index}').value = 0; document.getElementById('soQty-${index}').value = 0;" style="padding: 4px 8px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">Skip</button>
                 </td>
               </tr>
             `;
@@ -150,14 +149,15 @@
 
       const itemsToPrint = poItems.map((item, index) => {
         const qtyInput = document.getElementById(`qty-${index}`);
+        const soQtyInput = document.getElementById(`soQty-${index}`);
+        const custNameInput = document.getElementById(`custName-${index}`);
         return {
           ...item,
           qty: parseInt(qtyInput ? qtyInput.value : item.qty, 10) || 0,
-          // Automatically use the server-fetched special order data
-          soQty: item.autoSoQty || 0,
-          customerName: item.autoCustomerName || ''
+          soQty: parseInt(soQtyInput ? soQtyInput.value : 0, 10) || 0,
+          customerName: custNameInput ? custNameInput.value : ''
         };
-      }).filter(item => item.qty > 0); 
+      }).filter(item => item.qty > 0);
 
       if (itemsToPrint.length === 0) {
         alert('Please select at least one item with a quantity greater than 0.');
