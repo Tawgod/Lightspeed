@@ -35,6 +35,17 @@ app.get('/', (req, res) => {
   res.send('Lightspeed Avery Label API is running.');
 });
 
+const specialOrderTemplate = {
+  elements: [
+    { type: 'text', field: 'specialTag', x: 5, y: 5, fontSize: 10, bold: true, align: 'center', maxWidth: 179 },
+    { type: 'text', field: 'customerName', x: 5, y: 17, fontSize: 14, bold: true, align: 'center', maxWidth: 179 },
+    { type: 'barcode', field: 'sku', x: 25, y: 34, width: 140, height: 20 },
+    { type: 'text', field: 'name', x: 5, y: 57, fontSize: 6, maxWidth: 130, align: 'left' },
+    { type: 'text', field: 'price', x: 145, y: 57, fontSize: 8, bold: true },
+    { type: 'text', field: 'sku', x: 25, y: 57, fontSize: 6, bold: false }
+  ]
+};
+
 async function generatePoPdf(req, res) {
   try {
     const { poId } = req.params;
@@ -250,62 +261,59 @@ app.post('/api/labels/generate', async (req, res) => {
     let labelCount = startOffset;
 
     for (const item of items) {
-      let barcodeBuffer = null;
-      if (item.sku && item.sku !== 'UNKNOWN') {
-        try {
-          barcodeBuffer = await bwipjs.toBuffer({
-            bcid: 'code128',
-            text: item.sku,
-            scale: 3,
-            height: 10,
-            includetext: false
-          });
-        } catch (err) {
-          console.error(`Barcode error for SKU ${item.sku}:`, err);
-        }
-      }
+         let barcodeBuffer = null;
+         if (item.sku && item.sku !== 'UNKNOWN') {
+           try {
+             barcodeBuffer = await bwipjs.toBuffer({ bcid: 'code128', text: item.sku, scale: 3, height: 10, includetext: false });
+           } catch (err) {
+             console.error(`Barcode error for SKU ${item.sku}:`, err);
+           }
+         }
 
-      const valuesMap = {
-        name: item.name || '',
-        sku: item.sku || '',
-        price: item.price || '$0.00'
-      };
+         const valuesMap = {
+           name: item.name || '',
+           sku: item.sku || '',
+           price: item.price || '$0.00',
+           customerName: item.customerName || 'NO NAME PROVIDED',
+           specialTag: '*** SPECIAL ORDER ***'
+         };
 
-      for (let i = 0; i < item.qty; i++) {
-        // Move to next page if we hit 30 labels on the current page
-        if (labelCount > 0 && labelCount % 30 === 0) {
-          doc.addPage();
-        }
+         // Calculate how many of each label type to print
+         const soQty = Math.min(item.qty, item.soQty || 0); // Can't have more SOs than total qty
+         const normalQty = item.qty - soQty;
 
-        const positionOnPage = labelCount % 30;
-        const col = positionOnPage % 3;
-        const row = Math.floor(positionOnPage / 3);
+         // Helper function to draw a single label
+         const drawLabel = (template) => {
+           if (labelCount > 0 && labelCount % 30 === 0) doc.addPage();
 
-        const originX = 13.5 + (col * 198);
-        const originY = 36 + (row * 72);
+           const positionOnPage = labelCount % 30;
+           const col = positionOnPage % 3;
+           const row = Math.floor(positionOnPage / 3);
 
-        for (const el of labelTemplate.elements) {
-          const val = valuesMap[el.field] || '';
+           const originX = 13.5 + (col * 198);
+           const originY = 36 + (row * 72);
 
-          if (el.type === 'text') {
-            doc.fontSize(el.fontSize || 8)
-               .font(el.bold ? 'Helvetica-Bold' : 'Helvetica')
-               .text(val, originX + el.x, originY + el.y, {
-                 width: el.maxWidth || undefined,
-                 align: el.align || 'left',
-                 lineBreak: false,
-                 ellipsis: true
-               });
-          } else if (el.type === 'barcode' && barcodeBuffer) {
-            doc.image(barcodeBuffer, originX + el.x, originY + el.y, {
-              width: el.width,
-              height: el.height
-            });
-          }
-        }
-        labelCount++;
-      }
-    }
+           for (const el of template.elements) {
+             const val = valuesMap[el.field] || '';
+             if (el.type === 'text') {
+               doc.fontSize(el.fontSize || 8)
+                  .font(el.bold ? 'Helvetica-Bold' : 'Helvetica')
+                  .text(val, originX + el.x, originY + el.y, {
+                    width: el.maxWidth || undefined, align: el.align || 'left', lineBreak: false, ellipsis: true
+                  });
+             } else if (el.type === 'barcode' && barcodeBuffer) {
+               doc.image(barcodeBuffer, originX + el.x, originY + el.y, { width: el.width, height: el.height });
+             }
+           }
+           labelCount++;
+         };
+
+         // Draw the Special Order labels first
+         for (let i = 0; i < soQty; i++) drawLabel(specialOrderTemplate);
+         
+         // Draw the remaining standard labels
+         for (let i = 0; i < normalQty; i++) drawLabel(labelTemplate);
+       }
 
     doc.end();
   } catch (error) {
