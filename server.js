@@ -173,6 +173,7 @@ async function generatePoPdf(req, res) {
 ('/api/labels/po/:poId/pdf', generatePoPdf);
 
 // New route to send PO data to the UI Dashboard
+// Updated route to fetch PO data AND automatically match open customer special orders
 app.get('/api/po/:poId/data', async (req, res) => {
   try {
     const { poId } = req.params;
@@ -186,7 +187,31 @@ app.get('/api/po/:poId/data', async (req, res) => {
     const poData = await poResponse.json();
     const lineItems = poData.data || [];
 
-    // 2. Fetch individual product details for each line item
+    // 2. Fetch open/unfulfilled customer orders from Lightspeed to match special orders
+    let openOrdersMap = {};
+    try {
+      const ordersResponse = await fetch(`https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=OPEN`, {
+        headers: { 'Authorization': `Bearer ${LIGHTSPEED_TOKEN}`, 'User-Agent': 'HobbyCorner-AveryLabels/1.0', 'Accept': 'application/json' }
+      });
+      if (ordersResponse.ok) {
+        const ordersData = await ordersResponse.json();
+        // Map product_id to customer info
+        for (const sale of (ordersData.data || [])) {
+          const customerName = sale.customer ? `${sale.customer.first_name || ''} ${sale.customer.last_name || ''}`.trim() : 'Special Order';
+          for (const line of (sale.line_items || [])) {
+            if (!openOrdersMap[line.product_id]) {
+              openOrdersMap[line.product_id] = { qty: 0, names: [] };
+            }
+            openOrdersMap[line.product_id].qty += line.quantity || 1;
+            openOrdersMap[line.product_id].names.push(customerName);
+          }
+        }
+      }
+    } catch (orderErr) {
+      console.log('Could not fetch open sales orders, skipping auto-match:', orderErr.message);
+    }
+
+    // 3. Fetch individual product details and attach any automated special order data
     const enrichedItems = [];
     for (const item of lineItems) {
       const prodResponse = await fetch(`https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/products/${item.product_id}`, {
@@ -199,14 +224,27 @@ app.get('/api/po/:poId/data', async (req, res) => {
         product = prodData.data || {};
       }
 
+      // Check if this product has an open customer order waiting for it
+      const matchedOrder = openOrdersMap[item.product_id] || { qty: 0, names: [] };
+
       enrichedItems.push({
         id: item.product_id,
         name: product.name || 'Unknown Product',
         sku: product.sku || 'UNKNOWN',
         price: product.price_including_tax ? `$${product.price_including_tax}` : '$0.00',
-        qty: item.received || item.count || 1
+        qty: item.received || item.count || 1,
+        autoSoQty: matchedOrder.qty,
+        autoCustomerName: matchedOrder.names.join(', ')
       });
     }
+
+    res.json(enrichedItems);
+
+  } catch (error) {
+    console.error('Data Fetch Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
     // 3. Send the clean data to the frontend
     res.json(enrichedItems);
