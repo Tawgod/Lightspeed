@@ -157,9 +157,15 @@ async function generatePoPdf(req, res) {
     doc.end();
 
   } catch (error) {
-    console.error('PDF Generation Error:', error);
+    console.error('Fatal PDF Generation Error:', error);
     if (!res.headersSent) {
-      res.status(500).send('Error generating Avery labels PDF');
+      res.status(500).send(`
+        <div style="font-family: sans-serif; padding: 20px;">
+          <h2 style="color: red;">The Server Crashed!</h2>
+          <p><b>Error Message:</b> ${error.message}</p>
+          <p><b>Stack Trace:</b> <pre>${error.stack}</pre></p>
+        </div>
+      `);
     }
   }
 }
