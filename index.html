@@ -75,17 +75,28 @@
 
     let poItems = [];
 
-    // Auto-load available templates into the dropdown
+   // Auto-load available templates into the dropdown
     fetch('/api/templates')
-      .then(res => res.json())
+      .then(async res => {
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+      })
       .then(templates => {
         const select = document.getElementById('templateSelect');
         select.innerHTML = '';
+        if (templates.length === 0) {
+          select.innerHTML = '<option value="">No templates found in folder!</option>';
+          return;
+        }
         templates.forEach(t => {
           select.innerHTML += `<option value="${t.id}">${t.name}</option>`;
         });
       })
-      .catch(err => console.error('Failed to load templates:', err));
+      .catch(err => {
+        const select = document.getElementById('templateSelect');
+        select.innerHTML = `<option value="">Error: Server failed to load templates</option>`;
+        console.error('Template Fetch Error:', err);
+      });
     
     if (!poId) {
       loadingDiv.innerHTML = '<span style="color: red;">No PO ID provided in the URL.</span>';
