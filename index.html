@@ -115,7 +115,7 @@
           loadingDiv.style.display = 'none';
           itemsBody.innerHTML = '';
 
-          poItems.forEach((item, index) => {
+         poItems.forEach((item, index) => {
             itemsBody.innerHTML += `
               <tr>
                 <td style="font-size: 12px;">${item.name}</td>
@@ -124,10 +124,10 @@
                   <input type="number" class="qty-input" id="qty-${index}" value="${item.qty}" min="0">
                 </td>
                 <td>
-                  <input type="number" class="qty-input" id="soQty-${index}" value="0" min="0">
+                  <input type="number" class="qty-input" id="soQty-${index}" value="${item.autoSoQty || 0}" min="0">
                 </td>
                 <td>
-                  <input type="text" id="custName-${index}" placeholder="Name..." style="padding: 6px; width: 120px;">
+                  <input type="text" id="custName-${index}" value="${item.autoCustomerName || ''}" placeholder="Name..." style="padding: 6px; width: 120px;">
                 </td>
                 <td>
                   <button type="button" onclick="document.getElementById('qty-${index}').value = 0; document.getElementById('soQty-${index}').value = 0;" style="padding: 4px 8px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">Skip</button>
