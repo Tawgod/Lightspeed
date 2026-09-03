@@ -1,0 +1,11 @@
+{
+  "id": "avery5960_standard",
+  "name": "Avery 5960 (Standard)",
+  "grid": { "columns": 3, "rows": 10, "spacingX": 198, "spacingY": 72 },
+  "elements": [
+    { "type": "text", "field": "name", "x": 5, "y": 5, "fontSize": 8, "maxWidth": 179 },
+    { "type": "barcode", "field": "sku", "x": 25, "y": 20, "width": 140, "height": 28 },
+    { "type": "text", "field": "price", "x": 130, "y": 55, "fontSize": 12, "bold": true },
+    { "type": "text", "field": "sku", "x": 25, "y": 55, "fontSize": 7, "bold": false }
+  ]
+}
