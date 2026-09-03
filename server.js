@@ -152,5 +152,5 @@ async function generatePoPdf(req, res) {
 app.get('/api/labels/po/:poId', generatePoPdf);
 app.get('/api/labels/po/:poId/pdf', generatePoPdf);
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
