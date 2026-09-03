@@ -38,7 +38,11 @@ async function generatePoPdf(req, res) {
 const cleanDomain = LIGHTSPEED_DOMAIN.replace(/^https?:\/\//, '').replace(/\/$/, '').replace('.retail.lightspeed.app', '');
 
 const poResponse = await fetch(`https://${cleanDomain}.retail.lightspeed.app/api/2.0/consignments/${poId}/products`, {
-  headers: { Authorization: `Bearer ${LIGHTSPEED_TOKEN}` }
+headers: { 
+  'Authorization': `Bearer ${LIGHTSPEED_TOKEN}`,
+  'User-Agent': 'HobbyCorner-AveryLabels/1.0',
+  'Accept': 'application/json'
+}
 });
 
     if (!poResponse.ok) {
