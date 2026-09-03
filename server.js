@@ -217,8 +217,52 @@ app.get('/api/po/:poId/data', async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 8080;
-// Read the templates folder and send available layouts to the UI
+
+// Automatically ensure the templates directory and default files exist
+async function ensureTemplatesExist() {
+  const templatesDir = path.join(__dirname, 'templates');
+  try {
+    await fs.mkdir(templatesDir, { recursive: true });
+    const files = await fs.readdir(templatesDir);
+    
+    // If the folder is empty, automatically write out the default templates
+    if (files.length === 0) {
+      const standardTemplate = {
+        id: "avery_5960",
+        name: "Avery 5960 (RMS Layout)",
+        grid: { columns: 3, rows: 10, spacingX: 198, spacingY: 72 },
+        elements: [
+          { type: "text", field: "name", x: 7.5, y: 7.5, fontSize: 9, maxWidth: 175, align: "left" },
+          { type: "text", field: "sku", x: 7.5, y: 20, fontSize: 8, maxWidth: 114, align: "left" },
+          { type: "text", field: "price", x: 117.5, "y": 17.5, fontSize: 14, maxWidth: 65, align: "right" },
+          { type: "barcode", field: "sku", x: 7.5, "y": 37.5, width: 112.5, height: 24 },
+          { type: "text", field: "store", x: 125, y: 45, fontSize: 8, maxWidth: 50, align: "center" }
+        ]
+      };
+
+      const specialTemplate = {
+        id: "avery_5960_special",
+        name: "Avery 5960 (Special Order)",
+        grid: { columns: 3, rows: 10, spacingX: 198, spacingY: 72 },
+        elements: [
+          { type: "text", field: "specialTag", x: 5, y: 5, fontSize: 10, bold: true, align: "center", maxWidth: 179 },
+          { type: "text", field: "customerName", x: 5, y: 17, fontSize: 14, bold: true, align: "center", maxWidth: 179 },
+          { type: "barcode", field: "sku", x: 25, y: 34, width: 140, height: 20 },
+          { type: "text", field: "name", x: 5, y: 57, fontSize: 6, maxWidth: 130, align: "left" },
+          { type: "text", field: "price", x: 145, y: 57, fontSize: 8, bold: true },
+          { type: "text", field: "sku", x: 25, y: 57, fontSize: 6, bold: false }
+        ]
+      };
+
+      await fs.writeFile(path.join(templatesDir, 'avery_5960.json'), JSON.stringify(standardTemplate, null, 2));
+      await fs.writeFile(path.join(templatesDir, 'avery_5960_special.json'), JSON.stringify(specialTemplate, null, 2));
+      console.log('Default template files automatically created.');
+    }
+  } catch (err) {
+    console.error('Error ensuring templates directory exists:', err);
+  }
+}
+
 app.get('/api/templates', async (req, res) => {
   try {
     const templatesDir = path.join(__dirname, 'templates');
@@ -343,4 +387,7 @@ app.post('/api/labels/generate', async (req, res) => {
     }
   }
 });
-app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
+const PORT = process.env.PORT || 8080;
+ensureTemplatesExist().then(() => {
+  app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
+});
