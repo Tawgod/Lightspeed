@@ -189,22 +189,27 @@ app.get('/api/po/:poId/data', async (req, res) => {
     const poData = await poResponse.json();
     const lineItems = poData.data || [];
 
-    // 2. Fetch open/unfulfilled customer orders from Lightspeed to match special orders
+    // 2. Fetch customer special orders / open sales from Lightspeed
     let openOrdersMap = {};
     try {
-      const ordersResponse = await fetch(`https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=OPEN`, {
+      const ordersResponse = await fetch(`https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?page_size=100`, {
         headers: { 'Authorization': `Bearer ${LIGHTSPEED_TOKEN}`, 'User-Agent': 'HobbyCorner-AveryLabels/1.0', 'Accept': 'application/json' }
       });
       if (ordersResponse.ok) {
         const ordersData = await ordersResponse.json();
         for (const sale of (ordersData.data || [])) {
-          const customerName = sale.customer ? `${sale.customer.first_name || ''} ${sale.customer.last_name || ''}`.trim() : 'Special Order';
-          for (const line of (sale.line_items || [])) {
-            if (!openOrdersMap[line.product_id]) {
-              openOrdersMap[line.product_id] = { qty: 0, names: [] };
+          // Check for open, unfulfilled, or on-account customer orders
+          if (sale.status === 'OPEN' || sale.status === 'ONACCOUNT' || sale.fulfillment_status) {
+            const customerName = sale.customer ? `${sale.customer.first_name || ''} ${sale.customer.last_name || ''}`.trim() : 'Special Order';
+            for (const line of (sale.line_items || [])) {
+              if (!openOrdersMap[line.product_id]) {
+                openOrdersMap[line.product_id] = { qty: 0, names: [] };
+              }
+              openOrdersMap[line.product_id].qty += line.quantity || 1;
+              if (!openOrdersMap[line.product_id].names.includes(customerName)) {
+                openOrdersMap[line.product_id].names.push(customerName);
+              }
             }
-            openOrdersMap[line.product_id].qty += line.quantity || 1;
-            openOrdersMap[line.product_id].names.push(customerName);
           }
         }
       }
