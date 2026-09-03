@@ -9,6 +9,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
 
+app.use(cors());
+app.use(express.json());
+
 // Serve the Label Maker UI from the root directory
 app.get('/index.html', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
@@ -224,4 +227,92 @@ app.get('/api/po/:poId/data', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 8080;
+app.post('/api/labels/generate', async (req, res) => {
+  try {
+    const { poId, startRow = 1, startCol = 1, items = [] } = req.body;
+
+    // Double-check sorting by SKU alphabetically before generating labels
+    items.sort((a, b) => (a.sku || '').localeCompare(b.sku || '', undefined, { sensitivity: 'base' }));
+
+    const doc = new PDFDocument({
+      size: 'letter',
+      margins: { top: 36, bottom: 36, left: 13.5, right: 13.5 },
+      autoFirstPage: true
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="PO_${poId}_Labels.pdf"`);
+    doc.pipe(res);
+
+    // Calculate start position offset on a 3x10 Avery 5960 sheet
+    // Row 1, Col 1 = index 0. Row 8, Col 3 = (7 * 3) + 2 = 23
+    const startOffset = Math.max(0, ((startRow - 1) * 3) + (startCol - 1));
+    let labelCount = startOffset;
+
+    for (const item of items) {
+      let barcodeBuffer = null;
+      if (item.sku && item.sku !== 'UNKNOWN') {
+        try {
+          barcodeBuffer = await bwipjs.toBuffer({
+            bcid: 'code128',
+            text: item.sku,
+            scale: 3,
+            height: 10,
+            includetext: false
+          });
+        } catch (err) {
+          console.error(`Barcode error for SKU ${item.sku}:`, err);
+        }
+      }
+
+      const valuesMap = {
+        name: item.name || '',
+        sku: item.sku || '',
+        price: item.price || '$0.00'
+      };
+
+      for (let i = 0; i < item.qty; i++) {
+        // Move to next page if we hit 30 labels on the current page
+        if (labelCount > 0 && labelCount % 30 === 0) {
+          doc.addPage();
+        }
+
+        const positionOnPage = labelCount % 30;
+        const col = positionOnPage % 3;
+        const row = Math.floor(positionOnPage / 3);
+
+        const originX = 13.5 + (col * 198);
+        const originY = 36 + (row * 72);
+
+        for (const el of labelTemplate.elements) {
+          const val = valuesMap[el.field] || '';
+
+          if (el.type === 'text') {
+            doc.fontSize(el.fontSize || 8)
+               .font(el.bold ? 'Helvetica-Bold' : 'Helvetica')
+               .text(val, originX + el.x, originY + el.y, {
+                 width: el.maxWidth || undefined,
+                 align: el.align || 'left',
+                 lineBreak: false,
+                 ellipsis: true
+               });
+          } else if (el.type === 'barcode' && barcodeBuffer) {
+            doc.image(barcodeBuffer, originX + el.x, originY + el.y, {
+              width: el.width,
+              height: el.height
+            });
+          }
+        }
+        labelCount++;
+      }
+    }
+
+    doc.end();
+  } catch (error) {
+    console.error('PDF Generation Error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+});
 app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
