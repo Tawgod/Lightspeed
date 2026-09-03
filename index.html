@@ -65,12 +65,12 @@
   </div>
 
   <script>
-  const urlParams = new URLSearchParams(window.location.search);
+const urlParams = new URLSearchParams(window.location.search);
 const poId = urlParams.get('poId');
 const loadingDiv = document.getElementById('loading');
 const itemsBody = document.getElementById('itemsBody');
+const generateBtn = document.getElementById('generateBtn');
 
-// Array to hold the data we get from the server
 let poItems = [];
 
 if (!poId) {
@@ -78,27 +78,27 @@ if (!poId) {
   loadingDiv.style.display = 'block';
 } else {
   loadingDiv.style.display = 'block';
-  
-  // Fetch the data from our new server route
+
   fetch(`/api/po/${poId}/data`)
     .then(response => response.json())
     .then(data => {
-      poItems = data;
+      // Sort alphabetically by SKU (case-insensitive)
+      poItems = data.sort((a, b) => (a.sku || '').localeCompare(b.sku || '', undefined, { sensitivity: 'base' }));
+      
       loadingDiv.style.display = 'none';
       itemsBody.innerHTML = '';
 
-      // Build the table rows dynamically
-      data.forEach((item, index) => {
+      poItems.forEach((item, index) => {
         itemsBody.innerHTML += `
           <tr>
             <td>${item.name}</td>
-            <td>${item.sku}</td>
+            <td><strong>${item.sku}</strong></td>
             <td>${item.price}</td>
             <td>
               <input type="number" class="qty-input" id="qty-${index}" value="${item.qty}" min="0">
             </td>
             <td>
-              <button onclick="document.getElementById('qty-${index}').value = 0" style="padding: 4px 8px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">Skip</button>
+              <button type="button" onclick="document.getElementById('qty-${index}').value = 0" style="padding: 4px 8px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">Skip</button>
             </td>
           </tr>
         `;
@@ -108,6 +108,59 @@ if (!poId) {
       loadingDiv.innerHTML = `<span style="color: red;">Error loading data: ${error.message}</span>`;
     });
 }
+
+// Handle PDF Generation
+generateBtn.onclick = async () => {
+  const startRow = parseInt(document.getElementById('startRow').value, 10) || 1;
+  const startCol = parseInt(document.getElementById('startCol').value, 10) || 1;
+
+  // Gather current quantities from input fields
+  const itemsToPrint = poItems.map((item, index) => {
+    const qtyInput = document.getElementById(`qty-${index}`);
+    return {
+      ...item,
+      qty: parseInt(qtyInput ? qtyInput.value : item.qty, 10) || 0
+    };
+  }).filter(item => item.qty > 0); // Omit any items set to 0
+
+  if (itemsToPrint.length === 0) {
+    alert('Please select at least one item with a quantity greater than 0.');
+    return;
+  }
+
+  generateBtn.disabled = true;
+  generateBtn.textContent = 'Generating PDF...';
+
+  try {
+    const res = await fetch('/api/labels/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        poId,
+        startRow,
+        startCol,
+        items: itemsToPrint
+      })
+    });
+
+    if (!res.ok) throw new Error('PDF Generation failed');
+
+    // Download the generated PDF blob directly
+    const blob = await res.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = `PO_${poId}_Labels.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } catch (err) {
+    alert(`Error: ${err.message}`);
+  } finally {
+    generateBtn.disabled = false;
+    generateBtn.textContent = 'Generate PDF Labels';
+  }
+};
   </script>
 </body>
 </html>
