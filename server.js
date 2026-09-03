@@ -178,5 +178,50 @@ async function generatePoPdf(req, res) {
 app.get('/api/labels/po/:poId', generatePoPdf);
 app.get('/api/labels/po/:poId/pdf', generatePoPdf);
 
+// New route to send PO data to the UI Dashboard
+app.get('/api/po/:poId/data', async (req, res) => {
+  try {
+    const { poId } = req.params;
+    
+    // 1. Fetch the PO line items
+    const poResponse = await fetch(`https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/consignments/${poId}/products`, {
+      headers: { 'Authorization': `Bearer ${LIGHTSPEED_TOKEN}`, 'User-Agent': 'HobbyCorner-AveryLabels/1.0', 'Accept': 'application/json' }
+    });
+    
+    if (!poResponse.ok) throw new Error('Failed to fetch PO from Lightspeed');
+    const poData = await poResponse.json();
+    const lineItems = poData.data || [];
+
+    // 2. Fetch individual product details for each line item
+    const enrichedItems = [];
+    for (const item of lineItems) {
+      const prodResponse = await fetch(`https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/products/${item.product_id}`, {
+        headers: { 'Authorization': `Bearer ${LIGHTSPEED_TOKEN}`, 'User-Agent': 'HobbyCorner-AveryLabels/1.0', 'Accept': 'application/json' }
+      });
+      
+      let product = {};
+      if (prodResponse.ok) {
+        const prodData = await prodResponse.json();
+        product = prodData.data || {};
+      }
+
+      enrichedItems.push({
+        id: item.product_id,
+        name: product.name || 'Unknown Product',
+        sku: product.sku || 'UNKNOWN',
+        price: product.price_including_tax ? `$${product.price_including_tax}` : '$0.00',
+        qty: item.received || item.count || 1
+      });
+    }
+
+    // 3. Send the clean data to the frontend
+    res.json(enrichedItems);
+
+  } catch (error) {
+    console.error('Data Fetch Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
