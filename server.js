@@ -174,6 +174,7 @@ async function generatePoPdf(req, res) {
 
 // New route to send PO data to the UI Dashboard
 // Updated route to fetch PO data AND automatically match open customer special orders
+// Route to fetch PO data and automatically match open customer special orders
 app.get('/api/po/:poId/data', async (req, res) => {
   try {
     const { poId } = req.params;
@@ -195,7 +196,6 @@ app.get('/api/po/:poId/data', async (req, res) => {
       });
       if (ordersResponse.ok) {
         const ordersData = await ordersResponse.json();
-        // Map product_id to customer info
         for (const sale of (ordersData.data || [])) {
           const customerName = sale.customer ? `${sale.customer.first_name || ''} ${sale.customer.last_name || ''}`.trim() : 'Special Order';
           for (const line of (sale.line_items || [])) {
@@ -210,6 +210,40 @@ app.get('/api/po/:poId/data', async (req, res) => {
     } catch (orderErr) {
       console.log('Could not fetch open sales orders, skipping auto-match:', orderErr.message);
     }
+
+    // 3. Fetch individual product details and attach any automated special order data
+    const enrichedItems = [];
+    for (const item of lineItems) {
+      const prodResponse = await fetch(`https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/products/${item.product_id}`, {
+        headers: { 'Authorization': `Bearer ${LIGHTSPEED_TOKEN}`, 'User-Agent': 'HobbyCorner-AveryLabels/1.0', 'Accept': 'application/json' }
+      });
+      
+      let product = {};
+      if (prodResponse.ok) {
+        const prodData = await prodResponse.json();
+        product = prodData.data || {};
+      }
+
+      const matchedOrder = openOrdersMap[item.product_id] || { qty: 0, names: [] };
+
+      enrichedItems.push({
+        id: item.product_id,
+        name: product.name || 'Unknown Product',
+        sku: product.sku || 'UNKNOWN',
+        price: product.price_including_tax ? `$${product.price_including_tax}` : '$0.00',
+        qty: item.received || item.count || 1,
+        autoSoQty: matchedOrder.qty,
+        autoCustomerName: matchedOrder.names.join(', ')
+      });
+    }
+
+    res.json(enrichedItems);
+
+  } catch (error) {
+    console.error('Data Fetch Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
     // 3. Fetch individual product details and attach any automated special order data
     const enrichedItems = [];
