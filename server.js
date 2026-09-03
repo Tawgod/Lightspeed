@@ -9,7 +9,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
 
-app.use(express.static(path.join(__dirname, 'public')));
+// Serve the Label Maker UI from the root directory
+app.get('/index.html', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
 
 const LIGHTSPEED_DOMAIN = process.env.LIGHTSPEED_DOMAIN;
 const LIGHTSPEED_TOKEN = process.env.LIGHTSPEED_TOKEN;
