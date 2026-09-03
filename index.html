@@ -49,14 +49,13 @@
 
     <div id="loading">Fetching Purchase Order data from Lightspeed...</div>
 
-    <table id="itemsTable">
+   <table id="itemsTable">
       <thead>
         <tr>
           <th>Product Name</th>
           <th>SKU</th>
           <th>Total Qty</th>
-          <th>SO Qty</th>
-          <th>Customer Name</th>
+          <th>Status / Special Order</th>
           <th>Action</th>
         </tr>
       </thead>
@@ -116,6 +115,12 @@
           itemsBody.innerHTML = '';
 
          poItems.forEach((item, index) => {
+            // Determine status display
+            let statusBadge = '<span style="color: #28a745;">Stock Item</span>';
+            if (item.autoSoQty > 0) {
+              statusBadge = `<span style="background: #ffc107; padding: 3px 6px; border-radius: 4px; font-weight: bold; font-size: 11px;">SO: ${item.autoCustomerName} (${item.autoSoQty})</span>`;
+            }
+
             itemsBody.innerHTML += `
               <tr>
                 <td style="font-size: 12px;">${item.name}</td>
@@ -123,14 +128,9 @@
                 <td>
                   <input type="number" class="qty-input" id="qty-${index}" value="${item.qty}" min="0">
                 </td>
+                <td>${statusBadge}</td>
                 <td>
-                  <input type="number" class="qty-input" id="soQty-${index}" value="${item.autoSoQty || 0}" min="0">
-                </td>
-                <td>
-                  <input type="text" id="custName-${index}" value="${item.autoCustomerName || ''}" placeholder="Name..." style="padding: 6px; width: 120px;">
-                </td>
-                <td>
-                  <button type="button" onclick="document.getElementById('qty-${index}').value = 0; document.getElementById('soQty-${index}').value = 0;" style="padding: 4px 8px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">Skip</button>
+                  <button type="button" onclick="document.getElementById('qty-${index}').value = 0" style="padding: 4px 8px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">Skip</button>
                 </td>
               </tr>
             `;
@@ -142,7 +142,7 @@
     }
 
     // 3. Handle PDF Generation
-    generateBtn.onclick = async () => {
+  generateBtn.onclick = async () => {
       const startRow = parseInt(document.getElementById('startRow').value, 10) || 1;
       const startCol = parseInt(document.getElementById('startCol').value, 10) || 1;
       const templateId = document.getElementById('templateSelect').value;
@@ -150,13 +150,12 @@
 
       const itemsToPrint = poItems.map((item, index) => {
         const qtyInput = document.getElementById(`qty-${index}`);
-        const soQtyInput = document.getElementById(`soQty-${index}`);
-        const custNameInput = document.getElementById(`custName-${index}`);
         return {
           ...item,
           qty: parseInt(qtyInput ? qtyInput.value : item.qty, 10) || 0,
-          soQty: parseInt(soQtyInput ? soQtyInput.value : 0, 10) || 0,
-          customerName: custNameInput ? custNameInput.value : ''
+          // Automatically use the server-fetched special order data
+          soQty: item.autoSoQty || 0,
+          customerName: item.autoCustomerName || ''
         };
       }).filter(item => item.qty > 0); 
 
