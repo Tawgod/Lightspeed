@@ -1,11 +1,12 @@
 {
-  "id": "avery5960_standard",
-  "name": "Avery 5960 (Standard)",
+  "id": "avery5960_rms",
+  "name": "Avery 5960 (RMS Layout)",
   "grid": { "columns": 3, "rows": 10, "spacingX": 198, "spacingY": 72 },
   "elements": [
-    { "type": "text", "field": "name", "x": 5, "y": 5, "fontSize": 8, "maxWidth": 179 },
-    { "type": "barcode", "field": "sku", "x": 25, "y": 20, "width": 140, "height": 28 },
-    { "type": "text", "field": "price", "x": 130, "y": 55, "fontSize": 12, "bold": true },
-    { "type": "text", "field": "sku", "x": 25, "y": 55, "fontSize": 7, "bold": false }
+    { "type": "text", "field": "name", "x": 7.5, "y": 7.5, "fontSize": 9, "maxWidth": 175, "align": "left" },
+    { "type": "text", "field": "sku", "x": 7.5, "y": 20, "fontSize": 8, "maxWidth": 114, "align": "left" },
+    { "type": "text", "field": "price", "x": 117.5, "y": 17.5, "fontSize": 14, "maxWidth": 65, "align": "right" },
+    { "type": "barcode", "field": "sku", "x": 7.5, "y": 37.5, "width": 112.5, "height": 24 },
+    { "type": "text", "field": "store", "x": 125, "y": 45, "fontSize": 8, "maxWidth": 50, "align": "center" }
   ]
 }
