@@ -4,10 +4,14 @@ import PDFDocument from 'pdfkit';
 import bwipjs from 'bwip-js';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs/promises';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
+
+app.use(cors());
+app.use(express.json());
 
 // Serve the Label Maker UI from the root directory
 app.get('/index.html', (req, res) => {
@@ -16,16 +20,6 @@ app.get('/index.html', (req, res) => {
 
 const LIGHTSPEED_DOMAIN = process.env.LIGHTSPEED_DOMAIN;
 const LIGHTSPEED_TOKEN = process.env.LIGHTSPEED_TOKEN;
-
-// Avery 5960 label layout configuration (measurements in PDF points: 72 points = 1 inch)
-const labelTemplate = {
-  elements: [
-    { type: 'text', field: 'name', x: 5, y: 5, fontSize: 8, maxWidth: 179, align: 'left' },
-    { type: 'barcode', field: 'sku', x: 25, y: 20, width: 140, height: 28 },
-    { type: 'text', field: 'price', x: 130, y: 55, fontSize: 12, bold: true },
-    { type: 'text', field: 'sku', x: 25, y: 55, fontSize: 7, bold: false }
-  ]
-};
 
 // Health-check route
 app.get('/', (req, res) => {
@@ -224,4 +218,129 @@ app.get('/api/po/:poId/data', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 8080;
+// Read the templates folder and send available layouts to the UI
+app.get('/api/templates', async (req, res) => {
+  try {
+    const templatesDir = path.join(__dirname, 'templates');
+    const files = await fs.readdir(templatesDir);
+    const templates = [];
+    
+    for (const file of files) {
+      // Only grab standard templates (ignore the _special variations)
+      if (file.endsWith('.json') && !file.includes('_special')) {
+        const fileData = await fs.readFile(path.join(templatesDir, file), 'utf-8');
+        const json = JSON.parse(fileData);
+        templates.push({ id: file.replace('.json', ''), name: json.name });
+      }
+    }
+    res.json(templates);
+  } catch (error) {
+    console.error('Template Discovery Error:', error);
+    res.status(500).json({ error: 'Could not read templates directory' });
+  }
+});
+app.post('/api/labels/generate', async (req, res) => {
+  try {
+    const { poId, startRow = 1, startCol = 1, templateId = 'avery_5960', customText = '', items = [] } = req.body;
+
+    // Load the selected templates from the folder dynamically
+    let labelTemplate, specialOrderTemplate;
+    try {
+      const standardData = await fs.readFile(path.join(__dirname, 'templates', `${templateId}.json`), 'utf-8');
+      labelTemplate = JSON.parse(standardData);
+      
+      try {
+        const specialData = await fs.readFile(path.join(__dirname, 'templates', `${templateId}_special.json`), 'utf-8');
+        specialOrderTemplate = JSON.parse(specialData);
+      } catch (err) {
+        // Fallback to standard if no special order template exists
+        specialOrderTemplate = labelTemplate;
+      }
+    } catch (error) {
+      throw new Error(`Failed to load template file: ${templateId}.json`);
+    }
+
+    // Double-check sorting by SKU alphabetically
+    items.sort((a, b) => (a.sku || '').localeCompare(b.sku || '', undefined, { sensitivity: 'base' }));
+
+    // ... (Keep your doc initialization and barcode generation the same) ...
+    const doc = new PDFDocument({
+      size: 'letter',
+      margins: { top: 36, bottom: 36, left: 13.5, right: 13.5 },
+      autoFirstPage: true
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="PO_${poId}_Labels.pdf"`);
+    doc.pipe(res);
+
+    // Calculate start position offset on a 3x10 Avery 5960 sheet
+    // Row 1, Col 1 = index 0. Row 8, Col 3 = (7 * 3) + 2 = 23
+    const startOffset = Math.max(0, ((startRow - 1) * 3) + (startCol - 1));
+    let labelCount = startOffset;
+
+    for (const item of items) {
+         let barcodeBuffer = null;
+         if (item.sku && item.sku !== 'UNKNOWN') {
+           try {
+             barcodeBuffer = await bwipjs.toBuffer({ bcid: 'code128', text: item.sku, scale: 3, height: 10, includetext: false });
+           } catch (err) {
+             console.error(`Barcode error for SKU ${item.sku}:`, err);
+           }
+         }
+
+         const valuesMap = {
+          name: item.name || '',
+          sku: item.sku || '',
+          price: item.price || '$0.00',
+          customerName: item.customerName || 'NO NAME PROVIDED',
+          specialTag: '*** SPECIAL ORDER ***',
+          store: customText // Mapped directly to the custom UI input!
+        };
+
+         // Calculate how many of each label type to print
+         const soQty = Math.min(item.qty, item.soQty || 0); // Can't have more SOs than total qty
+         const normalQty = item.qty - soQty;
+
+         // Helper function to draw a single label
+         const drawLabel = (template) => {
+           if (labelCount > 0 && labelCount % 30 === 0) doc.addPage();
+
+           const positionOnPage = labelCount % 30;
+           const col = positionOnPage % 3;
+           const row = Math.floor(positionOnPage / 3);
+
+           const originX = 13.5 + (col * 198);
+           const originY = 36 + (row * 72);
+
+           for (const el of template.elements) {
+             const val = valuesMap[el.field] || '';
+             if (el.type === 'text') {
+               doc.fontSize(el.fontSize || 8)
+                  .font(el.bold ? 'Helvetica-Bold' : 'Helvetica')
+                  .text(val, originX + el.x, originY + el.y, {
+                    width: el.maxWidth || undefined, align: el.align || 'left', lineBreak: false, ellipsis: true
+                  });
+             } else if (el.type === 'barcode' && barcodeBuffer) {
+               doc.image(barcodeBuffer, originX + el.x, originY + el.y, { width: el.width, height: el.height });
+             }
+           }
+           labelCount++;
+         };
+
+         // Draw the Special Order labels first
+         for (let i = 0; i < soQty; i++) drawLabel(specialOrderTemplate);
+         
+         // Draw the remaining standard labels
+         for (let i = 0; i < normalQty; i++) drawLabel(labelTemplate);
+       }
+
+    doc.end();
+  } catch (error) {
+    console.error('PDF Generation Error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+});
 app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));

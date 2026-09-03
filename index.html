@@ -23,15 +23,11 @@
 </head>
 <body>
 
-  <div class="container">
-    <h1>The Hobby Corner | PO Label Maker</h1>
-    
-    <div class="settings-panel">
+  <div class="settings-panel">
       <div class="setting-group">
         <label for="templateSelect">Label Template</label>
         <select id="templateSelect">
-          <option value="avery5960">Avery 5960 (3x10)</option>
-          <!-- Future templates go here -->
+          <option value="avery_5960">Loading templates...</option>
         </select>
       </div>
       <div class="setting-group">
@@ -42,6 +38,11 @@
         <label for="startCol">Start Column (1-3)</label>
         <input type="number" id="startCol" min="1" max="3" value="1">
       </div>
+      <!-- NEW CUSTOM TEXT INPUT -->
+      <div class="setting-group">
+        <label for="customText">Custom Text (Date/Store)</label>
+        <input type="text" id="customText" placeholder="e.g. 0926" style="width: 150px;">
+      </div>
     </div>
 
     <div id="loading">Fetching Purchase Order data from Lightspeed...</div>
@@ -51,8 +52,9 @@
         <tr>
           <th>Product Name</th>
           <th>SKU</th>
-          <th>Price</th>
-          <th>Print Qty</th>
+          <th>Total Qty</th>
+          <th>SO Qty</th>
+          <th>Customer Name</th>
           <th>Action</th>
         </tr>
       </thead>
@@ -65,102 +67,124 @@
   </div>
 
   <script>
-const urlParams = new URLSearchParams(window.location.search);
-const poId = urlParams.get('poId');
-const loadingDiv = document.getElementById('loading');
-const itemsBody = document.getElementById('itemsBody');
-const generateBtn = document.getElementById('generateBtn');
+    const urlParams = new URLSearchParams(window.location.search);
+    const poId = urlParams.get('poId');
+    const loadingDiv = document.getElementById('loading');
+    const itemsBody = document.getElementById('itemsBody');
+    const generateBtn = document.getElementById('generateBtn');
 
-let poItems = [];
+    let poItems = [];
 
-if (!poId) {
-  loadingDiv.innerHTML = '<span style="color: red;">No PO ID provided in the URL.</span>';
-  loadingDiv.style.display = 'block';
-} else {
-  loadingDiv.style.display = 'block';
-
-  fetch(`/api/po/${poId}/data`)
-    .then(response => response.json())
-    .then(data => {
-      // Sort alphabetically by SKU (case-insensitive)
-      poItems = data.sort((a, b) => (a.sku || '').localeCompare(b.sku || '', undefined, { sensitivity: 'base' }));
-      
-      loadingDiv.style.display = 'none';
-      itemsBody.innerHTML = '';
-
-      poItems.forEach((item, index) => {
-        itemsBody.innerHTML += `
-          <tr>
-            <td>${item.name}</td>
-            <td><strong>${item.sku}</strong></td>
-            <td>${item.price}</td>
-            <td>
-              <input type="number" class="qty-input" id="qty-${index}" value="${item.qty}" min="0">
-            </td>
-            <td>
-              <button type="button" onclick="document.getElementById('qty-${index}').value = 0" style="padding: 4px 8px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">Skip</button>
-            </td>
-          </tr>
-        `;
-      });
-    })
-    .catch(error => {
-      loadingDiv.innerHTML = `<span style="color: red;">Error loading data: ${error.message}</span>`;
-    });
-}
-
-// Handle PDF Generation
-generateBtn.onclick = async () => {
-  const startRow = parseInt(document.getElementById('startRow').value, 10) || 1;
-  const startCol = parseInt(document.getElementById('startCol').value, 10) || 1;
-
-  // Gather current quantities from input fields
-  const itemsToPrint = poItems.map((item, index) => {
-    const qtyInput = document.getElementById(`qty-${index}`);
-    return {
-      ...item,
-      qty: parseInt(qtyInput ? qtyInput.value : item.qty, 10) || 0
-    };
-  }).filter(item => item.qty > 0); // Omit any items set to 0
-
-  if (itemsToPrint.length === 0) {
-    alert('Please select at least one item with a quantity greater than 0.');
-    return;
-  }
-
-  generateBtn.disabled = true;
-  generateBtn.textContent = 'Generating PDF...';
-
-  try {
-    const res = await fetch('/api/labels/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        poId,
-        startRow,
-        startCol,
-        items: itemsToPrint
+    // Auto-load available templates into the dropdown
+    fetch('/api/templates')
+      .then(res => res.json())
+      .then(templates => {
+        const select = document.getElementById('templateSelect');
+        select.innerHTML = '';
+        templates.forEach(t => {
+          select.innerHTML += `<option value="${t.id}">${t.name}</option>`;
+        });
       })
-    });
+      .catch(err => console.error('Failed to load templates:', err));
+    
+    if (!poId) {
+      loadingDiv.innerHTML = '<span style="color: red;">No PO ID provided in the URL.</span>';
+      loadingDiv.style.display = 'block';
+    } else {
+      loadingDiv.style.display = 'block';
 
-    if (!res.ok) throw new Error('PDF Generation failed');
+      fetch(`/api/po/${poId}/data`)
+        .then(response => response.json())
+        .then(data => {
+          poItems = data.sort((a, b) => (a.sku || '').localeCompare(b.sku || '', undefined, { sensitivity: 'base' }));
+          
+          loadingDiv.style.display = 'none';
+          itemsBody.innerHTML = '';
 
-    // Download the generated PDF blob directly
-    const blob = await res.blob();
-    const downloadUrl = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = downloadUrl;
-    a.download = `PO_${poId}_Labels.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  } catch (err) {
-    alert(`Error: ${err.message}`);
-  } finally {
-    generateBtn.disabled = false;
-    generateBtn.textContent = 'Generate PDF Labels';
-  }
-};
+          poItems.forEach((item, index) => {
+            itemsBody.innerHTML += `
+              <tr>
+                <td style="font-size: 12px;">${item.name}</td>
+                <td><strong>${item.sku}</strong></td>
+                <td>
+                  <input type="number" class="qty-input" id="qty-${index}" value="${item.qty}" min="0">
+                </td>
+                <td>
+                  <input type="number" class="qty-input" id="soQty-${index}" value="0" min="0">
+                </td>
+                <td>
+                  <input type="text" id="custName-${index}" placeholder="Name..." style="padding: 6px; width: 120px;">
+                </td>
+                <td>
+                  <button type="button" onclick="document.getElementById('qty-${index}').value = 0; document.getElementById('soQty-${index}').value = 0;" style="padding: 4px 8px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">Skip</button>
+                </td>
+              </tr>
+            `;
+          });
+        })
+        .catch(error => {
+          loadingDiv.innerHTML = `<span style="color: red;">Error loading data: ${error.message}</span>`;
+        });
+    }
+
+    generateBtn.onclick = async () => {
+      const startRow = parseInt(document.getElementById('startRow').value, 10) || 1;
+      const startCol = parseInt(document.getElementById('startCol').value, 10) || 1;
+      const templateId = document.getElementById('templateSelect').value;
+      const customText = document.getElementById('customText').value;
+
+      // ... (keep the itemsToPrint mapping exactly the same) ...
+
+      try {
+        const res = await fetch('/api/labels/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ poId, startRow, startCol, templateId, customText, items: itemsToPrint })
+        });
+      const itemsToPrint = poItems.map((item, index) => {
+        const qtyInput = document.getElementById(`qty-${index}`);
+        const soQtyInput = document.getElementById(`soQty-${index}`);
+        const custNameInput = document.getElementById(`custName-${index}`);
+        return {
+          ...item,
+          qty: parseInt(qtyInput ? qtyInput.value : item.qty, 10) || 0,
+          soQty: parseInt(soQtyInput ? soQtyInput.value : 0, 10) || 0,
+          customerName: custNameInput ? custNameInput.value : ''
+        };
+      }).filter(item => item.qty > 0); 
+
+      if (itemsToPrint.length === 0) {
+        alert('Please select at least one item with a quantity greater than 0.');
+        return;
+      }
+
+      generateBtn.disabled = true;
+      generateBtn.textContent = 'Generating PDF...';
+
+      try {
+        const res = await fetch('/api/labels/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ poId, startRow, startCol, items: itemsToPrint })
+        });
+
+        if (!res.ok) throw new Error('PDF Generation failed');
+
+        const blob = await res.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = `PO_${poId}_Labels.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      } catch (err) {
+        alert(`Error: ${err.message}`);
+      } finally {
+        generateBtn.disabled = false;
+        generateBtn.textContent = 'Generate PDF Labels';
+      }
+    };
   </script>
 </body>
 </html>
