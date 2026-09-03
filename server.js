@@ -19,12 +19,11 @@ const labelTemplate = {
   ]
 };
 
-// Health-check route (to test if Railway is live)
+// Health-check route
 app.get('/', (req, res) => {
   res.send('Lightspeed Avery Label API is running.');
 });
 
-// PDF generation endpoint (supports both /api/labels/po/:poId and /api/labels/po/:poId/pdf)
 async function generatePoPdf(req, res) {
   try {
     const { poId } = req.params;
@@ -33,8 +32,8 @@ async function generatePoPdf(req, res) {
       return res.status(500).send('Server configuration missing: LIGHTSPEED_DOMAIN or LIGHTSPEED_TOKEN.');
     }
 
-   // 1. Fetch Purchase Order line items from Lightspeed
-    const poResponse = await fetch(`https://${cleanDomain}.retail.lightspeed.app/api/2.0/consignments/${poId}/products`, {
+    // 1. Fetch Purchase Order line items from Lightspeed
+    const poResponse = await fetch(`https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/consignments/${poId}/products`, {
       headers: { 
         'Authorization': `Bearer ${LIGHTSPEED_TOKEN}`,
         'User-Agent': 'HobbyCorner-AveryLabels/1.0',
@@ -51,22 +50,22 @@ async function generatePoPdf(req, res) {
           <h2 style="color: red;">Lightspeed Blocked the Request (${poResponse.status})</h2>
           <p><b>Lightspeed's Exact Error:</b> ${errorText}</p>
           <p><b>Token Being Used:</b> ${safeToken}</p>
-          <p><b>Requested URL:</b> https://${cleanDomain}.retail.lightspeed.app/api/2.0/consignments/${poId}/products</p>
+          <p><b>Requested URL:</b> https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/consignments/${poId}/products</p>
         </div>
       `);
     }
-    
+
     const poData = await poResponse.json();
     const lineItems = poData.data || [];
 
-    // 2. Initialize PDF Document (US Letter: 8.5" x 11")
+    // 2. Initialize PDF Document
     const doc = new PDFDocument({
       size: 'letter',
-      margins: { top: 36, bottom: 36, left: 13.5, right: 13.5 }, // 0.5" top/bottom, 0.19" left/right
+      margins: { top: 36, bottom: 36, left: 13.5, right: 13.5 }, 
       autoFirstPage: true
     });
 
-    // 3. Configure response headers to trigger download in browser
+    // 3. Configure response headers
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="PO_${poId}_Avery_5960.pdf"`);
     doc.pipe(res);
@@ -78,9 +77,12 @@ async function generatePoPdf(req, res) {
       const qty = item.received || item.count || 1;
 
       // Fetch individual product details
-      const cleanDomain = LIGHTSPEED_DOMAIN.replace(/^https?:\/\//, '').replace(/\/$/, '').replace('.retail.lightspeed.app', '');
       const prodResponse = await fetch(`https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/products/${item.product_id}`, {
-        headers: { Authorization: `Bearer ${LIGHTSPEED_TOKEN}` }
+        headers: { 
+          'Authorization': `Bearer ${LIGHTSPEED_TOKEN}`,
+          'User-Agent': 'HobbyCorner-AveryLabels/1.0',
+          'Accept': 'application/json'
+        }
       });
 
       let product = {};
@@ -95,7 +97,7 @@ async function generatePoPdf(req, res) {
         price: product.price_including_tax ? `$${product.price_including_tax}` : '$0.00'
       };
 
-      // Generate barcode buffer once per product
+      // Generate barcode buffer
       let barcodeBuffer = null;
       if (valuesMap.sku !== 'UNKNOWN') {
         try {
@@ -113,22 +115,17 @@ async function generatePoPdf(req, res) {
 
       // 5. Draw label copies matching received quantity
       for (let i = 0; i < qty; i++) {
-        // Start a new sheet after 30 labels
         if (labelCount > 0 && labelCount % 30 === 0) {
           doc.addPage();
         }
 
-        // Avery 5960 Grid Math
         const positionOnPage = labelCount % 30;
-        const col = positionOnPage % 3;             // 3 columns across
-        const row = Math.floor(positionOnPage / 3);   // 10 rows down
+        const col = positionOnPage % 3;             
+        const row = Math.floor(positionOnPage / 3);   
 
-        // 13.5 pt left margin + (col * (189 pt width + 9 pt gap))
         const originX = 13.5 + (col * 198);
-        // 36 pt top margin + (row * 72 pt height)
         const originY = 36 + (row * 72);
 
-        // Draw each element onto the label
         for (const el of labelTemplate.elements) {
           const val = valuesMap[el.field] || '';
 
@@ -148,7 +145,6 @@ async function generatePoPdf(req, res) {
             });
           }
         }
-
         labelCount++;
       }
     }
@@ -170,6 +166,7 @@ async function generatePoPdf(req, res) {
   }
 }
 
+// Routes must be placed before app.listen!
 app.get('/api/labels/po/:poId', generatePoPdf);
 app.get('/api/labels/po/:poId/pdf', generatePoPdf);
 
