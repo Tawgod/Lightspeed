@@ -4,7 +4,7 @@ import PDFDocument from 'pdfkit';
 import bwipjs from 'bwip-js';
 
 const app = express();
-app.use(cors());
+app.use(express.static('public'));
 
 const LIGHTSPEED_DOMAIN = process.env.LIGHTSPEED_DOMAIN;
 const LIGHTSPEED_TOKEN = process.env.LIGHTSPEED_TOKEN;
