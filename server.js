@@ -213,6 +213,14 @@ app.get('/api/po/:poId/data', async (req, res) => {
             if (processedSaleIds.has(sale.id)) continue;
             processedSaleIds.add(sale.id);
 
+            // FIX: Filter based on the actual Sale Status!
+            const saleStatus = (sale.status || '').toUpperCase();
+            
+            // AGGRESSIVE BLOCK: Ignore normal closed sales, returns, and already packed/picked up items
+            if (['CLOSED', 'PICKED_UP_CLOSED', 'DISPATCHED_CLOSED', 'AWAITING_PICKUP', 'RETURN', 'VOIDED'].includes(saleStatus)) {
+              continue; 
+            }
+
             let customerName = 'Special Order';
             if (sale.customer_id) {
               if (!customerCache[sale.customer_id]) {
@@ -234,47 +242,16 @@ app.get('/api/po/:poId/data', async (req, res) => {
               customerName = customerCache[sale.customer_id];
             }
 
-            // === NEW X-RAY LOGGING HERE ===
-            console.log(`\n=== SALE FOUND FOR: ${customerName} ===`);
-            console.log(`Sale ID: ${sale.id}`);
-            console.log(`Sale Level Status: "${sale.status}"`);
-            console.log(`Sale Level Fulfillment: "${sale.fulfillment_status}"`);
-            // ==============================
-
-            const saleFulfillment = (sale.fulfillment_status || '').toLowerCase();
-            if (['packed', 'shipped', 'dispatched', 'delivered', 'completed', 'picked_up', 'fulfilled'].includes(saleFulfillment)) {
-              console.log(`-> Skipping sale because sale fulfillment is: ${saleFulfillment}`);
-              continue; 
-            }
-
             for (const line of (sale.line_items || [])) {
-              
-              // === MORE X-RAY LOGGING ===
-              console.log(`  - Line Item Product ID: ${line.product_id}`);
-              console.log(`    Line Status: "${line.status}"`);
-              console.log(`    Line Qty: ${line.quantity || line.unit_quantity}`);
-              console.log(`    Raw Line Data:`, JSON.stringify(line));
-              // ==========================
-
-              const itemStatus = (line.status || line.fulfillment_status || '').toLowerCase();
-              if (['packed', 'shipped', 'dispatched', 'delivered', 'completed', 'picked_up', 'fulfilled'].includes(itemStatus)) {
-                console.log(`    -> Skipping line item because status is: ${itemStatus}`);
-                continue;
-              }
-
               const totalQty = parseFloat(line.quantity || line.unit_quantity) || 1;
-              const packedQty = parseFloat(line.quantity_packed || line.quantity_fulfilled || line.quantity_shipped || 0);
-              const lineQty = totalQty - packedQty;
-
-              if (lineQty <= 0) {
-                console.log(`    -> Skipping line item because calculated remaining qty is 0`);
-                continue;
-              }
+              
+              // Skip negative quantities (returns/refunds)
+              if (totalQty <= 0) continue;
 
               if (!openOrdersMap[line.product_id]) {
                 openOrdersMap[line.product_id] = { qty: 0, names: new Set() };
               }
-              openOrdersMap[line.product_id].qty += lineQty;
+              openOrdersMap[line.product_id].qty += totalQty;
               openOrdersMap[line.product_id].names.add(customerName);
             }
           }
