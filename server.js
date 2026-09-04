@@ -352,7 +352,7 @@ app.get('/api/po/:poId/data', async (req, res) => {
       }
     }
 
-    // 5. Build Final Payload - DYNAMICALLY SPLITTING PO LINES
+    // 5. Build Final Payload - DYNAMICALLY SPLITTING PO LINES (Floor First)
     const enrichedItems = [];
     for (const item of lineItems) {
       const prodResponse = await fetch(`https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/products/${item.product_id}`, {
@@ -365,44 +365,50 @@ app.get('/api/po/:poId/data', async (req, res) => {
         product = prodData.data || {};
       }
 
-      // Start with the total physical items in the box for this line item
-      let poQtyRemaining = parseFloat(item.received || item.count || 1);
+      const poQtyTotal = parseFloat(item.received || item.count || 1);
       const soCustomers = productMathMap[item.product_id] || {};
-      let hasSpecialOrders = false;
+      
+      // Calculate total needed across all customers
+      let totalNeeded = 0;
+      for (const qty of Object.values(soCustomers)) {
+        totalNeeded += qty;
+      }
+      
+      const totalAllocatedSO = Math.min(poQtyTotal, totalNeeded);
+      const floorQty = poQtyTotal - totalAllocatedSO;
+      const hasSpecialOrders = totalAllocatedSO > 0;
 
-      // Loop through every customer waiting for this item and allocate the PO stock to them
+      // 1. PUSH THE FLOOR STOCK FIRST (Standard Labels)
+      if (floorQty > 0 || !hasSpecialOrders) {
+        enrichedItems.push({
+          id: item.product_id,
+          name: product.name || 'Unknown Product',
+          sku: product.sku || 'UNKNOWN',
+          price: product.price_including_tax ? `$${product.price_including_tax}` : '$0.00',
+          qty: floorQty,
+          autoSoQty: 0,
+          autoCustomerName: ''
+        });
+      }
+
+      // 2. PUSH THE SPECIAL ORDERS SECOND (Split by Customer)
+      let poQtyRemainingForSO = totalAllocatedSO;
       for (const [custName, neededQty] of Object.entries(soCustomers)) {
-        if (poQtyRemaining <= 0) break; // We ran out of stock in this box!
-
-        hasSpecialOrders = true;
+        if (poQtyRemainingForSO <= 0) break; 
         
-        // Give them what they need, capped by what's left in the box
-        const allocatedQty = Math.min(poQtyRemaining, neededQty);
+        const allocatedQty = Math.min(poQtyRemainingForSO, neededQty);
         
         enrichedItems.push({
           id: item.product_id,
           name: product.name || 'Unknown Product',
           sku: product.sku || 'UNKNOWN',
           price: product.price_including_tax ? `$${product.price_including_tax}` : '$0.00',
-          qty: allocatedQty, // Trick the UI! For this specific row, the total QTY is just the allocated amount
+          qty: allocatedQty,
           autoSoQty: allocatedQty, 
           autoCustomerName: custName
         });
 
-        poQtyRemaining -= allocatedQty; // Subtract what we just allocated
-      }
-
-      // If there are still items left over (or no special orders at all), send them to the floor
-      if (poQtyRemaining > 0 || !hasSpecialOrders) {
-        enrichedItems.push({
-          id: item.product_id,
-          name: product.name || 'Unknown Product',
-          sku: product.sku || 'UNKNOWN',
-          price: product.price_including_tax ? `$${product.price_including_tax}` : '$0.00',
-          qty: poQtyRemaining,
-          autoSoQty: 0,
-          autoCustomerName: ''
-        });
+        poQtyRemainingForSO -= allocatedQty; 
       }
     }
 
@@ -419,7 +425,7 @@ app.get('/api/po/:poId/data', async (req, res) => {
 
 // Automatically ensure the templates directory and default files exist
 async function ensureTemplatesExist() {
-  const templatesDir = path.join(__dirname, 'templates');
+  const templatesDir = path.join(__dirname, 'Templates');
   try {
     await fs.mkdir(templatesDir, { recursive: true });
     const files = await fs.readdir(templatesDir);
@@ -574,9 +580,9 @@ app.post('/api/labels/generate', async (req, res) => {
         labelCount++;
       };
 
-      // Draw Special Order labels first, then the remaining Normal labels
-      for (let i = 0; i < soQty; i++) drawLabel(specialOrderTemplate);
+     // Draw Normal labels first, then Special Order labels
       for (let i = 0; i < normalQty; i++) drawLabel(labelTemplate);
+      for (let i = 0; i < soQty; i++) drawLabel(specialOrderTemplate);
     }
 
     doc.end();
