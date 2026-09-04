@@ -193,13 +193,12 @@ app.get('/api/po/:poId/data', async (req, res) => {
     let processedSaleIds = new Set(); 
 
     try {
+      // FIX: Completely removed AWAITING_PICKUP & AWAITING_DISPATCH from our searches
       const endpointsToFetch = [
         `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=OPEN&page_size=100`,
         `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=SAVED&page_size=100`,
         `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=LAYBY&page_size=100`,
         `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=ONACCOUNT&page_size=100`,
-        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=AWAITING_PICKUP&page_size=100`,
-        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=AWAITING_DISPATCH&page_size=100`,
         `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?fulfillment_status=NEW&page_size=100`,
         `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?fulfillment_status=UNFULFILLED&page_size=100`
       ];
@@ -218,9 +217,18 @@ app.get('/api/po/:poId/data', async (req, res) => {
 
             const saleStatus = (sale.status || '').toUpperCase();
             
-            // Only ignore sales that are completely out the door or cancelled
-            if (['PICKED_UP_CLOSED', 'DISPATCHED_CLOSED', 'RETURN', 'VOIDED'].includes(saleStatus)) {
+            // HARD BANNED STATUSES: Anything packed, picked up, dispatched, returned, etc.
+            const bannedStatuses = ['AWAITING_PICKUP', 'AWAITING_DISPATCH', 'PICKED_UP_CLOSED', 'DISPATCHED_CLOSED', 'RETURN', 'VOIDED', 'COMPLETED'];
+            if (bannedStatuses.includes(saleStatus)) {
               continue; 
+            }
+
+            // SMART BLOCK for CLOSED (Paid) sales
+            if (saleStatus === 'CLOSED') {
+              const saleFulfillment = (sale.fulfillment_status || '').toUpperCase();
+              if (!saleFulfillment || ['FULFILLED', 'COMPLETED', 'DELIVERED', 'SHIPPED', 'DISPATCHED', 'PICKED_UP', 'PACKED'].includes(saleFulfillment)) {
+                continue;
+              }
             }
 
             let customerName = 'Special Order';
@@ -251,7 +259,6 @@ app.get('/api/po/:poId/data', async (req, res) => {
               if (!openOrdersMap[line.product_id]) {
                 openOrdersMap[line.product_id] = { qty: 0, names: new Set() };
               }
-              // Add everything up (Gross Quantity)
               openOrdersMap[line.product_id].qty += totalQty;
               openOrdersMap[line.product_id].names.add(customerName);
             }
@@ -262,39 +269,7 @@ app.get('/api/po/:poId/data', async (req, res) => {
       console.log('Could not fetch open sales orders:', orderErr.message);
     }
 
-    // 3. Fetch Fulfillments to see what is ALREADY PACKED
-    let packedMap = {};
-    try {
-      const fulfillRes = await fetch(`https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/fulfillments?page_size=200`, {
-        headers: { 'Authorization': `Bearer ${LIGHTSPEED_TOKEN}`, 'User-Agent': 'HobbyCorner-AveryLabels/1.0', 'Accept': 'application/json' }
-      });
-      
-      if (fulfillRes.ok) {
-        const fulfillData = await fulfillRes.json();
-        for (const f of (fulfillData.data || [])) {
-          // Only subtract if this fulfillment belongs to a sale we are currently looking at!
-          if (processedSaleIds.has(f.sale_id)) {
-            const fStatus = (f.status || '').toUpperCase();
-            
-            // If the fulfillment has been packed, picked, or completed
-            if (['PICKED', 'PACKED', 'SHIPPED', 'DELIVERED', 'COMPLETED', 'DISPATCHED', 'AWAITING_PICKUP'].includes(fStatus)) {
-               // Lightspeed might use 'products' or 'line_items' inside fulfillments
-               const fLines = f.products || f.line_items || [];
-               for (const fLine of fLines) {
-                 const pId = fLine.product_id;
-                 if (pId) {
-                   packedMap[pId] = (packedMap[pId] || 0) + parseFloat(fLine.quantity || 1);
-                 }
-               }
-            }
-          }
-        }
-      }
-    } catch (err) {
-      console.log('Error fetching fulfillments to subtract:', err.message);
-    }
-
-    // 4. Fetch product details and do the MATH (Gross - Packed = Net Labels Needed)
+    // 3. Fetch product details and CAP the quantity to the PO amount
     const enrichedItems = [];
     for (const item of lineItems) {
       const prodResponse = await fetch(`https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/products/${item.product_id}`, {
@@ -309,10 +284,9 @@ app.get('/api/po/:poId/data', async (req, res) => {
 
       const matchedOrder = openOrdersMap[item.product_id] || { qty: 0, names: new Set() };
       
-      // THE MATH: Subtract the packed items from the gross total!
-      const grossQty = matchedOrder.qty;
-      const packedQty = packedMap[item.product_id] || 0;
-      const netQty = Math.max(0, grossQty - packedQty);
+      // FIX: CAP QUANTITY - We can't print more special labels than we physically received on the PO
+      const poQty = parseFloat(item.received || item.count || 1);
+      const cappedSoQty = Math.min(poQty, matchedOrder.qty);
       
       let finalNamesArray = Array.from(matchedOrder.names);
       if (finalNamesArray.some(n => n !== 'Special Order')) {
@@ -324,8 +298,8 @@ app.get('/api/po/:poId/data', async (req, res) => {
         name: product.name || 'Unknown Product',
         sku: product.sku || 'UNKNOWN',
         price: product.price_including_tax ? `$${product.price_including_tax}` : '$0.00',
-        qty: item.received || item.count || 1,
-        autoSoQty: netQty, // Use our calculated Net Quantity!
+        qty: poQty,
+        autoSoQty: cappedSoQty, // The capped number so it never exceeds PO qty!
         autoCustomerName: finalNamesArray.join(' & ')
       });
     }
