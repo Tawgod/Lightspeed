@@ -172,7 +172,7 @@ async function generatePoPdf(req, res) {
 app.get('/api/labels/po/:poId', generatePoPdf);
 app.get('/api/labels/po/:poId/pdf', generatePoPdf);
 
-
+///////////////////////////////////////////////////////////////////////////////////////////////////////
 // Route to fetch PO data and automatically match open customer special orders
 app.get('/api/po/:poId/data', async (req, res) => {
   try {
@@ -193,7 +193,9 @@ app.get('/api/po/:poId/data', async (req, res) => {
     let processedSaleIds = new Set(); 
 
     try {
+      // FIX: Added 'OPEN' back to catch parked/unpaid register orders!
       const endpointsToFetch = [
+        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=OPEN&page_size=100`,
         `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=SAVED&page_size=100`,
         `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=LAYBY&page_size=100`,
         `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=ONACCOUNT&page_size=100`,
@@ -213,12 +215,20 @@ app.get('/api/po/:poId/data', async (req, res) => {
             if (processedSaleIds.has(sale.id)) continue;
             processedSaleIds.add(sale.id);
 
-            // FIX: Filter based on the actual Sale Status!
             const saleStatus = (sale.status || '').toUpperCase();
             
-            // AGGRESSIVE BLOCK: Ignore normal closed sales, returns, and already packed/picked up items
-            if (['CLOSED', 'PICKED_UP_CLOSED', 'DISPATCHED_CLOSED', 'AWAITING_PICKUP', 'RETURN', 'VOIDED'].includes(saleStatus)) {
+            // HARD BLOCK: Completely finished, packed, or cancelled sales
+            if (['PICKED_UP_CLOSED', 'DISPATCHED_CLOSED', 'AWAITING_PICKUP', 'RETURN', 'VOIDED', 'COMPLETED'].includes(saleStatus)) {
               continue; 
+            }
+
+            // SMART BLOCK: If it's a 'CLOSED' (paid) sale, it MUST have an active fulfillment status.
+            // If there's no fulfillment data, it's just a normal walk-in customer. Skip it!
+            if (saleStatus === 'CLOSED') {
+              const saleFulfillment = (sale.fulfillment_status || '').toUpperCase();
+              if (!saleFulfillment || ['FULFILLED', 'COMPLETED', 'DELIVERED', 'SHIPPED', 'DISPATCHED', 'PICKED_UP'].includes(saleFulfillment)) {
+                continue;
+              }
             }
 
             let customerName = 'Special Order';
@@ -243,11 +253,17 @@ app.get('/api/po/:poId/data', async (req, res) => {
             }
 
             for (const line of (sale.line_items || [])) {
+              // Double check the individual line item isn't already packed
+              const lineStatus = (line.fulfillment_status || line.status || '').toUpperCase();
+              if (['PACKED', 'SHIPPED', 'DISPATCHED', 'DELIVERED', 'COMPLETED', 'PICKED_UP', 'FULFILLED'].includes(lineStatus)) {
+                continue;
+              }
+
               const totalQty = parseFloat(line.quantity || line.unit_quantity) || 1;
               
-              // Skip negative quantities (returns/refunds)
               if (totalQty <= 0) continue;
 
+              // This correctly adds quantities together if multiple customers order the exact same item
               if (!openOrdersMap[line.product_id]) {
                 openOrdersMap[line.product_id] = { qty: 0, names: new Set() };
               }
@@ -300,7 +316,7 @@ app.get('/api/po/:poId/data', async (req, res) => {
   }
 });
 
-//End of API/PO?:poId/Data //
+////////////////////////////////////////////End of API/PO?:poId/Data ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////
 
 // Automatically ensure the templates directory and default files exist
