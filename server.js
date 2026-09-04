@@ -41,7 +41,7 @@ async function generatePoPdf(req, res) {
     const poResponse = await fetch(`https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/consignments/${poId}/products`, {
       headers: { 
         'Authorization': `Bearer ${LIGHTSPEED_TOKEN}`,
-        'User-Agent': 'HobbyCorner-AveryLabels/1.0',
+        'User-Agent': 'HobbyCorner-Averys/1.0',
         'Accept': 'application/json'
       }
     });
@@ -75,7 +75,7 @@ async function generatePoPdf(req, res) {
     res.setHeader('Content-Disposition', `attachment; filename="PO_${poId}_Avery_5960.pdf"`);
     doc.pipe(res);
 
-    let labelCount = 0;
+    let Count = 0;
 
     // 4. Process line items
     for (const item of lineItems) {
@@ -85,7 +85,7 @@ async function generatePoPdf(req, res) {
       const prodResponse = await fetch(`https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/products/${item.product_id}`, {
         headers: { 
           'Authorization': `Bearer ${LIGHTSPEED_TOKEN}`,
-          'User-Agent': 'HobbyCorner-AveryLabels/1.0',
+          'User-Agent': 'HobbyCorner-Averys/1.0',
           'Accept': 'application/json'
         }
       });
@@ -118,20 +118,20 @@ async function generatePoPdf(req, res) {
         }
       }
 
-      // 5. Draw label copies matching received quantity
+      // 5. Draw  copies matching received quantity
       for (let i = 0; i < qty; i++) {
-        if (labelCount > 0 && labelCount % 30 === 0) {
+        if (Count > 0 && Count % 30 === 0) {
           doc.addPage();
         }
 
-        const positionOnPage = labelCount % 30;
+        const positionOnPage = Count % 30;
         const col = positionOnPage % 3;             
         const row = Math.floor(positionOnPage / 3);   
 
         const originX = 13.5 + (col * 198);
         const originY = 36 + (row * 72);
 
-        for (const el of labelTemplate.elements) {
+        for (const el of Template.elements) {
           const val = valuesMap[el.field] || '';
 
           if (el.type === 'text') {
@@ -150,7 +150,7 @@ async function generatePoPdf(req, res) {
             });
           }
         }
-        labelCount++;
+        Count++;
       }
     }
 
@@ -261,7 +261,6 @@ app.get('/api/po/:poId/data', async (req, res) => {
               const totalQty = parseFloat(line.quantity || line.unit_quantity) || 1;
               if (totalQty <= 0) continue; 
               
-              // Push the exact line item ID so we can match it perfectly to the packing slip
               activeLineItems.push({
                 productId: line.product_id,
                 lineId: line.id, 
@@ -276,9 +275,10 @@ app.get('/api/po/:poId/data', async (req, res) => {
       console.log('Could not fetch open sales orders:', orderErr.message);
     }
 
-    // 3. FETCH FULFILLMENTS and map packed qty strictly by LINE ITEM ID to prevent double counting
+    // 3. FETCH FULFILLMENTS and map packed qty strictly by LINE ITEM ID
     let lineItemPackedMap = {};
     const saleIdArray = Array.from(processedSaleIds);
+    let processedFulfillments = new Set(); // Prevent double-counting the exact same fulfillment record
 
     try {
       const fulfillmentPromises = saleIdArray.map(async (saleId) => {
@@ -300,6 +300,9 @@ app.get('/api/po/:poId/data', async (req, res) => {
       
       for (const fulfillments of allFulfillmentsArrays) {
         for (const f of fulfillments) {
+           if (processedFulfillments.has(f.id)) continue;
+           processedFulfillments.add(f.id);
+
            for (const fLine of (f.line_items || [])) {
              const lineId = fLine.sale_line_item_id;
              if (lineId) {
@@ -308,10 +311,9 @@ app.get('/api/po/:poId/data', async (req, res) => {
                  parseFloat(fLine.packed_quantity || 0),
                  parseFloat(fLine.fulfilled_quantity || 0)
                );
-               // We only want the HIGHEST recorded packed amount for this line item, never add them together!
-               if (!lineItemPackedMap[lineId] || doneQty > lineItemPackedMap[lineId]) {
-                 lineItemPackedMap[lineId] = doneQty;
-               }
+               
+               // FIX: Add quantities together in case they packed this item across multiple boxes!
+               lineItemPackedMap[lineId] = (lineItemPackedMap[lineId] || 0) + doneQty;
              }
            }
         }
