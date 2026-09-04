@@ -193,14 +193,16 @@ app.get('/api/po/:poId/data', async (req, res) => {
     let processedSaleIds = new Set(); 
 
     try {
-      // FIX: Added 'OPEN' back to catch parked/unpaid register orders!
+      // FIX: Added AWAITING_PICKUP and AWAITING_DISPATCH to catch all parked/unfulfilled items
       const endpointsToFetch = [
         `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=OPEN&page_size=100`,
         `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=SAVED&page_size=100`,
         `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=LAYBY&page_size=100`,
         `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=ONACCOUNT&page_size=100`,
+        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=AWAITING_PICKUP&page_size=100`,
+        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=AWAITING_DISPATCH&page_size=100`,
         `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?fulfillment_status=NEW&page_size=100`,
-        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?fulfillment_status=PICKED&page_size=100`
+        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?fulfillment_status=UNFULFILLED&page_size=100`
       ];
       
       for (const url of endpointsToFetch) {
@@ -217,18 +219,9 @@ app.get('/api/po/:poId/data', async (req, res) => {
 
             const saleStatus = (sale.status || '').toUpperCase();
             
-            // HARD BLOCK: Completely finished, packed, or cancelled sales
-            if (['PICKED_UP_CLOSED', 'DISPATCHED_CLOSED', 'AWAITING_PICKUP', 'RETURN', 'VOIDED', 'COMPLETED'].includes(saleStatus)) {
+            // HARD BLOCK: Only block items that have physically left the store or were cancelled
+            if (['PICKED_UP_CLOSED', 'DISPATCHED_CLOSED', 'RETURN', 'VOIDED'].includes(saleStatus)) {
               continue; 
-            }
-
-            // SMART BLOCK: If it's a 'CLOSED' (paid) sale, it MUST have an active fulfillment status.
-            // If there's no fulfillment data, it's just a normal walk-in customer. Skip it!
-            if (saleStatus === 'CLOSED') {
-              const saleFulfillment = (sale.fulfillment_status || '').toUpperCase();
-              if (!saleFulfillment || ['FULFILLED', 'COMPLETED', 'DELIVERED', 'SHIPPED', 'DISPATCHED', 'PICKED_UP'].includes(saleFulfillment)) {
-                continue;
-              }
             }
 
             let customerName = 'Special Order';
@@ -253,20 +246,15 @@ app.get('/api/po/:poId/data', async (req, res) => {
             }
 
             for (const line of (sale.line_items || [])) {
-              // Double check the individual line item isn't already packed
-              const lineStatus = (line.fulfillment_status || line.status || '').toUpperCase();
-              if (['PACKED', 'SHIPPED', 'DISPATCHED', 'DELIVERED', 'COMPLETED', 'PICKED_UP', 'FULFILLED'].includes(lineStatus)) {
-                continue;
-              }
-
               const totalQty = parseFloat(line.quantity || line.unit_quantity) || 1;
               
+              // Skip refunds/returns
               if (totalQty <= 0) continue;
 
-              // This correctly adds quantities together if multiple customers order the exact same item
               if (!openOrdersMap[line.product_id]) {
                 openOrdersMap[line.product_id] = { qty: 0, names: new Set() };
               }
+              // Stack quantities together for duplicate items
               openOrdersMap[line.product_id].qty += totalQty;
               openOrdersMap[line.product_id].names.add(customerName);
             }
@@ -315,6 +303,7 @@ app.get('/api/po/:poId/data', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
 
 ////////////////////////////////////////////End of API/PO?:poId/Data ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////
