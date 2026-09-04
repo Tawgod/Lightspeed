@@ -187,13 +187,12 @@ app.get('/api/po/:poId/data', async (req, res) => {
     const poData = await poResponse.json();
     const lineItems = poData.data || [];
 
-    // 2. Fetch customer special orders / open sales from Lightspeed X-Series
+    // 2. Fetch all active sales to get the GROSS ORDERED QUANTITY
     let openOrdersMap = {};
     let customerCache = {}; 
     let processedSaleIds = new Set(); 
 
     try {
-      // FIX: Added AWAITING_PICKUP and AWAITING_DISPATCH to catch all parked/unfulfilled items
       const endpointsToFetch = [
         `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=OPEN&page_size=100`,
         `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=SAVED&page_size=100`,
@@ -219,7 +218,7 @@ app.get('/api/po/:poId/data', async (req, res) => {
 
             const saleStatus = (sale.status || '').toUpperCase();
             
-            // HARD BLOCK: Only block items that have physically left the store or were cancelled
+            // Only ignore sales that are completely out the door or cancelled
             if (['PICKED_UP_CLOSED', 'DISPATCHED_CLOSED', 'RETURN', 'VOIDED'].includes(saleStatus)) {
               continue; 
             }
@@ -245,22 +244,14 @@ app.get('/api/po/:poId/data', async (req, res) => {
               customerName = customerCache[sale.customer_id];
             }
 
-           for (const line of (sale.line_items || [])) {
-              // STRICT LINE-LEVEL BLOCK: Throw out any individual item that is already packed/shipped
-              const lineStatus = (line.status || line.fulfillment_status || '').toUpperCase();
-              if (['PACKED', 'SHIPPED', 'DISPATCHED', 'DELIVERED', 'COMPLETED', 'PICKED_UP', 'FULFILLED', 'PICKED'].includes(lineStatus)) {
-                continue;
-              }
-
+            for (const line of (sale.line_items || [])) {
               const totalQty = parseFloat(line.quantity || line.unit_quantity) || 1;
-              
-              // Skip refunds/returns
               if (totalQty <= 0) continue;
 
               if (!openOrdersMap[line.product_id]) {
                 openOrdersMap[line.product_id] = { qty: 0, names: new Set() };
               }
-              // Stack quantities together for duplicate items
+              // Add everything up (Gross Quantity)
               openOrdersMap[line.product_id].qty += totalQty;
               openOrdersMap[line.product_id].names.add(customerName);
             }
@@ -271,7 +262,39 @@ app.get('/api/po/:poId/data', async (req, res) => {
       console.log('Could not fetch open sales orders:', orderErr.message);
     }
 
-    // 3. Fetch individual product details and attach any automated special order data
+    // 3. Fetch Fulfillments to see what is ALREADY PACKED
+    let packedMap = {};
+    try {
+      const fulfillRes = await fetch(`https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/fulfillments?page_size=200`, {
+        headers: { 'Authorization': `Bearer ${LIGHTSPEED_TOKEN}`, 'User-Agent': 'HobbyCorner-AveryLabels/1.0', 'Accept': 'application/json' }
+      });
+      
+      if (fulfillRes.ok) {
+        const fulfillData = await fulfillRes.json();
+        for (const f of (fulfillData.data || [])) {
+          // Only subtract if this fulfillment belongs to a sale we are currently looking at!
+          if (processedSaleIds.has(f.sale_id)) {
+            const fStatus = (f.status || '').toUpperCase();
+            
+            // If the fulfillment has been packed, picked, or completed
+            if (['PICKED', 'PACKED', 'SHIPPED', 'DELIVERED', 'COMPLETED', 'DISPATCHED', 'AWAITING_PICKUP'].includes(fStatus)) {
+               // Lightspeed might use 'products' or 'line_items' inside fulfillments
+               const fLines = f.products || f.line_items || [];
+               for (const fLine of fLines) {
+                 const pId = fLine.product_id;
+                 if (pId) {
+                   packedMap[pId] = (packedMap[pId] || 0) + parseFloat(fLine.quantity || 1);
+                 }
+               }
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.log('Error fetching fulfillments to subtract:', err.message);
+    }
+
+    // 4. Fetch product details and do the MATH (Gross - Packed = Net Labels Needed)
     const enrichedItems = [];
     for (const item of lineItems) {
       const prodResponse = await fetch(`https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/products/${item.product_id}`, {
@@ -286,6 +309,11 @@ app.get('/api/po/:poId/data', async (req, res) => {
 
       const matchedOrder = openOrdersMap[item.product_id] || { qty: 0, names: new Set() };
       
+      // THE MATH: Subtract the packed items from the gross total!
+      const grossQty = matchedOrder.qty;
+      const packedQty = packedMap[item.product_id] || 0;
+      const netQty = Math.max(0, grossQty - packedQty);
+      
       let finalNamesArray = Array.from(matchedOrder.names);
       if (finalNamesArray.some(n => n !== 'Special Order')) {
         finalNamesArray = finalNamesArray.filter(n => n !== 'Special Order');
@@ -297,7 +325,7 @@ app.get('/api/po/:poId/data', async (req, res) => {
         sku: product.sku || 'UNKNOWN',
         price: product.price_including_tax ? `$${product.price_including_tax}` : '$0.00',
         qty: item.received || item.count || 1,
-        autoSoQty: matchedOrder.qty,
+        autoSoQty: netQty, // Use our calculated Net Quantity!
         autoCustomerName: finalNamesArray.join(' & ')
       });
     }
