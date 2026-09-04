@@ -175,7 +175,7 @@ async function generatePoPdf(req, res) {
 // New route to send PO data to the UI Dashboard
 // Updated route to fetch PO data AND automatically match open customer special orders
 // Route to fetch PO data and automatically match open customer special orders
-// Route to fetch PO data and automatically match open customer special orders
+
 app.get('/api/po/:poId/data', async (req, res) => {
   try {
     const { poId } = req.params;
@@ -189,18 +189,29 @@ app.get('/api/po/:poId/data', async (req, res) => {
     const poData = await poResponse.json();
     const lineItems = poData.data || [];
 
-    // 2. Fetch customer special orders / open sales from Lightspeed
+  // 2. Fetch customer special orders / open sales from Lightspeed X-Series
     let openOrdersMap = {};
     try {
-      const ordersResponse = await fetch(`https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?page_size=100`, {
-        headers: { 'Authorization': `Bearer ${LIGHTSPEED_TOKEN}`, 'User-Agent': 'HobbyCorner-AveryLabels/1.0', 'Accept': 'application/json' }
-      });
-      if (ordersResponse.ok) {
-        const ordersData = await ordersResponse.json();
-        for (const sale of (ordersData.data || [])) {
-          // Check for open, unfulfilled, or on-account customer orders
-          if (sale.status === 'OPEN' || sale.status === 'ONACCOUNT' || sale.fulfillment_status) {
-            const customerName = sale.customer ? `${sale.customer.first_name || ''} ${sale.customer.last_name || ''}`.trim() : 'Special Order';
+      // X-Series uses SAVED (Unfulfilled), LAYBY, and ONACCOUNT for pending orders.
+      const activeStatuses = ['SAVED', 'LAYBY', 'ONACCOUNT'];
+      
+      for (const status of activeStatuses) {
+        const ordersResponse = await fetch(`https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=${status}&page_size=100`, {
+          headers: { 'Authorization': `Bearer ${LIGHTSPEED_TOKEN}`, 'User-Agent': 'HobbyCorner-AveryLabels/1.0', 'Accept': 'application/json' }
+        });
+        
+        if (ordersResponse.ok) {
+          const ordersData = await ordersResponse.json();
+          
+          for (const sale of (ordersData.data || [])) {
+            // Find the customer name (X-Series usually embeds this in sale.customer)
+            let customerName = 'Special Order';
+            if (sale.customer && sale.customer.first_name) {
+              customerName = `${sale.customer.first_name} ${sale.customer.last_name || ''}`.trim();
+            } else if (sale.customer_name) {
+              customerName = sale.customer_name;
+            }
+
             for (const line of (sale.line_items || [])) {
               if (!openOrdersMap[line.product_id]) {
                 openOrdersMap[line.product_id] = { qty: 0, names: [] };
@@ -213,8 +224,12 @@ app.get('/api/po/:poId/data', async (req, res) => {
           }
         }
       }
+      
+      // Print the map to the Railway logs so we can see what it caught!
+      console.log(`Auto-detected Special Orders Mapping:`, JSON.stringify(openOrdersMap));
+      
     } catch (orderErr) {
-      console.log('Could not fetch open sales orders, skipping auto-match:', orderErr.message);
+      console.log('Could not fetch open sales orders:', orderErr.message);
     }
 
     // 3. Fetch individual product details and attach any automated special order data
