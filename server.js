@@ -192,13 +192,20 @@ app.get('/api/po/:poId/data', async (req, res) => {
 // 2. Fetch customer special orders / open sales from Lightspeed X-Series
     let openOrdersMap = {};
     let customerCache = {}; // Cache to prevent duplicate API calls for the same customer
+    let processedSaleIds = new Set(); // Prevent double-counting if a sale appears in multiple queries
 
     try {
-      // Added 'CLOSED' to catch paid-up-front eCom/Special orders
-      const activeStatuses = ['SAVED', 'LAYBY', 'ONACCOUNT', 'CLOSED'];
+      // Create a list of exact endpoints we want to query
+      const endpointsToFetch = [
+        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=SAVED&page_size=100`,
+        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=LAYBY&page_size=100`,
+        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=ONACCOUNT&page_size=100`,
+        // Specifically grab ANY sale (even CLOSED/paid ones) that still needs fulfillment!
+        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?fulfillment_status=NOT_STARTED,PICKED&page_size=100`
+      ];
       
-      for (const status of activeStatuses) {
-        const ordersResponse = await fetch(`https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=${status}&page_size=100`, {
+      for (const url of endpointsToFetch) {
+        const ordersResponse = await fetch(url, {
           headers: { 'Authorization': `Bearer ${LIGHTSPEED_TOKEN}`, 'User-Agent': 'HobbyCorner-AveryLabels/1.0', 'Accept': 'application/json' }
         });
         
@@ -206,9 +213,13 @@ app.get('/api/po/:poId/data', async (req, res) => {
           const ordersData = await ordersResponse.json();
           
           for (const sale of (ordersData.data || [])) {
+            // Prevent double-counting if we already processed this exact sale
+            if (processedSaleIds.has(sale.id)) continue;
+            processedSaleIds.add(sale.id);
+
             let customerName = 'Special Order';
 
-            // If the sale has a customer ID, fetch their real name from Lightspeed
+            // Fetch the customer's real name from Lightspeed
             if (sale.customer_id) {
               if (!customerCache[sale.customer_id]) {
                 try {
@@ -230,24 +241,20 @@ app.get('/api/po/:poId/data', async (req, res) => {
             }
 
             for (const line of (sale.line_items || [])) {
-              // 1. Skip items that are already packed, shipped, picked up, or completed
-              const itemStatus = (line.status || line.fulfillment_status || '').toLowerCase();
-              if (['packed', 'shipped', 'picked_up', 'completed'].includes(itemStatus)) {
-                continue;
-              }
+              // Ensure we parse quantity as a number, defaulting to 1
+              const lineQty = parseFloat(line.quantity || line.unit_quantity) || 1;
 
-              // 2. If it's a CLOSED (paid) sale, it MUST be marked as a fulfillment.
-              // Otherwise, we would accidentally flag normal walk-in transactions.
-              if (sale.status === 'CLOSED' && !line.fulfillment_type && !sale.fulfillment_status) {
+              // Only accept unfulfilled lines. Skip packed/shipped/completed.
+              const itemStatus = (line.status || line.fulfillment_status || '').toLowerCase();
+              if (['packed', 'shipped', 'picked_up', 'completed', 'delivered'].includes(itemStatus)) {
                 continue;
               }
 
               if (!openOrdersMap[line.product_id]) {
                 openOrdersMap[line.product_id] = { qty: 0, names: [] };
               }
-              openOrdersMap[line.product_id].qty += line.quantity || 1;
+              openOrdersMap[line.product_id].qty += lineQty;
               
-              // Only add the name if it isn't already in the list
               if (!openOrdersMap[line.product_id].names.includes(customerName)) {
                 openOrdersMap[line.product_id].names.push(customerName);
               }
