@@ -425,7 +425,7 @@ app.get('/api/po/:poId/data', async (req, res) => {
 
 // Automatically ensure the templates directory and default files exist
 async function ensureTemplatesExist() {
-  const templatesDir = path.join(__dirname, 'Templates');
+  const templatesDir = path.join(__dirname, 'templates');
   try {
     await fs.mkdir(templatesDir, { recursive: true });
     const files = await fs.readdir(templatesDir);
