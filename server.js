@@ -194,13 +194,14 @@ app.get('/api/po/:poId/data', async (req, res) => {
     const lineItems = poData.data || [];
 
     // 2. Fetch all active sales and COMBINE Gross Qty by Product ID per Order
-    let saleProductMap = {}; // Structure: { saleId: { productId: { grossQty, customerName } } }
+    let saleProductMap = {}; 
     let customerCache = {}; 
     let processedSaleIds = new Set(); 
 
     try {
       const endpointsToFetch = [
-        // We removed OPEN and SAVED so parked/abandoned register sales are ignored!
+        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=OPEN&page_size=500`,
+        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=SAVED&page_size=500`,
         `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=LAYBY&page_size=500`,
         `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=ONACCOUNT&page_size=500`,
         `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=AWAITING_PICKUP&page_size=500`,
@@ -224,6 +225,7 @@ app.get('/api/po/:poId/data', async (req, res) => {
 
             const saleStatus = (sale.status || '').toUpperCase();
             
+            // Hard Banned Statuses
             if (['PICKED_UP_CLOSED', 'DISPATCHED_CLOSED', 'RETURN', 'VOIDED', 'COMPLETED'].includes(saleStatus)) {
               continue; 
             }
@@ -256,7 +258,6 @@ app.get('/api/po/:poId/data', async (req, res) => {
               customerName = customerCache[sale.customer_id];
             }
 
-            // Initialize this sale in our map
             if (!saleProductMap[sale.id]) saleProductMap[sale.id] = {};
 
             for (const line of (sale.line_items || [])) {
@@ -265,7 +266,6 @@ app.get('/api/po/:poId/data', async (req, res) => {
               
               const pId = line.product_id;
               
-              // FIX: Add matching products on the same receipt together!
               if (!saleProductMap[sale.id][pId]) {
                 saleProductMap[sale.id][pId] = { grossQty: 0, customerName: customerName };
               }
@@ -279,7 +279,7 @@ app.get('/api/po/:poId/data', async (req, res) => {
     }
 
     // 3. FETCH FULFILLMENTS and COMBINE Packed Qty by Product ID per Order
-    let fulfillmentProductMap = {}; // Structure: { saleId: { productId: packedQty } }
+    let fulfillmentProductMap = {}; 
     const saleIdArray = Array.from(processedSaleIds);
     let processedFulfillments = new Set(); 
 
@@ -318,7 +318,6 @@ app.get('/api/po/:poId/data', async (req, res) => {
                  parseFloat(fLine.fulfilled_quantity || 0)
                );
                
-               // FIX: Add matching products on the same fulfillment together!
                fulfillmentProductMap[saleId][pId] = (fulfillmentProductMap[saleId][pId] || 0) + doneQty;
              }
            }
@@ -328,33 +327,32 @@ app.get('/api/po/:poId/data', async (req, res) => {
       console.log('Error fetching targeted fulfillments:', err.message);
     }
 
-    // 4. Calculate Net Required per Product (Gross minus Packed)
-    let productMathMap = {};
+    // 4. Calculate Net Required per Product - SEPARATED BY CUSTOMER
+    let productMathMap = {}; // Structure: { productId: { "Tim": 2, "Sarah": 1 } }
     
     for (const saleId in saleProductMap) {
       for (const productId in saleProductMap[saleId]) {
         const itemData = saleProductMap[saleId][productId];
         const grossQty = itemData.grossQty;
         
-        // Find the packed amount for this specific order/product combo (if it exists)
         const packedQty = (fulfillmentProductMap[saleId] && fulfillmentProductMap[saleId][productId]) 
                           ? fulfillmentProductMap[saleId][productId] 
                           : 0;
                           
         const netQty = Math.max(0, grossQty - packedQty);
         
-        // Only tally it if we actually need a label for it!
         if (netQty > 0) {
           if (!productMathMap[productId]) {
-            productMathMap[productId] = { netQty: 0, names: new Set() };
+            productMathMap[productId] = {};
           }
-          productMathMap[productId].netQty += netQty;
-          productMathMap[productId].names.add(itemData.customerName);
+          const cName = itemData.customerName || 'Special Order';
+          // Stack quantities together if the exact same customer ordered multiple times
+          productMathMap[productId][cName] = (productMathMap[productId][cName] || 0) + netQty;
         }
       }
     }
 
-    // 5. Build Final Payload
+    // 5. Build Final Payload - DYNAMICALLY SPLITTING PO LINES
     const enrichedItems = [];
     for (const item of lineItems) {
       const prodResponse = await fetch(`https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/products/${item.product_id}`, {
@@ -367,25 +365,45 @@ app.get('/api/po/:poId/data', async (req, res) => {
         product = prodData.data || {};
       }
 
-      const matchedOrder = productMathMap[item.product_id] || { netQty: 0, names: new Set() };
-      
-      const poQty = parseFloat(item.received || item.count || 1);
-      const cappedSoQty = Math.min(poQty, matchedOrder.netQty);
-      
-      let finalNamesArray = Array.from(matchedOrder.names);
-      if (finalNamesArray.some(n => n !== 'Special Order')) {
-        finalNamesArray = finalNamesArray.filter(n => n !== 'Special Order');
+      // Start with the total physical items in the box for this line item
+      let poQtyRemaining = parseFloat(item.received || item.count || 1);
+      const soCustomers = productMathMap[item.product_id] || {};
+      let hasSpecialOrders = false;
+
+      // Loop through every customer waiting for this item and allocate the PO stock to them
+      for (const [custName, neededQty] of Object.entries(soCustomers)) {
+        if (poQtyRemaining <= 0) break; // We ran out of stock in this box!
+
+        hasSpecialOrders = true;
+        
+        // Give them what they need, capped by what's left in the box
+        const allocatedQty = Math.min(poQtyRemaining, neededQty);
+        
+        enrichedItems.push({
+          id: item.product_id,
+          name: product.name || 'Unknown Product',
+          sku: product.sku || 'UNKNOWN',
+          price: product.price_including_tax ? `$${product.price_including_tax}` : '$0.00',
+          qty: allocatedQty, // Trick the UI! For this specific row, the total QTY is just the allocated amount
+          autoSoQty: allocatedQty, 
+          autoCustomerName: custName
+        });
+
+        poQtyRemaining -= allocatedQty; // Subtract what we just allocated
       }
 
-      enrichedItems.push({
-        id: item.product_id,
-        name: product.name || 'Unknown Product',
-        sku: product.sku || 'UNKNOWN',
-        price: product.price_including_tax ? `$${product.price_including_tax}` : '$0.00',
-        qty: poQty,
-        autoSoQty: cappedSoQty, 
-        autoCustomerName: finalNamesArray.join(' & ')
-      });
+      // If there are still items left over (or no special orders at all), send them to the floor
+      if (poQtyRemaining > 0 || !hasSpecialOrders) {
+        enrichedItems.push({
+          id: item.product_id,
+          name: product.name || 'Unknown Product',
+          sku: product.sku || 'UNKNOWN',
+          price: product.price_including_tax ? `$${product.price_including_tax}` : '$0.00',
+          qty: poQtyRemaining,
+          autoSoQty: 0,
+          autoCustomerName: ''
+        });
+      }
     }
 
     res.json(enrichedItems);
