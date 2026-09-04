@@ -196,7 +196,6 @@ app.get('/api/po/:poId/data', async (req, res) => {
     let processedSaleIds = new Set(); 
 
     try {
-      // FIX: Changed 'NOT_STARTED' to 'NEW' to properly catch unfulfilled items!
       const endpointsToFetch = [
         `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=SAVED&page_size=100`,
         `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=LAYBY&page_size=100`,
@@ -217,7 +216,6 @@ app.get('/api/po/:poId/data', async (req, res) => {
             if (processedSaleIds.has(sale.id)) continue;
             processedSaleIds.add(sale.id);
 
-            // AGGRESSIVE BLOCK: Catch all variations of packed/dispatched sales
             const saleFulfillment = (sale.fulfillment_status || '').toLowerCase();
             if (['packed', 'shipped', 'dispatched', 'delivered', 'completed', 'picked_up', 'fulfilled'].includes(saleFulfillment)) {
               continue; 
@@ -245,18 +243,15 @@ app.get('/api/po/:poId/data', async (req, res) => {
             }
 
             for (const line of (sale.line_items || [])) {
-              // FIX: Ensure specific line item isn't marked dispatched or fulfilled
               const itemStatus = (line.status || line.fulfillment_status || '').toLowerCase();
               if (['packed', 'shipped', 'dispatched', 'delivered', 'completed', 'picked_up', 'fulfilled'].includes(itemStatus)) {
                 continue;
               }
 
-              // FIX: Subtract any already packed quantities if it is a partial order
               const totalQty = parseFloat(line.quantity || line.unit_quantity) || 1;
               const packedQty = parseFloat(line.quantity_packed || line.quantity_fulfilled || line.quantity_shipped || 0);
               const lineQty = totalQty - packedQty;
 
-              // If this line item is fully packed, skip it!
               if (lineQty <= 0) continue;
 
               if (!openOrdersMap[line.product_id]) {
@@ -271,6 +266,45 @@ app.get('/api/po/:poId/data', async (req, res) => {
     } catch (orderErr) {
       console.log('Could not fetch open sales orders:', orderErr.message);
     }
+
+    // 3. Fetch individual product details and attach any automated special order data
+    const enrichedItems = [];
+    for (const item of lineItems) {
+      const prodResponse = await fetch(`https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/products/${item.product_id}`, {
+        headers: { 'Authorization': `Bearer ${LIGHTSPEED_TOKEN}`, 'User-Agent': 'HobbyCorner-AveryLabels/1.0', 'Accept': 'application/json' }
+      });
+      
+      let product = {};
+      if (prodResponse.ok) {
+        const prodData = await prodResponse.json();
+        product = prodData.data || {};
+      }
+
+      const matchedOrder = openOrdersMap[item.product_id] || { qty: 0, names: new Set() };
+      
+      let finalNamesArray = Array.from(matchedOrder.names);
+      if (finalNamesArray.some(n => n !== 'Special Order')) {
+        finalNamesArray = finalNamesArray.filter(n => n !== 'Special Order');
+      }
+
+      enrichedItems.push({
+        id: item.product_id,
+        name: product.name || 'Unknown Product',
+        sku: product.sku || 'UNKNOWN',
+        price: product.price_including_tax ? `$${product.price_including_tax}` : '$0.00',
+        qty: item.received || item.count || 1,
+        autoSoQty: matchedOrder.qty,
+        autoCustomerName: finalNamesArray.join(' & ')
+      });
+    }
+
+    res.json(enrichedItems);
+
+  } catch (error) {
+    console.error('Data Fetch Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
     // 3. Fetch individual product details and attach any automated special order data
     const enrichedItems = [];
