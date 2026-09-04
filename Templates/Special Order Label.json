@@ -5,9 +5,9 @@
   "elements": [
     { "type": "text", "field": "specialTag", "x": 6, "y": 5, "fontSize": 10, "bold": true, "align": "center", "maxWidth": 179 },
     { "type": "text", "field": "customerName", "x": 6, "y": 17, "fontSize": 14, "bold": true, "align": "center", "maxWidth": 179 },
-    { "type": "barcode", "field": "sku", "x": 25, "y": 35, "width": 140, "height": 15 },
+    { "type": "barcode", "field": "sku", "x": 25, "y": 35, "width": 140, "height": 12 },
     { "type": "text", "field": "name", "x": 6, "y": 57, "fontSize": 6, "maxWidth": 150, "align": "left" },
     { "type": "text", "field": "price", "x": 145, "y": 57, "fontSize": 8, "bold": true },
-    { "type": "text", "field": "sku", "x": 6, "y": 26, "fontSize": 6, "maxWidth": 150, "align": "left" }
+    { "type": "text", "field": "sku", "x": 6, "y": 28, "fontSize": 6, "maxWidth": 150, "align": "left" }
   ]
 }
