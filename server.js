@@ -191,9 +191,9 @@ app.get('/api/po/:poId/data', async (req, res) => {
     let openOrdersMap = {};
     let customerCache = {}; 
     let processedSaleIds = new Set(); 
+    let activeSpecialOrderSaleIds = new Set(); // FIX: A strict list ONLY for live orders!
 
     try {
-      // FIX: Upgraded to page_size=500 to grab orders that have been waiting for a year
       const endpointsToFetch = [
         `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=OPEN&page_size=500`,
         `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=SAVED&page_size=500`,
@@ -215,6 +215,7 @@ app.get('/api/po/:poId/data', async (req, res) => {
           const ordersData = await ordersResponse.json();
           
           for (const sale of (ordersData.data || [])) {
+            // Prevent processing the same API result twice
             if (processedSaleIds.has(sale.id)) continue;
             processedSaleIds.add(sale.id);
 
@@ -232,6 +233,9 @@ app.get('/api/po/:poId/data', async (req, res) => {
                 continue;
               }
             }
+
+            // FIX: If it survived the blocks, it's an active order we actually care about!
+            activeSpecialOrderSaleIds.add(sale.id);
 
             let customerName = 'Special Order';
             if (sale.customer_id) {
@@ -272,12 +276,11 @@ app.get('/api/po/:poId/data', async (req, res) => {
       console.log('Could not fetch open sales orders:', orderErr.message);
     }
 
-    // 3. SNIPER FULFILLMENTS: Fetch fulfillments for our active sales individually!
+    // 3. SNIPER FULFILLMENTS: ONLY fetch fulfillments for the live, unblocked orders!
     let packedMap = {};
-    const saleIdArray = Array.from(processedSaleIds);
+    const saleIdArray = Array.from(activeSpecialOrderSaleIds);
 
     try {
-      // Send individual API requests for each specific sale ID we found so pagination cannot hide them
       const fulfillmentPromises = saleIdArray.map(async (saleId) => {
         try {
           const res = await fetch(`https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/fulfillments?sale_id=${saleId}`, {
@@ -293,7 +296,6 @@ app.get('/api/po/:poId/data', async (req, res) => {
         return [];
       });
 
-      // Wait for all the individual requests to finish
       const allFulfillmentsArrays = await Promise.all(fulfillmentPromises);
       
       for (const fulfillments of allFulfillmentsArrays) {
@@ -301,7 +303,7 @@ app.get('/api/po/:poId/data', async (req, res) => {
            for (const fLine of (f.line_items || [])) {
              const pId = fLine.product_id;
              if (pId) {
-               // Get the highest packed number for this specific item
+               // Get the highest packed number for this specific item in this live order
                const doneQty = Math.max(
                  parseFloat(fLine.picked_quantity || 0),
                  parseFloat(fLine.packed_quantity || 0),
