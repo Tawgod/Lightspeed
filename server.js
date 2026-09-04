@@ -193,8 +193,8 @@ app.get('/api/po/:poId/data', async (req, res) => {
     const poData = await poResponse.json();
     const lineItems = poData.data || [];
 
-    // 2. Fetch all active sales and store them STRICTLY by their unique line item ID
-    let activeLineItems = []; 
+    // 2. Fetch all active sales and COMBINE Gross Qty by Product ID per Order
+    let saleProductMap = {}; // Structure: { saleId: { productId: { grossQty, customerName } } }
     let customerCache = {}; 
     let processedSaleIds = new Set(); 
 
@@ -257,16 +257,20 @@ app.get('/api/po/:poId/data', async (req, res) => {
               customerName = customerCache[sale.customer_id];
             }
 
+            // Initialize this sale in our map
+            if (!saleProductMap[sale.id]) saleProductMap[sale.id] = {};
+
             for (const line of (sale.line_items || [])) {
               const totalQty = parseFloat(line.quantity || line.unit_quantity) || 1;
               if (totalQty <= 0) continue; 
               
-              activeLineItems.push({
-                productId: line.product_id,
-                lineId: line.id, 
-                grossQty: totalQty,
-                customerName: customerName
-              });
+              const pId = line.product_id;
+              
+              // FIX: Add matching products on the same receipt together!
+              if (!saleProductMap[sale.id][pId]) {
+                saleProductMap[sale.id][pId] = { grossQty: 0, customerName: customerName };
+              }
+              saleProductMap[sale.id][pId].grossQty += totalQty;
             }
           }
         }
@@ -275,10 +279,10 @@ app.get('/api/po/:poId/data', async (req, res) => {
       console.log('Could not fetch open sales orders:', orderErr.message);
     }
 
-    // 3. FETCH FULFILLMENTS and map packed qty strictly by LINE ITEM ID
-    let lineItemPackedMap = {};
+    // 3. FETCH FULFILLMENTS and COMBINE Packed Qty by Product ID per Order
+    let fulfillmentProductMap = {}; // Structure: { saleId: { productId: packedQty } }
     const saleIdArray = Array.from(processedSaleIds);
-    let processedFulfillments = new Set(); // Prevent double-counting the exact same fulfillment record
+    let processedFulfillments = new Set(); 
 
     try {
       const fulfillmentPromises = saleIdArray.map(async (saleId) => {
@@ -303,17 +307,20 @@ app.get('/api/po/:poId/data', async (req, res) => {
            if (processedFulfillments.has(f.id)) continue;
            processedFulfillments.add(f.id);
 
+           const saleId = f.sale_id;
+           if (!fulfillmentProductMap[saleId]) fulfillmentProductMap[saleId] = {};
+
            for (const fLine of (f.line_items || [])) {
-             const lineId = fLine.sale_line_item_id;
-             if (lineId) {
+             const pId = fLine.product_id;
+             if (pId) {
                const doneQty = Math.max(
                  parseFloat(fLine.picked_quantity || 0),
                  parseFloat(fLine.packed_quantity || 0),
                  parseFloat(fLine.fulfilled_quantity || 0)
                );
                
-               // FIX: Add quantities together in case they packed this item across multiple boxes!
-               lineItemPackedMap[lineId] = (lineItemPackedMap[lineId] || 0) + doneQty;
+               // FIX: Add matching products on the same fulfillment together!
+               fulfillmentProductMap[saleId][pId] = (fulfillmentProductMap[saleId][pId] || 0) + doneQty;
              }
            }
         }
@@ -322,19 +329,29 @@ app.get('/api/po/:poId/data', async (req, res) => {
       console.log('Error fetching targeted fulfillments:', err.message);
     }
 
-    // 4. Calculate Net Required per Product
+    // 4. Calculate Net Required per Product (Gross minus Packed)
     let productMathMap = {};
     
-    for (const item of activeLineItems) {
-      const packedQty = lineItemPackedMap[item.lineId] || 0;
-      const netQty = Math.max(0, item.grossQty - packedQty);
-      
-      if (netQty > 0) {
-        if (!productMathMap[item.productId]) {
-          productMathMap[item.productId] = { netQty: 0, names: new Set() };
+    for (const saleId in saleProductMap) {
+      for (const productId in saleProductMap[saleId]) {
+        const itemData = saleProductMap[saleId][productId];
+        const grossQty = itemData.grossQty;
+        
+        // Find the packed amount for this specific order/product combo (if it exists)
+        const packedQty = (fulfillmentProductMap[saleId] && fulfillmentProductMap[saleId][productId]) 
+                          ? fulfillmentProductMap[saleId][productId] 
+                          : 0;
+                          
+        const netQty = Math.max(0, grossQty - packedQty);
+        
+        // Only tally it if we actually need a label for it!
+        if (netQty > 0) {
+          if (!productMathMap[productId]) {
+            productMathMap[productId] = { netQty: 0, names: new Set() };
+          }
+          productMathMap[productId].netQty += netQty;
+          productMathMap[productId].names.add(itemData.customerName);
         }
-        productMathMap[item.productId].netQty += netQty;
-        productMathMap[item.productId].names.add(item.customerName);
       }
     }
 
