@@ -193,17 +193,17 @@ app.get('/api/po/:poId/data', async (req, res) => {
     let processedSaleIds = new Set(); 
 
     try {
-      // Catch absolutely everything that could hold an unfulfilled item
+      // FIX: Upgraded to page_size=500 to grab orders that have been waiting for a year
       const endpointsToFetch = [
-        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=OPEN&page_size=100`,
-        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=SAVED&page_size=100`,
-        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=LAYBY&page_size=100`,
-        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=ONACCOUNT&page_size=100`,
-        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=AWAITING_PICKUP&page_size=100`,
-        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=AWAITING_DISPATCH&page_size=100`,
-        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?fulfillment_status=NEW&page_size=100`,
-        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?fulfillment_status=STARTED&page_size=100`,
-        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?fulfillment_status=UNFULFILLED&page_size=100`
+        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=OPEN&page_size=500`,
+        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=SAVED&page_size=500`,
+        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=LAYBY&page_size=500`,
+        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=ONACCOUNT&page_size=500`,
+        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=AWAITING_PICKUP&page_size=500`,
+        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=AWAITING_DISPATCH&page_size=500`,
+        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?fulfillment_status=NEW&page_size=500`,
+        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?fulfillment_status=STARTED&page_size=500`,
+        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?fulfillment_status=UNFULFILLED&page_size=500`
       ];
       
       for (const url of endpointsToFetch) {
@@ -220,7 +220,7 @@ app.get('/api/po/:poId/data', async (req, res) => {
 
             const saleStatus = (sale.status || '').toUpperCase();
             
-            // ONLY block absolute dead ends where items are completely gone or voided
+            // Block completely dead ends
             if (['PICKED_UP_CLOSED', 'DISPATCHED_CLOSED', 'RETURN', 'VOIDED', 'COMPLETED'].includes(saleStatus)) {
               continue; 
             }
@@ -256,13 +256,12 @@ app.get('/api/po/:poId/data', async (req, res) => {
 
             for (const line of (sale.line_items || [])) {
               const totalQty = parseFloat(line.quantity || line.unit_quantity) || 1;
-              if (totalQty <= 0) continue; // Ignore negative returns
+              if (totalQty <= 0) continue; 
 
               if (!openOrdersMap[line.product_id]) {
                 openOrdersMap[line.product_id] = { grossQty: 0, names: new Set() };
               }
               
-              // Tally up the total GROSS amount ordered
               openOrdersMap[line.product_id].grossQty += totalQty;
               openOrdersMap[line.product_id].names.add(customerName);
             }
@@ -273,42 +272,50 @@ app.get('/api/po/:poId/data', async (req, res) => {
       console.log('Could not fetch open sales orders:', orderErr.message);
     }
 
-    // 3. Fetch Fulfillments specifically for our active sales to see what is ALREADY PACKED
+    // 3. SNIPER FULFILLMENTS: Fetch fulfillments for our active sales individually!
     let packedMap = {};
     const saleIdArray = Array.from(processedSaleIds);
-    
+
     try {
-      // We chunk the IDs 30 at a time so the URL doesn't get too long
-      for (let i = 0; i < saleIdArray.length; i += 30) {
-        const chunk = saleIdArray.slice(i, i + 30).join(',');
-        
-        // Target the exact sale IDs so old orders don't get lost in pagination
-        const fulfillRes = await fetch(`https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/fulfillments?sale_id=${chunk}&page_size=500`, {
-          headers: { 'Authorization': `Bearer ${LIGHTSPEED_TOKEN}`, 'User-Agent': 'HobbyCorner-AveryLabels/1.0', 'Accept': 'application/json' }
-        });
-        
-        if (fulfillRes.ok) {
-          const fulfillData = await fulfillRes.json();
-          for (const f of (fulfillData.data || [])) {
-             for (const fLine of (f.line_items || [])) {
-               const pId = fLine.product_id;
-               if (pId) {
-                 // Math.max ensures that if an item is picked AND packed, it only counts as 1 completed item
-                 const doneQty = Math.max(
-                   parseFloat(fLine.picked_quantity || 0),
-                   parseFloat(fLine.packed_quantity || 0),
-                   parseFloat(fLine.fulfilled_quantity || 0)
-                 );
-                 packedMap[pId] = (packedMap[pId] || 0) + doneQty;
-               }
-             }
+      // Send individual API requests for each specific sale ID we found so pagination cannot hide them
+      const fulfillmentPromises = saleIdArray.map(async (saleId) => {
+        try {
+          const res = await fetch(`https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/fulfillments?sale_id=${saleId}`, {
+            headers: { 'Authorization': `Bearer ${LIGHTSPEED_TOKEN}`, 'User-Agent': 'HobbyCorner-AveryLabels/1.0', 'Accept': 'application/json' }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            return data.data || [];
           }
+        } catch (e) {
+          return [];
+        }
+        return [];
+      });
+
+      // Wait for all the individual requests to finish
+      const allFulfillmentsArrays = await Promise.all(fulfillmentPromises);
+      
+      for (const fulfillments of allFulfillmentsArrays) {
+        for (const f of fulfillments) {
+           for (const fLine of (f.line_items || [])) {
+             const pId = fLine.product_id;
+             if (pId) {
+               // Get the highest packed number for this specific item
+               const doneQty = Math.max(
+                 parseFloat(fLine.picked_quantity || 0),
+                 parseFloat(fLine.packed_quantity || 0),
+                 parseFloat(fLine.fulfilled_quantity || 0)
+               );
+               packedMap[pId] = (packedMap[pId] || 0) + doneQty;
+             }
+           }
         }
       }
     } catch (err) {
-      console.log('Error fetching fulfillments to subtract:', err.message);
+      console.log('Error fetching targeted fulfillments:', err.message);
     }
-    
+
     // 4. Fetch product details, run the Math, and Cap the quantity
     const enrichedItems = [];
     for (const item of lineItems) {
