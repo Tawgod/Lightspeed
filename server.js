@@ -189,10 +189,11 @@ app.get('/api/po/:poId/data', async (req, res) => {
     const poData = await poResponse.json();
     const lineItems = poData.data || [];
 
-  // 2. Fetch customer special orders / open sales from Lightspeed X-Series
+ // 2. Fetch customer special orders / open sales from Lightspeed X-Series
     let openOrdersMap = {};
+    let customerCache = {}; // Cache to prevent duplicate API calls for the same customer
+
     try {
-      // X-Series uses SAVED (Unfulfilled), LAYBY, and ONACCOUNT for pending orders.
       const activeStatuses = ['SAVED', 'LAYBY', 'ONACCOUNT'];
       
       for (const status of activeStatuses) {
@@ -204,12 +205,28 @@ app.get('/api/po/:poId/data', async (req, res) => {
           const ordersData = await ordersResponse.json();
           
           for (const sale of (ordersData.data || [])) {
-            // Find the customer name (X-Series usually embeds this in sale.customer)
             let customerName = 'Special Order';
-            if (sale.customer && sale.customer.first_name) {
-              customerName = `${sale.customer.first_name} ${sale.customer.last_name || ''}`.trim();
-            } else if (sale.customer_name) {
-              customerName = sale.customer_name;
+
+            // If the sale has a customer ID, fetch their real name from Lightspeed
+            if (sale.customer_id) {
+              if (!customerCache[sale.customer_id]) {
+                try {
+                  const custRes = await fetch(`https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/customers/${sale.customer_id}`, {
+                    headers: { 'Authorization': `Bearer ${LIGHTSPEED_TOKEN}`, 'User-Agent': 'HobbyCorner-AveryLabels/1.0', 'Accept': 'application/json' }
+                  });
+                  if (custRes.ok) {
+                    const custData = await custRes.json();
+                    const cust = custData.data || {};
+                    // Grab first/last name, or company name, or fallback
+                    customerCache[sale.customer_id] = `${cust.first_name || ''} ${cust.last_name || ''}`.trim() || cust.company_name || 'Special Order';
+                  } else {
+                    customerCache[sale.customer_id] = 'Special Order';
+                  }
+                } catch (e) {
+                  customerCache[sale.customer_id] = 'Special Order';
+                }
+              }
+              customerName = customerCache[sale.customer_id];
             }
 
             for (const line of (sale.line_items || [])) {
@@ -225,7 +242,6 @@ app.get('/api/po/:poId/data', async (req, res) => {
         }
       }
       
-      // Print the map to the Railway logs so we can see what it caught!
       console.log(`Auto-detected Special Orders Mapping:`, JSON.stringify(openOrdersMap));
       
     } catch (orderErr) {
