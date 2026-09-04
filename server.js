@@ -174,8 +174,9 @@ async function generatePoPdf(req, res) {
 
 // New route to send PO data to the UI Dashboard
 // Updated route to fetch PO data AND automatically match open customer special orders
-// Route to fetch PO data and automatically match open customer special orders
 
+
+// Route to fetch PO data and automatically match open customer special orders
 app.get('/api/po/:poId/data', async (req, res) => {
   try {
     const { poId } = req.params;
@@ -189,19 +190,18 @@ app.get('/api/po/:poId/data', async (req, res) => {
     const poData = await poResponse.json();
     const lineItems = poData.data || [];
 
-// 2. Fetch customer special orders / open sales from Lightspeed X-Series
+    // 2. Fetch customer special orders / open sales from Lightspeed X-Series
     let openOrdersMap = {};
-    let customerCache = {}; // Cache to prevent duplicate API calls for the same customer
-    let processedSaleIds = new Set(); // Prevent double-counting if a sale appears in multiple queries
+    let customerCache = {}; 
+    let processedSaleIds = new Set(); 
 
     try {
-      // Create a list of exact endpoints we want to query
+      // Specifically ask ONLY for NOT_STARTED fulfillments to block packed/picked items at the source
       const endpointsToFetch = [
         `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=SAVED&page_size=100`,
         `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=LAYBY&page_size=100`,
         `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=ONACCOUNT&page_size=100`,
-        // Specifically grab ANY sale (even CLOSED/paid ones) that still needs fulfillment!
-        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?fulfillment_status=NOT_STARTED,PICKED&page_size=100`
+        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?fulfillment_status=NOT_STARTED&page_size=100`
       ];
       
       for (const url of endpointsToFetch) {
@@ -213,13 +213,16 @@ app.get('/api/po/:poId/data', async (req, res) => {
           const ordersData = await ordersResponse.json();
           
           for (const sale of (ordersData.data || [])) {
-            // Prevent double-counting if we already processed this exact sale
             if (processedSaleIds.has(sale.id)) continue;
             processedSaleIds.add(sale.id);
 
-            let customerName = 'Special Order';
+            // AGGRESSIVE BLOCK: Skip the entire sale if the order itself is packed/shipped
+            const saleFulfillment = (sale.fulfillment_status || '').toLowerCase();
+            if (['packed', 'shipped', 'picked_up', 'completed', 'delivered'].includes(saleFulfillment)) {
+              continue; 
+            }
 
-            // Fetch the customer's real name from Lightspeed
+            let customerName = 'Special Order';
             if (sale.customer_id) {
               if (!customerCache[sale.customer_id]) {
                 try {
@@ -241,30 +244,23 @@ app.get('/api/po/:poId/data', async (req, res) => {
             }
 
             for (const line of (sale.line_items || [])) {
-              // Ensure we parse quantity as a number, defaulting to 1
-              const lineQty = parseFloat(line.quantity || line.unit_quantity) || 1;
-
-              // Only accept unfulfilled lines. Skip packed/shipped/completed.
+              // AGGRESSIVE BLOCK: Check the individual line item just in case
               const itemStatus = (line.status || line.fulfillment_status || '').toLowerCase();
-              if (['packed', 'shipped', 'picked_up', 'completed', 'delivered'].includes(itemStatus)) {
+              if (['packed', 'shipped', 'picked_up', 'completed', 'delivered', 'picked'].includes(itemStatus)) {
                 continue;
               }
 
+              const lineQty = parseFloat(line.quantity || line.unit_quantity) || 1;
+
               if (!openOrdersMap[line.product_id]) {
-                openOrdersMap[line.product_id] = { qty: 0, names: [] };
+                openOrdersMap[line.product_id] = { qty: 0, names: new Set() }; // Use a Set to naturally prevent duplicates
               }
               openOrdersMap[line.product_id].qty += lineQty;
-              
-              if (!openOrdersMap[line.product_id].names.includes(customerName)) {
-                openOrdersMap[line.product_id].names.push(customerName);
-              }
+              openOrdersMap[line.product_id].names.add(customerName);
             }
           }
         }
       }
-      
-      console.log(`Auto-detected Special Orders Mapping:`, JSON.stringify(openOrdersMap));
-      
     } catch (orderErr) {
       console.log('Could not fetch open sales orders:', orderErr.message);
     }
@@ -282,7 +278,13 @@ app.get('/api/po/:poId/data', async (req, res) => {
         product = prodData.data || {};
       }
 
-      const matchedOrder = openOrdersMap[item.product_id] || { qty: 0, names: [] };
+      const matchedOrder = openOrdersMap[item.product_id] || { qty: 0, names: new Set() };
+      
+      // Clean up the names array to remove the generic fallback if a real name exists
+      let finalNamesArray = Array.from(matchedOrder.names);
+      if (finalNamesArray.length > 1) {
+        finalNamesArray = finalNamesArray.filter(n => n !== 'Special Order');
+      }
 
       enrichedItems.push({
         id: item.product_id,
@@ -291,7 +293,7 @@ app.get('/api/po/:poId/data', async (req, res) => {
         price: product.price_including_tax ? `$${product.price_including_tax}` : '$0.00',
         qty: item.received || item.count || 1,
         autoSoQty: matchedOrder.qty,
-        autoCustomerName: matchedOrder.names.join(', ')
+        autoCustomerName: finalNamesArray.join(', ')
       });
     }
 
