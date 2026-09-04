@@ -425,7 +425,7 @@ app.get('/api/po/:poId/data', async (req, res) => {
 
 // Automatically ensure the templates directory and default files exist
 async function ensureTemplatesExist() {
-  const templatesDir = path.join(__dirname, 'templates');
+  const templatesDir = path.join(__dirname, 'Templates'); // Changed to capital 'T'
   try {
     await fs.mkdir(templatesDir, { recursive: true });
     const files = await fs.readdir(templatesDir);
@@ -433,34 +433,16 @@ async function ensureTemplatesExist() {
     // If the folder is empty, automatically write out the default templates
     if (files.length === 0) {
       const standardTemplate = {
-        id: "avery_5960",
-        name: "Avery 5960 (RMS Layout)",
-        grid: { columns: 3, rows: 10, spacingX: 198, spacingY: 72 },
-        elements: [
-          { type: "text", field: "name", x: 7.5, y: 7.5, fontSize: 9, maxWidth: 175, align: "left" },
-          { type: "text", field: "sku", x: 7.5, y: 20, fontSize: 8, maxWidth: 114, align: "left" },
-          { type: "text", field: "price", x: 117.5, "y": 17.5, fontSize: 14, maxWidth: 65, align: "right" },
-          { type: "barcode", field: "sku", x: 7.5, "y": 37.5, width: 112.5, height: 24 },
-          { type: "text", field: "store", x: 125, y: 45, fontSize: 8, maxWidth: 50, align: "center" }
-        ]
+        // ... (Keep your standard template JSON here) ...
       };
 
       const specialTemplate = {
-        id: "avery_5960_special",
-        name: "Avery 5960 (Special Order)",
-        grid: { columns: 3, rows: 10, spacingX: 198, spacingY: 72 },
-        elements: [
-          { type: "text", field: "specialTag", x: 5, y: 5, fontSize: 10, bold: true, align: "center", maxWidth: 179 },
-          { type: "text", field: "customerName", x: 5, y: 17, fontSize: 14, bold: true, align: "center", maxWidth: 179 },
-          { type: "barcode", field: "sku", x: 25, y: 34, width: 140, height: 20 },
-          { type: "text", field: "name", x: 5, y: 57, fontSize: 6, maxWidth: 130, align: "left" },
-          { type: "text", field: "price", x: 145, y: 57, fontSize: 8, bold: true },
-          { type: "text", field: "sku", x: 25, y: 57, fontSize: 6, bold: false }
-        ]
+        // ... (Keep your special template JSON here) ...
       };
 
-      await fs.writeFile(path.join(templatesDir, 'avery_5960.json'), JSON.stringify(standardTemplate, null, 2));
-      await fs.writeFile(path.join(templatesDir, 'avery_5960_special.json'), JSON.stringify(specialTemplate, null, 2));
+      // Changed to match your capital A
+      await fs.writeFile(path.join(templatesDir, 'Avery_5960.json'), JSON.stringify(standardTemplate, null, 2));
+      await fs.writeFile(path.join(templatesDir, 'Avery_5960_special.json'), JSON.stringify(specialTemplate, null, 2));
       console.log('Default template files automatically created.');
     }
   } catch (err) {
@@ -470,12 +452,13 @@ async function ensureTemplatesExist() {
 
 app.get('/api/templates', async (req, res) => {
   try {
-    const templatesDir = path.join(__dirname, 'templates');
+    const templatesDir = path.join(__dirname, 'Templates'); // Changed to capital 'T'
     const files = await fs.readdir(templatesDir);
     const templates = [];
     
     for (const file of files) {
-      if (file.endsWith('.json') && !file.includes('_special')) {
+      // Ignore both '_special' and your custom 'Special Order Label' file from the dropdown
+      if (file.endsWith('.json') && !file.toLowerCase().includes('_special') && !file.toLowerCase().includes('special order')) {
         const fileData = await fs.readFile(path.join(templatesDir, file), 'utf-8');
         const json = JSON.parse(fileData);
         templates.push({ id: file.replace('.json', ''), name: json.name });
@@ -484,35 +467,46 @@ app.get('/api/templates', async (req, res) => {
     res.json(templates);
   } catch (error) {
     console.error('Template Discovery Error:', error);
-    // Send the actual error message to the browser so we can see it!
-    res.status(500).json({ error: error.message, path: path.join(__dirname, 'templates') });
+    res.status(500).json({ error: error.message, path: path.join(__dirname, 'Templates') });
   }
 });
 
 app.post('/api/labels/generate', async (req, res) => {
   try {
-    const { poId, startRow = 1, startCol = 1, templateId = 'avery_5960', customText = '', items = [] } = req.body;
+    const { poId, startRow = 1, startCol = 1, templateId = 'Avery_5960', customText = '', items = [] } = req.body;
 
     console.log(`\n--- GENERATING PDF FOR PO: ${poId} ---`);
     console.log(`Selected Template ID: ${templateId}`);
 
     // 1. Load the templates
     let labelTemplate, specialOrderTemplate;
+    const templatesDir = path.join(__dirname, 'Templates'); // Capital 'T'
+
     try {
-      const standardData = await fs.readFile(path.join(__dirname, 'templates', `${templateId}.json`), 'utf-8');
+      const standardData = await fs.readFile(path.join(templatesDir, `${templateId}.json`), 'utf-8');
       labelTemplate = JSON.parse(standardData);
       
       try {
-        const specialData = await fs.readFile(path.join(__dirname, 'templates', `${templateId}_special.json`), 'utf-8');
+        // Try the conventional naming first
+        const specialData = await fs.readFile(path.join(templatesDir, `${templateId}_special.json`), 'utf-8');
         specialOrderTemplate = JSON.parse(specialData);
         console.log(`[SUCCESS] Loaded special template: ${templateId}_special.json`);
       } catch (err) {
-        console.log(`[WARNING] Could not load ${templateId}_special.json. Falling back to standard template.`);
-        specialOrderTemplate = labelTemplate;
+        try {
+          // FIX: Fallback to your exact custom file name! (Assuming it ends in .json)
+          const customSpecialData = await fs.readFile(path.join(templatesDir, `Special Order Label.json`), 'utf-8');
+          specialOrderTemplate = JSON.parse(customSpecialData);
+          console.log(`[SUCCESS] Loaded custom special template: Special Order Label.json`);
+        } catch (err2) {
+          console.log(`[WARNING] Could not load special template. Falling back to standard template.`);
+          specialOrderTemplate = labelTemplate;
+        }
       }
     } catch (error) {
       throw new Error(`Failed to load base template file: ${templateId}.json`);
     }
+
+    // ... (Keep the rest of your PDF generation code exactly as it is) ...
 
     // 2. Setup the PDF Document
     const doc = new PDFDocument({
