@@ -26,6 +26,8 @@ app.get('/', (req, res) => {
   res.send('Lightspeed Avery Label API is running.');
 });
 
+\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
 async function generatePoPdf(req, res) {
   try {
     const { poId } = req.params;
@@ -172,7 +174,10 @@ async function generatePoPdf(req, res) {
 app.get('/api/labels/po/:poId', generatePoPdf);
 app.get('/api/labels/po/:poId/pdf', generatePoPdf);
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 // Route to fetch PO data and automatically match open customer special orders
 app.get('/api/po/:poId/data', async (req, res) => {
   try {
@@ -187,11 +192,10 @@ app.get('/api/po/:poId/data', async (req, res) => {
     const poData = await poResponse.json();
     const lineItems = poData.data || [];
 
-    // 2. Fetch all active sales to get the GROSS ORDERED QUANTITY
-    let openOrdersMap = {};
+    // 2. Fetch all active sales and store them STRICTLY by their unique line item ID
+    let activeLineItems = []; 
     let customerCache = {}; 
     let processedSaleIds = new Set(); 
-    let activeSpecialOrderSaleIds = new Set(); // FIX: A strict list ONLY for live orders!
 
     try {
       const endpointsToFetch = [
@@ -215,27 +219,21 @@ app.get('/api/po/:poId/data', async (req, res) => {
           const ordersData = await ordersResponse.json();
           
           for (const sale of (ordersData.data || [])) {
-            // Prevent processing the same API result twice
             if (processedSaleIds.has(sale.id)) continue;
             processedSaleIds.add(sale.id);
 
             const saleStatus = (sale.status || '').toUpperCase();
             
-            // Block completely dead ends
             if (['PICKED_UP_CLOSED', 'DISPATCHED_CLOSED', 'RETURN', 'VOIDED', 'COMPLETED'].includes(saleStatus)) {
               continue; 
             }
 
-            // SMART BLOCK for CLOSED (Paid) sales to keep online orders but drop walk-ins
             if (saleStatus === 'CLOSED') {
               const saleFulfillment = (sale.fulfillment_status || '').toUpperCase();
               if (!saleFulfillment || ['FULFILLED', 'COMPLETED', 'DELIVERED', 'SHIPPED', 'DISPATCHED', 'PICKED_UP'].includes(saleFulfillment)) {
                 continue;
               }
             }
-
-            // FIX: If it survived the blocks, it's an active order we actually care about!
-            activeSpecialOrderSaleIds.add(sale.id);
 
             let customerName = 'Special Order';
             if (sale.customer_id) {
@@ -261,13 +259,14 @@ app.get('/api/po/:poId/data', async (req, res) => {
             for (const line of (sale.line_items || [])) {
               const totalQty = parseFloat(line.quantity || line.unit_quantity) || 1;
               if (totalQty <= 0) continue; 
-
-              if (!openOrdersMap[line.product_id]) {
-                openOrdersMap[line.product_id] = { grossQty: 0, names: new Set() };
-              }
               
-              openOrdersMap[line.product_id].grossQty += totalQty;
-              openOrdersMap[line.product_id].names.add(customerName);
+              // Push the exact line item ID so we can match it perfectly to the packing slip
+              activeLineItems.push({
+                productId: line.product_id,
+                lineId: line.id, 
+                grossQty: totalQty,
+                customerName: customerName
+              });
             }
           }
         }
@@ -276,9 +275,9 @@ app.get('/api/po/:poId/data', async (req, res) => {
       console.log('Could not fetch open sales orders:', orderErr.message);
     }
 
-    // 3. SNIPER FULFILLMENTS: ONLY fetch fulfillments for the live, unblocked orders!
-    let packedMap = {};
-    const saleIdArray = Array.from(activeSpecialOrderSaleIds);
+    // 3. FETCH FULFILLMENTS and map packed qty strictly by LINE ITEM ID to prevent double counting
+    let lineItemPackedMap = {};
+    const saleIdArray = Array.from(processedSaleIds);
 
     try {
       const fulfillmentPromises = saleIdArray.map(async (saleId) => {
@@ -301,15 +300,17 @@ app.get('/api/po/:poId/data', async (req, res) => {
       for (const fulfillments of allFulfillmentsArrays) {
         for (const f of fulfillments) {
            for (const fLine of (f.line_items || [])) {
-             const pId = fLine.product_id;
-             if (pId) {
-               // Get the highest packed number for this specific item in this live order
+             const lineId = fLine.sale_line_item_id;
+             if (lineId) {
                const doneQty = Math.max(
                  parseFloat(fLine.picked_quantity || 0),
                  parseFloat(fLine.packed_quantity || 0),
                  parseFloat(fLine.fulfilled_quantity || 0)
                );
-               packedMap[pId] = (packedMap[pId] || 0) + doneQty;
+               // We only want the HIGHEST recorded packed amount for this line item, never add them together!
+               if (!lineItemPackedMap[lineId] || doneQty > lineItemPackedMap[lineId]) {
+                 lineItemPackedMap[lineId] = doneQty;
+               }
              }
            }
         }
@@ -318,7 +319,23 @@ app.get('/api/po/:poId/data', async (req, res) => {
       console.log('Error fetching targeted fulfillments:', err.message);
     }
 
-    // 4. Fetch product details, run the Math, and Cap the quantity
+    // 4. Calculate Net Required per Product
+    let productMathMap = {};
+    
+    for (const item of activeLineItems) {
+      const packedQty = lineItemPackedMap[item.lineId] || 0;
+      const netQty = Math.max(0, item.grossQty - packedQty);
+      
+      if (netQty > 0) {
+        if (!productMathMap[item.productId]) {
+          productMathMap[item.productId] = { netQty: 0, names: new Set() };
+        }
+        productMathMap[item.productId].netQty += netQty;
+        productMathMap[item.productId].names.add(item.customerName);
+      }
+    }
+
+    // 5. Build Final Payload
     const enrichedItems = [];
     for (const item of lineItems) {
       const prodResponse = await fetch(`https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/products/${item.product_id}`, {
@@ -331,16 +348,10 @@ app.get('/api/po/:poId/data', async (req, res) => {
         product = prodData.data || {};
       }
 
-      const matchedOrder = openOrdersMap[item.product_id] || { grossQty: 0, names: new Set() };
+      const matchedOrder = productMathMap[item.product_id] || { netQty: 0, names: new Set() };
       
-      // THE MATH: Gross Ordered - Already Packed = Net Labels Needed
-      const grossQty = matchedOrder.grossQty;
-      const packedQty = packedMap[item.product_id] || 0;
-      const netQty = Math.max(0, grossQty - packedQty);
-      
-      // THE CAP: Never exceed the quantity sitting in the PO box
       const poQty = parseFloat(item.received || item.count || 1);
-      const cappedSoQty = Math.min(poQty, netQty);
+      const cappedSoQty = Math.min(poQty, matchedOrder.netQty);
       
       let finalNamesArray = Array.from(matchedOrder.names);
       if (finalNamesArray.some(n => n !== 'Special Order')) {
@@ -365,7 +376,6 @@ app.get('/api/po/:poId/data', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
 
 ////////////////////////////////////////////End of API/PO?:poId/Data ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////
