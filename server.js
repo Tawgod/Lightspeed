@@ -189,12 +189,13 @@ app.get('/api/po/:poId/data', async (req, res) => {
     const poData = await poResponse.json();
     const lineItems = poData.data || [];
 
- // 2. Fetch customer special orders / open sales from Lightspeed X-Series
+// 2. Fetch customer special orders / open sales from Lightspeed X-Series
     let openOrdersMap = {};
     let customerCache = {}; // Cache to prevent duplicate API calls for the same customer
 
     try {
-      const activeStatuses = ['SAVED', 'LAYBY', 'ONACCOUNT'];
+      // Added 'CLOSED' to catch paid-up-front eCom/Special orders
+      const activeStatuses = ['SAVED', 'LAYBY', 'ONACCOUNT', 'CLOSED'];
       
       for (const status of activeStatuses) {
         const ordersResponse = await fetch(`https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=${status}&page_size=100`, {
@@ -217,7 +218,6 @@ app.get('/api/po/:poId/data', async (req, res) => {
                   if (custRes.ok) {
                     const custData = await custRes.json();
                     const cust = custData.data || {};
-                    // Grab first/last name, or company name, or fallback
                     customerCache[sale.customer_id] = `${cust.first_name || ''} ${cust.last_name || ''}`.trim() || cust.company_name || 'Special Order';
                   } else {
                     customerCache[sale.customer_id] = 'Special Order';
@@ -230,10 +230,24 @@ app.get('/api/po/:poId/data', async (req, res) => {
             }
 
             for (const line of (sale.line_items || [])) {
+              // 1. Skip items that are already packed, shipped, picked up, or completed
+              const itemStatus = (line.status || line.fulfillment_status || '').toLowerCase();
+              if (['packed', 'shipped', 'picked_up', 'completed'].includes(itemStatus)) {
+                continue;
+              }
+
+              // 2. If it's a CLOSED (paid) sale, it MUST be marked as a fulfillment.
+              // Otherwise, we would accidentally flag normal walk-in transactions.
+              if (sale.status === 'CLOSED' && !line.fulfillment_type && !sale.fulfillment_status) {
+                continue;
+              }
+
               if (!openOrdersMap[line.product_id]) {
                 openOrdersMap[line.product_id] = { qty: 0, names: [] };
               }
               openOrdersMap[line.product_id].qty += line.quantity || 1;
+              
+              // Only add the name if it isn't already in the list
               if (!openOrdersMap[line.product_id].names.includes(customerName)) {
                 openOrdersMap[line.product_id].names.push(customerName);
               }
