@@ -245,7 +245,13 @@ app.get('/api/po/:poId/data', async (req, res) => {
               customerName = customerCache[sale.customer_id];
             }
 
-            for (const line of (sale.line_items || [])) {
+           for (const line of (sale.line_items || [])) {
+              // STRICT LINE-LEVEL BLOCK: Throw out any individual item that is already packed/shipped
+              const lineStatus = (line.status || line.fulfillment_status || '').toUpperCase();
+              if (['PACKED', 'SHIPPED', 'DISPATCHED', 'DELIVERED', 'COMPLETED', 'PICKED_UP', 'FULFILLED', 'PICKED'].includes(lineStatus)) {
+                continue;
+              }
+
               const totalQty = parseFloat(line.quantity || line.unit_quantity) || 1;
               
               // Skip refunds/returns
