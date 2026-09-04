@@ -320,7 +320,10 @@ app.post('/api/labels/generate', async (req, res) => {
   try {
     const { poId, startRow = 1, startCol = 1, templateId = 'avery_5960', customText = '', items = [] } = req.body;
 
-    // Load the selected templates from the folder dynamically
+    console.log(`\n--- GENERATING PDF FOR PO: ${poId} ---`);
+    console.log(`Selected Template ID: ${templateId}`);
+
+    // 1. Load the templates
     let labelTemplate, specialOrderTemplate;
     try {
       const standardData = await fs.readFile(path.join(__dirname, 'templates', `${templateId}.json`), 'utf-8');
@@ -329,18 +332,16 @@ app.post('/api/labels/generate', async (req, res) => {
       try {
         const specialData = await fs.readFile(path.join(__dirname, 'templates', `${templateId}_special.json`), 'utf-8');
         specialOrderTemplate = JSON.parse(specialData);
+        console.log(`[SUCCESS] Loaded special template: ${templateId}_special.json`);
       } catch (err) {
-        // Fallback to standard if no special order template exists
+        console.log(`[WARNING] Could not load ${templateId}_special.json. Falling back to standard template.`);
         specialOrderTemplate = labelTemplate;
       }
     } catch (error) {
-      throw new Error(`Failed to load template file: ${templateId}.json`);
+      throw new Error(`Failed to load base template file: ${templateId}.json`);
     }
 
-    // Double-check sorting by SKU alphabetically
-    items.sort((a, b) => (a.sku || '').localeCompare(b.sku || '', undefined, { sensitivity: 'base' }));
-
-    // ... (Keep your doc initialization and barcode generation the same) ...
+    // 2. Setup the PDF Document
     const doc = new PDFDocument({
       size: 'letter',
       margins: { top: 36, bottom: 36, left: 13.5, right: 13.5 },
@@ -351,73 +352,71 @@ app.post('/api/labels/generate', async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="PO_${poId}_Labels.pdf"`);
     doc.pipe(res);
 
-    // Calculate start position offset on a 3x10 Avery 5960 sheet
-    // Row 1, Col 1 = index 0. Row 8, Col 3 = (7 * 3) + 2 = 23
     const startOffset = Math.max(0, ((startRow - 1) * 3) + (startCol - 1));
     let labelCount = startOffset;
 
+    // 3. Loop through items and draw labels
     for (const item of items) {
-         let barcodeBuffer = null;
-         if (item.sku && item.sku !== 'UNKNOWN') {
-           try {
-             barcodeBuffer = await bwipjs.toBuffer({ bcid: 'code128', text: item.sku, scale: 3, height: 10, includetext: false });
-           } catch (err) {
-             console.error(`Barcode error for SKU ${item.sku}:`, err);
-           }
-         }
+      let barcodeBuffer = null;
+      if (item.sku && item.sku !== 'UNKNOWN') {
+        try {
+          barcodeBuffer = await bwipjs.toBuffer({ bcid: 'code128', text: item.sku, scale: 3, height: 10, includetext: false });
+        } catch (err) {
+          console.error(`Barcode error for SKU ${item.sku}:`, err);
+        }
+      }
 
-         const valuesMap = {
-          name: item.name || '',
-          sku: item.sku || '',
-          price: item.price || '$0.00',
-          customerName: item.customerName || 'NO NAME PROVIDED',
-          specialTag: '*** SPECIAL ORDER ***',
-          store: customText // Mapped directly to the custom UI input!
-        };
+      // Calculate the split quantities
+      const soQty = Math.min(item.qty, item.soQty || 0);
+      const normalQty = item.qty - soQty;
+      
+      console.log(`Item [${item.sku}]: Total Qty = ${item.qty}, Special Qty = ${soQty}, Normal Qty = ${normalQty}`);
 
-         // Calculate how many of each label type to print
-         const soQty = Math.min(item.qty, item.soQty || 0); // Can't have more SOs than total qty
-         const normalQty = item.qty - soQty;
+      const valuesMap = {
+        name: item.name || '',
+        sku: item.sku || '',
+        price: item.price || '$0.00',
+        customerName: item.customerName || 'NO NAME PROVIDED',
+        specialTag: '*** SPECIAL ORDER ***',
+        store: customText
+      };
 
-         // Helper function to draw a single label
-         const drawLabel = (template) => {
-           if (labelCount > 0 && labelCount % 30 === 0) doc.addPage();
+      // Helper function to draw a single label slot
+      const drawLabel = (template) => {
+        if (labelCount > 0 && labelCount % 30 === 0) doc.addPage();
+        
+        const positionOnPage = labelCount % 30;
+        const col = positionOnPage % 3;
+        const row = Math.floor(positionOnPage / 3);
+        
+        const originX = 13.5 + (col * 198);
+        const originY = 36 + (row * 72);
 
-           const positionOnPage = labelCount % 30;
-           const col = positionOnPage % 3;
-           const row = Math.floor(positionOnPage / 3);
+        for (const el of template.elements) {
+          const val = valuesMap[el.field] || '';
+          if (el.type === 'text') {
+            doc.fontSize(el.fontSize || 8)
+               .font(el.bold ? 'Helvetica-Bold' : 'Helvetica')
+               .text(val, originX + el.x, originY + el.y, {
+                 width: el.maxWidth || undefined, align: el.align || 'left', lineBreak: false, ellipsis: true
+               });
+          } else if (el.type === 'barcode' && barcodeBuffer) {
+            doc.image(barcodeBuffer, originX + el.x, originY + el.y, { width: el.width, height: el.height });
+          }
+        }
+        labelCount++;
+      };
 
-           const originX = 13.5 + (col * 198);
-           const originY = 36 + (row * 72);
-
-           for (const el of template.elements) {
-             const val = valuesMap[el.field] || '';
-             if (el.type === 'text') {
-               doc.fontSize(el.fontSize || 8)
-                  .font(el.bold ? 'Helvetica-Bold' : 'Helvetica')
-                  .text(val, originX + el.x, originY + el.y, {
-                    width: el.maxWidth || undefined, align: el.align || 'left', lineBreak: false, ellipsis: true
-                  });
-             } else if (el.type === 'barcode' && barcodeBuffer) {
-               doc.image(barcodeBuffer, originX + el.x, originY + el.y, { width: el.width, height: el.height });
-             }
-           }
-           labelCount++;
-         };
-
-         // Draw the Special Order labels first
-         for (let i = 0; i < soQty; i++) drawLabel(specialOrderTemplate);
-         
-         // Draw the remaining standard labels
-         for (let i = 0; i < normalQty; i++) drawLabel(labelTemplate);
-       }
+      // Draw Special Order labels first, then the remaining Normal labels
+      for (let i = 0; i < soQty; i++) drawLabel(specialOrderTemplate);
+      for (let i = 0; i < normalQty; i++) drawLabel(labelTemplate);
+    }
 
     doc.end();
+    console.log(`--- FINISHED PDF GENERATION ---\n`);
   } catch (error) {
     console.error('PDF Generation Error:', error);
-    if (!res.headersSent) {
-      res.status(500).json({ error: error.message });
-    }
+    if (!res.headersSent) res.status(500).json({ error: error.message });
   }
 });
 const PORT = process.env.PORT || 8080;
