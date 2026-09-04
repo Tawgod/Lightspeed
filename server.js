@@ -193,13 +193,16 @@ app.get('/api/po/:poId/data', async (req, res) => {
     let processedSaleIds = new Set(); 
 
     try {
-      // FIX: Completely removed AWAITING_PICKUP & AWAITING_DISPATCH from our searches
+      // Catch absolutely everything that could hold an unfulfilled item
       const endpointsToFetch = [
         `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=OPEN&page_size=100`,
         `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=SAVED&page_size=100`,
         `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=LAYBY&page_size=100`,
         `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=ONACCOUNT&page_size=100`,
+        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=AWAITING_PICKUP&page_size=100`,
+        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?status=AWAITING_DISPATCH&page_size=100`,
         `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?fulfillment_status=NEW&page_size=100`,
+        `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?fulfillment_status=STARTED&page_size=100`,
         `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/sales?fulfillment_status=UNFULFILLED&page_size=100`
       ];
       
@@ -217,16 +220,15 @@ app.get('/api/po/:poId/data', async (req, res) => {
 
             const saleStatus = (sale.status || '').toUpperCase();
             
-            // HARD BANNED STATUSES: Anything packed, picked up, dispatched, returned, etc.
-            const bannedStatuses = ['AWAITING_PICKUP', 'AWAITING_DISPATCH', 'PICKED_UP_CLOSED', 'DISPATCHED_CLOSED', 'RETURN', 'VOIDED', 'COMPLETED'];
-            if (bannedStatuses.includes(saleStatus)) {
+            // ONLY block absolute dead ends where items are completely gone or voided
+            if (['PICKED_UP_CLOSED', 'DISPATCHED_CLOSED', 'RETURN', 'VOIDED', 'COMPLETED'].includes(saleStatus)) {
               continue; 
             }
 
-            // SMART BLOCK for CLOSED (Paid) sales
+            // SMART BLOCK for CLOSED (Paid) sales to keep online orders but drop walk-ins
             if (saleStatus === 'CLOSED') {
               const saleFulfillment = (sale.fulfillment_status || '').toUpperCase();
-              if (!saleFulfillment || ['FULFILLED', 'COMPLETED', 'DELIVERED', 'SHIPPED', 'DISPATCHED', 'PICKED_UP', 'PACKED'].includes(saleFulfillment)) {
+              if (!saleFulfillment || ['FULFILLED', 'COMPLETED', 'DELIVERED', 'SHIPPED', 'DISPATCHED', 'PICKED_UP'].includes(saleFulfillment)) {
                 continue;
               }
             }
@@ -254,12 +256,14 @@ app.get('/api/po/:poId/data', async (req, res) => {
 
             for (const line of (sale.line_items || [])) {
               const totalQty = parseFloat(line.quantity || line.unit_quantity) || 1;
-              if (totalQty <= 0) continue;
+              if (totalQty <= 0) continue; // Ignore negative returns
 
               if (!openOrdersMap[line.product_id]) {
-                openOrdersMap[line.product_id] = { qty: 0, names: new Set() };
+                openOrdersMap[line.product_id] = { grossQty: 0, names: new Set() };
               }
-              openOrdersMap[line.product_id].qty += totalQty;
+              
+              // Tally up the total GROSS amount ordered
+              openOrdersMap[line.product_id].grossQty += totalQty;
               openOrdersMap[line.product_id].names.add(customerName);
             }
           }
@@ -269,7 +273,38 @@ app.get('/api/po/:poId/data', async (req, res) => {
       console.log('Could not fetch open sales orders:', orderErr.message);
     }
 
-    // 3. Fetch product details and CAP the quantity to the PO amount
+    // 3. Fetch Fulfillments to see what is ALREADY PACKED based on our Apps Script discovery!
+    let packedMap = {};
+    try {
+      const fulfillRes = await fetch(`https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/fulfillments?page_size=500`, {
+        headers: { 'Authorization': `Bearer ${LIGHTSPEED_TOKEN}`, 'User-Agent': 'HobbyCorner-AveryLabels/1.0', 'Accept': 'application/json' }
+      });
+      
+      if (fulfillRes.ok) {
+        const fulfillData = await fulfillRes.json();
+        for (const f of (fulfillData.data || [])) {
+          // Only process fulfillments for the active sales we just found
+          if (processedSaleIds.has(f.sale_id)) {
+             for (const fLine of (f.line_items || [])) {
+               const pId = fLine.product_id;
+               if (pId) {
+                 // Take the highest number of picked, packed, or fulfilled to be safe
+                 const doneQty = Math.max(
+                   parseFloat(fLine.picked_quantity || 0),
+                   parseFloat(fLine.packed_quantity || 0),
+                   parseFloat(fLine.fulfilled_quantity || 0)
+                 );
+                 packedMap[pId] = (packedMap[pId] || 0) + doneQty;
+               }
+             }
+          }
+        }
+      }
+    } catch (err) {
+      console.log('Error fetching fulfillments to subtract:', err.message);
+    }
+
+    // 4. Fetch product details, run the Math, and Cap the quantity
     const enrichedItems = [];
     for (const item of lineItems) {
       const prodResponse = await fetch(`https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/products/${item.product_id}`, {
@@ -282,11 +317,16 @@ app.get('/api/po/:poId/data', async (req, res) => {
         product = prodData.data || {};
       }
 
-      const matchedOrder = openOrdersMap[item.product_id] || { qty: 0, names: new Set() };
+      const matchedOrder = openOrdersMap[item.product_id] || { grossQty: 0, names: new Set() };
       
-      // FIX: CAP QUANTITY - We can't print more special labels than we physically received on the PO
+      // THE MATH: Gross Ordered - Already Packed = Net Labels Needed
+      const grossQty = matchedOrder.grossQty;
+      const packedQty = packedMap[item.product_id] || 0;
+      const netQty = Math.max(0, grossQty - packedQty);
+      
+      // THE CAP: Never exceed the quantity sitting in the PO box
       const poQty = parseFloat(item.received || item.count || 1);
-      const cappedSoQty = Math.min(poQty, matchedOrder.qty);
+      const cappedSoQty = Math.min(poQty, netQty);
       
       let finalNamesArray = Array.from(matchedOrder.names);
       if (finalNamesArray.some(n => n !== 'Special Order')) {
@@ -299,7 +339,7 @@ app.get('/api/po/:poId/data', async (req, res) => {
         sku: product.sku || 'UNKNOWN',
         price: product.price_including_tax ? `$${product.price_including_tax}` : '$0.00',
         qty: poQty,
-        autoSoQty: cappedSoQty, // The capped number so it never exceeds PO qty!
+        autoSoQty: cappedSoQty, 
         autoCustomerName: finalNamesArray.join(' & ')
       });
     }
