@@ -3,8 +3,8 @@
   "name": "Avery 5960 (RMS Layout)",
   "grid": { "columns": 3, "rows": 10, "spacingX": 198, "spacingY": 72 },
   "elements": [
-    { "type": "text", "field": "name", "x": 7.9, "y": 7.5, "fontSize": 9, "maxWidth": 175, "align": "left" },
-    { "type": "text", "field": "sku", "x": 7.9, "y": 20, "fontSize": 8, "maxWidth": 114, "align": "left" },
+    { "type": "text", "field": "name", "x": 7.9, "y": 7.5, "fontSize": 9, "maxWidth": 175, "multiline": true, "align": "left" },
+    { "type": "text", "field": "sku", "x": 7.9, "y": 27, "fontSize": 8, "maxWidth": 114, "align": "left" },
     { "type": "text", "field": "price", "x": 117.5, "y": 17.5, "fontSize": 14, "maxWidth": 65, "align": "right" },
     { "type": "barcode", "field": "sku", "x": 7.9, "y": 37.5, "width": 112.5, "height": 15 },
     { "type": "text", "field": "store", "x": 125, "y": 45, "fontSize": 8, "maxWidth": 50, "align": "center" }
