@@ -99,7 +99,7 @@
         console.error('Template Fetch Error:', err);
       });
 
-    // 2. Fetch PO Data
+   // 2. Fetch PO Data
     if (!poId) {
       loadingDiv.innerHTML = '<span style="color: red;">No PO ID provided in the URL.</span>';
       loadingDiv.style.display = 'block';
@@ -109,12 +109,19 @@
       fetch(`/api/po/${poId}/data`)
         .then(response => response.json())
         .then(data => {
+          
+          // THE FIX: Check if it's an array before trying to sort it!
+          if (!Array.isArray(data)) {
+            loadingDiv.innerHTML = `<span style="color: red;">Server Error: ${data.error || "Invalid PO ID or data format. Please try again."}</span>`;
+            return; // Stop the script here so it doesn't crash!
+          }
+
           poItems = data.sort((a, b) => (a.sku || '').localeCompare(b.sku || '', undefined, { sensitivity: 'base' }));
           
           loadingDiv.style.display = 'none';
           itemsBody.innerHTML = '';
 
-       poItems.forEach((item, index) => {
+          poItems.forEach((item, index) => {
             itemsBody.innerHTML += `
               <tr>
                 <td style="font-size: 12px;">${item.name}</td>
