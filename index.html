@@ -99,27 +99,6 @@
         console.error('Template Fetch Error:', err);
       });
 
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// 1. Grab the raw input (whether it's from a URL, a pasted link, or a text box)
-    let rawInput = poId; // Assuming 'poId' is your current variable
-
-    // 2. THE SMART PARSER: Hunt for the true Lightspeed UUID
-    const uuidRegex = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
-    const match = rawInput.match(uuidRegex);
-
-    if (match) {
-      poId = match[0]; // Successfully extracts the clean ID, dropping "receive" entirely!
-    } else {
-      // Fallback: Strip out the word "receive" and any rogue slashes just in case
-      poId = rawInput.replace(/receive/gi, '').replace(/\//g, '').trim();
-    }
-
-    // 3. Fetch PO Data (Your existing safety net code starts here)
-    if (!poId) {
-      loadingDiv.innerHTML = '<span style="color: red;">No PO ID provided in the URL.</span>';
-// ... rest of your fetch logic
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     
    // 2. Fetch PO Data
     if (!poId) {
