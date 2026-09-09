@@ -131,28 +131,31 @@ async function generatePoPdf(req, res) {
         const originX = 13.5 + (col * 198);
         const originY = 36 + (row * 72);
 
-        for (const el of Template.elements) {
+        // 2. Draw elements, pushing down ONLY the price if the name wraps
+        for (const el of template.elements) {
           const val = valuesMap[el.field] || '';
+          
+          let finalY = el.y;
+          
+          // FIX: We now explicitly target ONLY the 'price' field to shift down.
+          // This keeps your SKU and Barcode firmly anchored safely at the bottom!
+          if (nameElement && el.field === 'price') {
+            finalY += pushDownOffset;
+          }
 
           if (el.type === 'text') {
             doc.fontSize(el.fontSize || 8)
                .font(el.bold ? 'Helvetica-Bold' : 'Helvetica')
-               .text(val, originX + el.x, originY + el.y, {
-                 width: el.maxWidth || undefined,
-                 align: el.align || 'left',
-                 lineBreak: false,
-                 ellipsis: true
+               .text(val, originX + el.x, originY + finalY, {
+                 width: el.maxWidth || undefined, 
+                 align: el.align || 'left', 
+                 lineBreak: el.multiline === true, 
+                 ellipsis: el.multiline !== true
                });
           } else if (el.type === 'barcode' && barcodeBuffer) {
-            doc.image(barcodeBuffer, originX + el.x, originY + el.y, {
-              width: el.width,
-              height: el.height
-            });
+            doc.image(barcodeBuffer, originX + el.x, originY + finalY, { width: el.width, height: el.height });
           }
         }
-        Count++;
-      }
-    }
 
     // 6. Finish stream
     doc.end();
