@@ -131,14 +131,14 @@ async function generatePoPdf(req, res) {
         const originX = 13.5 + (col * 198);
         const originY = 36 + (row * 72);
 
-        // 2. Draw elements, pushing down ONLY the price if the name wraps
+       // 2. Draw elements, pushing down ONLY the price if the name wraps
         for (const el of template.elements) {
-          const val = valuesMap[el.field] || '';
+          // FIX 1: Safely cast to a String so PDFKit doesn't crash on raw numbers
+          const val = String(valuesMap[el.field] || '');
           
           let finalY = el.y;
           
-          // FIX: We now explicitly target ONLY the 'price' field to shift down.
-          // This keeps your SKU and Barcode firmly anchored safely at the bottom!
+          // We explicitly target ONLY the 'price' field to shift down.
           if (nameElement && el.field === 'price') {
             finalY += pushDownOffset;
           }
@@ -150,7 +150,8 @@ async function generatePoPdf(req, res) {
                  width: el.maxWidth || undefined, 
                  align: el.align || 'left', 
                  lineBreak: el.multiline === true, 
-                 ellipsis: el.multiline !== true
+                 // FIX 2: Only add an ellipsis if there is actually a maxWidth set!
+                 ellipsis: (el.multiline !== true && el.maxWidth) ? true : false
                });
           } else if (el.type === 'barcode' && barcodeBuffer) {
             doc.image(barcodeBuffer, originX + el.x, originY + finalY, { width: el.width, height: el.height });
