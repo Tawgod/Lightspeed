@@ -569,11 +569,7 @@ app.post('/api/labels/generate', async (req, res) => {
             doc.fontSize(el.fontSize || 8)
                .font(el.bold ? 'Helvetica-Bold' : 'Helvetica')
                .text(val, originX + el.x, originY + el.y, {
-                 width: el.maxWidth || undefined, 
-                 align: el.align || 'left', 
-                 // FIX: Allow wrapping if the template asks for it!
-                 lineBreak: el.multiline === true, 
-                 ellipsis: el.multiline !== true
+                  width: el.maxWidth || undefined, align: el.align || 'left', lineBreak: false, ellipsis: true
                });
           } 
            else if (el.type === 'barcode' && barcodeBuffer) {
