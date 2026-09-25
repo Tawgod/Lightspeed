@@ -45,6 +45,10 @@ export function createLightspeedClient({ domain, token }) {
       return request(`/api/${DEFAULT_API_VERSION}/sales/${encodeURIComponent(saleId)}`);
     },
 
+    searchSalesByInvoiceNumber(invoiceNumber) {
+      return request(`/api/${DEFAULT_API_VERSION}/search?invoice_number=${encodeURIComponent(invoiceNumber)}`);
+    },
+
     getFulfillmentsForSale(saleId) {
       return request(`/api/${DEFAULT_API_VERSION}/fulfillments?sale_id=${encodeURIComponent(saleId)}`);
     },
