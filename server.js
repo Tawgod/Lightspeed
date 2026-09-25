@@ -5,6 +5,7 @@ import bwipjs from 'bwip-js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs/promises';
+import { createOrderSplitRouter } from './routes/orderSplit.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,6 +21,11 @@ app.get('/index.html', (req, res) => {
 
 const LIGHTSPEED_DOMAIN = process.env.LIGHTSPEED_DOMAIN;
 const LIGHTSPEED_TOKEN = process.env.LIGHTSPEED_TOKEN;
+
+app.use('/api/order-split', createOrderSplitRouter({
+  domain: LIGHTSPEED_DOMAIN,
+  token: LIGHTSPEED_TOKEN
+}));
 
 // Health-check route
 app.get('/', (req, res) => {
