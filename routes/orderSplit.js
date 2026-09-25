@@ -26,12 +26,44 @@ function amountFromPayment(payment) {
 export function createOrderSplitRouter({ domain, token }) {
   const router = express.Router();
 
+  async function resolveSaleId(client, saleRef) {
+    // Lightspeed's public-facing sale number/invoice number is not the sale UUID.
+    // Accept either form so staff can enter values such as "12".
+    const looksLikeUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(saleRef);
+    if (looksLikeUuid) return { saleId: saleRef, matchedBy: 'id' };
+
+    const searchPayload = await client.searchSalesByInvoiceNumber(saleRef);
+    const results = unwrapData(searchPayload) || [];
+    const sales = Array.isArray(results)
+      ? results
+      : (results.sales || results.results || []);
+
+    if (!Array.isArray(sales) || sales.length === 0) {
+      const error = new Error(`No Lightspeed sale found for invoice/sale number "${saleRef}".`);
+      error.status = 404;
+      throw error;
+    }
+
+    const exact = sales.find(s => String(s.invoice_number ?? s.invoiceNumber ?? '') === String(saleRef));
+    const match = exact || sales[0];
+    if (!match?.id) {
+      const error = new Error('Lightspeed search returned a sale without an ID.');
+      error.status = 502;
+      error.details = match || searchPayload;
+      throw error;
+    }
+
+    return { saleId: match.id, matchedBy: 'invoice_number', matchedSale: match };
+  }
+
   // Read-only proof of concept. This route does not modify a sale,
   // fulfillment, payment, or customer balance.
   router.get('/sales/:saleId/inspect', async (req, res) => {
     try {
       const client = createLightspeedClient({ domain, token });
-      const saleId = req.params.saleId;
+      const saleRef = req.params.saleId;
+      const resolved = await resolveSaleId(client, saleRef);
+      const saleId = resolved.saleId;
 
       const [salePayload, fulfillmentPayload] = await Promise.all([
         client.getSale(saleId),
@@ -73,7 +105,9 @@ export function createOrderSplitRouter({ domain, token }) {
 
       res.json({
         readOnly: true,
+        requestedSaleRef: saleRef,
         saleId,
+        matchedBy: resolved.matchedBy,
         eligibleForSplitPreview: Boolean(
           sale.id &&
           sale.customer_id &&
