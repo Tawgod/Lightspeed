@@ -91,7 +91,9 @@ function ensureSplitLauncher() {
   }
 
   if (existing) {
-    existing.textContent = config.label;
+    if (existing.textContent !== config.label) {
+      existing.textContent = config.label;
+    }
     return;
   }
 
