@@ -166,11 +166,18 @@ export function createOrderSplitExecuteRouter({ domain, token }) {
           if (line.sale_line_item_id && !currentIds.has(line.sale_line_item_id))
             orphaned.push({ fulfillmentId:f.id, saleLineItemId:line.sale_line_item_id });
 
+      const verifiedPaymentTotal = (verifiedOriginal.payments || []).reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
       res.status(201).json({
         splitCompleted: true,
         originalSale: { id:saleId, invoiceNumber:verifiedOriginal.invoice_number, lineItems:verifiedOriginal.line_items || [] },
         newSale: { id:verifiedNew.id || createdSale.id, invoiceNumber:verifiedNew.invoice_number || createdSale.invoice_number, state:verifiedNew.state || createdSale.state, lineItems:verifiedNew.line_items || [] },
-        fulfillmentIntegrity: { consistent: orphaned.length === 0, orphanedLines: orphaned }
+        fulfillmentIntegrity: { consistent: orphaned.length === 0, orphanedLines: orphaned },
+        paymentIntegrity: {
+          expectedRemainingPaymentTotal: paymentTotal,
+          actualRemainingPaymentTotal: verifiedPaymentTotal,
+          consistent: Math.abs(verifiedPaymentTotal - paymentTotal) < 0.0001
+        }
       });
     } catch (e) {
       res.status(e.status || 500).json({
