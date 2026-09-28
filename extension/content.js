@@ -43,10 +43,12 @@ function ensurePoLabelButton() {
     zIndex:'2147483647',
     padding:'10px 14px',
     borderRadius:'6px',
-    border:'1px solid #bbb',
-    background:'#fff',
+    border:'2px solid #111827',
+    background:'#facc15',
+    color:'#111827',
+    fontWeight:'800',
     cursor:'pointer',
-    boxShadow:'0 2px 8px rgba(0,0,0,.15)'
+    boxShadow:'0 3px 10px rgba(0,0,0,.35)'
   });
   button.addEventListener('click', () => {
     window.open(HCT_BACKEND + '/index.html?poId=' + encodeURIComponent(poId), '_blank');
