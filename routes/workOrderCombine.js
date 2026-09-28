@@ -43,6 +43,88 @@ export function createWorkOrderCombineRouter({ domain, token }) {
     };
   }
 
+  router.get('/eligible', async (req, res) => {
+    try {
+      const client = createLightspeedClient({ domain, token });
+      const [pendingSearch, parkedSearch] = await Promise.all([
+        client.searchSalesByState('pending'),
+        client.searchSalesByState('parked')
+      ]);
+
+      const normalizeRows = (payload) => {
+        const data = unwrap(payload) || [];
+        return Array.isArray(data) ? data : (data.sales || data.results || []);
+      };
+
+      const deduped = new Map();
+      for (const row of [...normalizeRows(pendingSearch), ...normalizeRows(parkedSearch)]) {
+        if (row?.id) deduped.set(row.id, row);
+      }
+
+      const customerIds = [...new Set(
+        [...deduped.values()].map(sale => sale.customer_id).filter(Boolean)
+      )];
+
+      const customerEntries = await Promise.all(customerIds.map(async customerId => {
+        try {
+          const customer = unwrap(await client.getCustomer(customerId)) || {};
+          const name = [customer.first_name, customer.last_name].filter(Boolean).join(' ').trim()
+            || customer.company_name
+            || 'Customer';
+          return [customerId, { name, company: customer.company_name || null }];
+        } catch {
+          return [customerId, { name: 'Customer', company: null }];
+        }
+      }));
+      const customersById = Object.fromEntries(customerEntries);
+
+      const eligible = [];
+      for (const sale of deduped.values()) {
+        const state = String(sale.state || '').toLowerCase();
+        const lines = sale.line_items || sale.register_sale_products || [];
+        if (!sale.customer_id || !['pending','parked'].includes(state) || !lines.length) continue;
+
+        const attrs = Array.isArray(sale.attributes)
+          ? sale.attributes
+          : (Array.isArray(sale.register_sale_attributes) ? sale.register_sale_attributes : []);
+
+        eligible.push({
+          id: sale.id,
+          invoiceNumber: sale.invoice_number || null,
+          state,
+          attributes: attrs,
+          customerId: sale.customer_id,
+          customerName: customersById[sale.customer_id]?.name || 'Customer',
+          company: customersById[sale.customer_id]?.company || null,
+          lineCount: lines.length,
+          quantityTotal: lines.reduce((sum, line) => sum + Number(line.quantity || 0), 0),
+          total: Number(sale.total_price ?? sale.total ?? 0),
+          paymentTotal: paymentTotal(sale),
+          balance: Number(sale.balance ?? 0),
+          date: sale.date || sale.sale_date || sale.created_at || null
+        });
+      }
+
+      eligible.sort((a, b) => {
+        const aTime = a.date ? new Date(a.date).getTime() : 0;
+        const bTime = b.date ? new Date(b.date).getTime() : 0;
+        return bTime - aTime;
+      });
+
+      res.json({
+        eligible: true,
+        count: eligible.length,
+        orders: eligible
+      });
+    } catch (e) {
+      res.status(e.status || 500).json({
+        eligible: false,
+        error: e.message,
+        details: e.details || null
+      });
+    }
+  });
+
   router.get('/sales/:saleRef/combine-preview', async (req, res) => {
     try {
       const client = createLightspeedClient({ domain, token });
