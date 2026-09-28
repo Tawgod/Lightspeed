@@ -241,26 +241,25 @@ function openSplitOverlay(saleRef) {
 
     const card = document.createElement('div');
     Object.assign(card.style, {
-      width:'min(480px, 92%)',
+      width:'min(760px, 94%)',
       background:'#fff',
       border:'1px solid #cbd5e1',
       borderRadius:'10px',
-      padding:'24px',
+      padding:'22px',
       boxShadow:'0 8px 24px rgba(15,23,42,.10)'
     });
 
     const heading = document.createElement('h2');
-    heading.textContent = 'Recall an order';
+    heading.textContent = 'Recall / Split Order';
     Object.assign(heading.style, { margin:'0 0 8px', color:'#0f172a' });
 
     const help = document.createElement('p');
-    help.textContent = 'Enter the Lightspeed invoice/order number you want to split or partially pick up.';
-    Object.assign(help.style, { margin:'0 0 16px', color:'#475569', lineHeight:'1.4' });
+    help.textContent = 'Choose an eligible open order below, or search by customer name or invoice number.';
+    Object.assign(help.style, { margin:'0 0 14px', color:'#475569', lineHeight:'1.4' });
 
     const input = document.createElement('input');
     input.type = 'text';
-    input.inputMode = 'numeric';
-    input.placeholder = 'Invoice / order number';
+    input.placeholder = 'Search customer or invoice number';
     Object.assign(input.style, {
       width:'100%',
       boxSizing:'border-box',
@@ -271,11 +270,47 @@ function openSplitOverlay(saleRef) {
       marginBottom:'10px'
     });
 
+    const list = document.createElement('div');
+    Object.assign(list.style, {
+      maxHeight:'390px',
+      overflowY:'auto',
+      border:'1px solid #e2e8f0',
+      borderRadius:'8px',
+      background:'#f8fafc'
+    });
+
+    const status = document.createElement('div');
+    status.textContent = 'Loading eligible orders...';
+    Object.assign(status.style, {
+      padding:'14px',
+      color:'#64748b',
+      fontSize:'13px'
+    });
+    list.appendChild(status);
+
+    const manualRow = document.createElement('div');
+    Object.assign(manualRow.style, {
+      display:'flex',
+      gap:'8px',
+      marginTop:'12px'
+    });
+
+    const manualInput = document.createElement('input');
+    manualInput.type = 'text';
+    manualInput.inputMode = 'numeric';
+    manualInput.placeholder = 'Or enter invoice/order number';
+    Object.assign(manualInput.style, {
+      flex:'1',
+      padding:'10px 11px',
+      border:'1px solid #94a3b8',
+      borderRadius:'6px',
+      fontSize:'14px'
+    });
+
     const open = document.createElement('button');
-    open.textContent = 'Open Split / Partial Pickup';
+    open.textContent = 'Open';
     Object.assign(open.style, {
-      width:'100%',
-      padding:'11px 14px',
+      padding:'10px 16px',
       border:'2px solid #0f172a',
       borderRadius:'6px',
       background:'#2563eb',
@@ -284,21 +319,130 @@ function openSplitOverlay(saleRef) {
       cursor:'pointer'
     });
 
-    const submit = () => {
-      const ref = input.value.trim();
+    let orders = [];
+
+    const renderOrders = () => {
+      const query = input.value.trim().toLowerCase();
+      const filtered = orders.filter(order => {
+        const haystack = [
+          order.customerName,
+          order.company,
+          order.invoiceNumber,
+          order.state,
+          ...(order.attributes || [])
+        ].filter(Boolean).join(' ').toLowerCase();
+        return !query || haystack.includes(query);
+      });
+
+      list.innerHTML = '';
+
+      if (!filtered.length) {
+        const empty = document.createElement('div');
+        empty.textContent = orders.length
+          ? 'No eligible orders match your search.'
+          : 'No eligible open orders were found.';
+        Object.assign(empty.style, {
+          padding:'16px',
+          color:'#64748b',
+          fontSize:'13px'
+        });
+        list.appendChild(empty);
+        return;
+      }
+
+      for (const order of filtered) {
+        const row = document.createElement('button');
+        row.type = 'button';
+        Object.assign(row.style, {
+          display:'block',
+          width:'100%',
+          textAlign:'left',
+          padding:'12px 14px',
+          border:'0',
+          borderBottom:'1px solid #e2e8f0',
+          background:'#fff',
+          cursor:'pointer',
+          color:'#0f172a'
+        });
+
+        const titleLine = document.createElement('div');
+        titleLine.textContent = (order.customerName || 'Customer') + ' — Invoice ' + (order.invoiceNumber || '');
+        Object.assign(titleLine.style, {
+          fontWeight:'800',
+          fontSize:'14px',
+          marginBottom:'4px'
+        });
+
+        const attrs = (order.attributes || []).join(', ');
+        const meta = document.createElement('div');
+        meta.textContent =
+          (attrs || order.state || 'open') +
+          ' · ' + String(order.lineCount || 0) + ' lines' +
+          ' · Qty ' + String(order.quantityTotal || 0) +
+          ' · Payment 
+  }
+
+  overlay.appendChild(panel);
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) closeSplitOverlay();
+  });
+  document.body.appendChild(overlay);
+}
+window.addEventListener('message', (event) => {
+  if (event.origin !== new URL(HCT_BACKEND).origin) return;
+  if (event.data?.type === 'HCT_SPLIT_COMPLETE') {
+    closeSplitOverlay();
+  }
+});
+ + Number(order.paymentTotal || 0).toFixed(2);
+        Object.assign(meta.style, {
+          fontSize:'12px',
+          color:'#64748b'
+        });
+
+        row.append(titleLine, meta);
+        row.addEventListener('click', () => loadOrder(order.invoiceNumber || order.id));
+        list.appendChild(row);
+      }
+    };
+
+    fetch(HCT_BACKEND + '/api/work-orders/eligible')
+      .then(async response => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Could not load eligible orders.');
+        orders = Array.isArray(data.orders) ? data.orders : [];
+        renderOrders();
+      })
+      .catch(error => {
+        list.innerHTML = '';
+        const failed = document.createElement('div');
+        failed.textContent = 'Could not load order list: ' + error.message;
+        Object.assign(failed.style, {
+          padding:'16px',
+          color:'#b91c1c',
+          fontSize:'13px'
+        });
+        list.appendChild(failed);
+      });
+
+    input.addEventListener('input', renderOrders);
+
+    const submitManual = () => {
+      const ref = manualInput.value.trim();
       if (!ref) {
-        input.focus();
+        manualInput.focus();
         return;
       }
       loadOrder(ref);
     };
 
-    open.addEventListener('click', submit);
-    input.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter') submit();
+    open.addEventListener('click', submitManual);
+    manualInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') submitManual();
     });
 
-    card.append(heading, help, input, open);
+    manualRow.append(manualInput, open);
+    card.append(heading, help, input, list, manualRow);
     lookup.appendChild(card);
     panel.appendChild(lookup);
     setTimeout(() => input.focus(), 0);
