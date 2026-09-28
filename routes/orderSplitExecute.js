@@ -27,12 +27,9 @@ export function createOrderSplitExecuteRouter({ domain, token }) {
       const original = unwrap(await client.getSale(saleId)) || {};
       const items = Array.isArray(req.body?.items) ? req.body.items : [];
       const payments = original.payments || original.register_sale_payments || [];
+      const paymentTotal = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
 
       if (!items.length) return res.status(400).json({ error: 'Select at least one item.' });
-      if (payments.length) return res.status(409).json({
-        error: 'Payments/deposits exist. Store-credit conversion must be completed first.',
-        payments
-      });
       if (!original.customer_id) return res.status(409).json({ error: 'Sale has no customer.' });
       if (['closed','voided'].includes(String(original.state || '').toLowerCase()))
         return res.status(409).json({ error: 'Sale state cannot be split.' });
@@ -59,6 +56,22 @@ export function createOrderSplitExecuteRouter({ domain, token }) {
 
       if (moving.length !== selection.size) return res.status(404).json({ error: 'One or more selected lines were not found.' });
       if (!remaining.length) return res.status(409).json({ error: 'Test version will not move every line off the original sale.' });
+
+      const remainingMerchandiseTotal = remaining.reduce((sum, entry) => {
+        const unitPrice = Number(entry.line.unit_price ?? entry.line.price ?? entry.line.pricing?.price ?? 0);
+        const unitTax = Number(entry.line.unit_tax ?? entry.line.tax?.amount ?? entry.line.tax ?? 0);
+        const unitDiscount = Number(entry.line.unit_discount ?? entry.line.discount ?? entry.line.pricing?.discount ?? 0);
+        return sum + ((unitPrice - unitDiscount + unitTax) * Number(entry.quantity || 0));
+      }, 0);
+
+      if (paymentTotal - remainingMerchandiseTotal > 0.0001) {
+        return res.status(409).json({
+          error: 'Remaining payment/deposit would exceed the value left on the original sale.',
+          paymentTotal,
+          remainingMerchandiseTotal,
+          additionalAmountToMoveToStoreCredit: Math.round((paymentTotal - remainingMerchandiseTotal) * 100) / 100
+        });
+      }
 
       const source = original.source || {};
       const authorId = source.author?.id || source.author_id || original.user_id || original.salesperson_id;
@@ -117,7 +130,15 @@ export function createOrderSplitExecuteRouter({ domain, token }) {
           customer_id: original.customer_id,
           note: original.note || null,
           line_items: remaining.map(keepLine),
-          payments: []
+          payments: payments.map(payment => ({
+            id: payment.id,
+            type: { config_id: payment.type?.config_id || payment.retailer_payment_type_id },
+            ...(payment.date || payment.payment_date ? { date: payment.date || payment.payment_date } : {}),
+            amount: String(payment.amount ?? 0),
+            ...(payment.source?.register_id || payment.register_id
+              ? { source: { register_id: payment.source?.register_id || payment.register_id } }
+              : {})
+          }))
         });
       } catch (e) {
         return res.status(e.status || 500).json({
