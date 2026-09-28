@@ -156,6 +156,65 @@ export function createOrderSplitRouter({ domain, token }) {
   });
 
 
+
+  // Simple browser test harness for the controlled parked-sale copy endpoint.
+  router.get('/sales/:saleId/test', async (req, res) => {
+    try {
+      const client = createLightspeedClient({ domain, token });
+      const saleRef = req.params.saleId;
+      const resolved = await resolveSaleId(client, saleRef);
+      const sale = unwrapData(await client.getSale(resolved.saleId)) || {};
+      const lines = sale.line_items || [];
+
+      const rows = lines.map((line) => {
+        const price = line.unit_price ?? line.price ?? 0;
+        return `
+          <tr>
+            <td style="padding:8px;border-bottom:1px solid #ddd;">${line.id}</td>
+            <td style="padding:8px;border-bottom:1px solid #ddd;">${line.product_id}</td>
+            <td style="padding:8px;border-bottom:1px solid #ddd;">${line.quantity}</td>
+            <td style="padding:8px;border-bottom:1px solid #ddd;">${Number(price).toFixed(2)}</td>
+            <td style="padding:8px;border-bottom:1px solid #ddd;">
+              <button onclick="createCopy('${line.id}', ${Number(line.quantity || 1)})">Create parked copy</button>
+            </td>
+          </tr>`;
+      }).join('');
+
+      res.type('html').send(`<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Order Split Test</title></head>
+<body style="font-family:Arial,sans-serif;max-width:1100px;margin:30px auto;padding:0 20px;">
+<h1>Order Split Test — Sale ${sale.invoice_number || saleRef}</h1>
+<p><strong>Original sale is not modified by this test.</strong></p>
+<table style="border-collapse:collapse;width:100%;">
+<thead><tr><th>Line ID</th><th>Product ID</th><th>Qty</th><th>Price</th><th>Action</th></tr></thead>
+<tbody>${rows}</tbody>
+</table>
+<pre id="result" style="margin-top:20px;background:#f5f5f5;padding:15px;white-space:pre-wrap;"></pre>
+<script>
+async function createCopy(lineItemId, quantity) {
+  if (!confirm('Create a NEW parked test sale from this line? The original sale will remain unchanged.')) return;
+  const out = document.getElementById('result');
+  out.textContent = 'Creating parked test sale...';
+  try {
+    const response = await fetch('/api/order-split/sales/${encodeURIComponent(saleRef)}/create-test-copy', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ lineItemId, quantity: 1 })
+    });
+    const data = await response.json();
+    out.textContent = JSON.stringify(data, null, 2);
+  } catch (error) {
+    out.textContent = String(error);
+  }
+}
+</script>
+</body></html>`);
+    } catch (error) {
+      res.status(error.status || 500).send(`Unable to load split test page: ${error.message}`);
+    }
+  });
+
   // Controlled write test: create a NEW parked sale from selected quantities.
   // The original sale is never updated by this endpoint.
   router.post('/sales/:saleId/create-test-copy', async (req, res) => {
