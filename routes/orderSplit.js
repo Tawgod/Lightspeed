@@ -220,8 +220,30 @@ export function createOrderSplitRouter({ domain, token }) {
 </table>
 <button id="split-selected-btn" onclick="splitSelected()" style="margin-top:16px;padding:10px 16px;font-weight:bold;">Split selected items</button>
 <button onclick="repairPickup()" style="margin-top:16px;margin-left:8px;padding:10px 16px;">Repair pickup metadata</button>
+<button id="convert-deposit-btn" onclick="convertDeposit()" style="margin-top:16px;margin-left:8px;padding:10px 16px;">Convert deposit to store credit</button>
 <pre id="result" style="margin-top:20px;background:#f5f5f5;padding:15px;white-space:pre-wrap;"></pre>
 <script>
+async function convertDeposit() {
+  if (!confirm('Remove all current payments from this sale and issue the same total as customer store credit?')) return;
+  const out = document.getElementById('result');
+  const btn = document.getElementById('convert-deposit-btn');
+  btn.disabled = true;
+  out.textContent = 'Converting deposit to store credit...';
+  try {
+    const response = await fetch('/api/order-split/sales/${encodeURIComponent(saleRef)}/convert-deposit', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({})
+    });
+    const data = await response.json();
+    out.textContent = JSON.stringify(data, null, 2);
+  } catch (error) {
+    out.textContent = String(error);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function repairPickup() {
   if (!confirm('Restore the pickup attribute on this sale while preserving its current lines?')) return;
   const out = document.getElementById('result');
