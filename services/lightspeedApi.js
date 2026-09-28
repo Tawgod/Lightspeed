@@ -61,6 +61,10 @@ export function createLightspeedClient({ domain, token }) {
       return request(`/api/${DEFAULT_API_VERSION}/customers/${encodeURIComponent(customerId)}`);
     },
 
+    getProduct(productId) {
+      return request(`/api/${DEFAULT_API_VERSION}/products/${encodeURIComponent(productId)}`);
+    },
+
     getStoreCredit(customerId) {
       return request(`/api/2026-07/store_credits/${encodeURIComponent(customerId)}`);
     },
