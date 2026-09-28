@@ -181,7 +181,7 @@ export function createOrderSplitRouter({ domain, token }) {
 
 
 
-  // Simple browser test harness for the controlled parked-sale copy endpoint.
+  // Simple browser test harness.
   router.get('/sales/:saleId/test', async (req, res) => {
     try {
       const client = createLightspeedClient({ domain, token });
@@ -191,6 +191,7 @@ export function createOrderSplitRouter({ domain, token }) {
       const lines = sale.line_items || [];
       const payments = sale.payments || [];
       const paymentTotal = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
       let storeCreditBalance = null;
       if (sale.customer_id) {
         try {
@@ -201,7 +202,13 @@ export function createOrderSplitRouter({ domain, token }) {
         }
       }
 
-      const storeCreditDisplay = storeCreditBalance == null ? 'Unavailable' : '
+      const storeCreditDisplay = storeCreditBalance == null
+        ? 'Unavailable'
+        : 'USD ' + storeCreditBalance.toFixed(2);
+      const paymentTotalDisplay = 'USD ' + paymentTotal.toFixed(2);
+      const paymentTotalValue = paymentTotal.toFixed(2);
+
+      const rows = lines.map((line) => {
         const price = line.unit_price ?? line.price ?? 0;
         const qty = Number(line.quantity || 1);
         return `
@@ -211,7 +218,7 @@ export function createOrderSplitRouter({ domain, token }) {
             <td style="padding:8px;border-bottom:1px solid #ddd;">${line.product_id}</td>
             <td style="padding:8px;border-bottom:1px solid #ddd;">${qty}</td>
             <td style="padding:8px;border-bottom:1px solid #ddd;"><input type="number" min="1" max="${qty}" value="1" class="split-qty" data-line-id="${line.id}" style="width:70px;padding:4px;"></td>
-            <td style="padding:8px;border-bottom:1px solid #ddd;">$${Number(price).toFixed(2)}</td>
+            <td style="padding:8px;border-bottom:1px solid #ddd;">${Number(price).toFixed(2)}</td>
             <td style="padding:8px;border-bottom:1px solid #ddd;">
               <button onclick="createCopy('${line.id}', ${qty})">Create parked copy</button>
               <button style="margin-left:6px;" onclick="removeOriginal('${line.id}')">Remove from original</button>
@@ -224,7 +231,7 @@ export function createOrderSplitRouter({ domain, token }) {
 <head><meta charset="utf-8"><title>Order Split Test</title></head>
 <body style="font-family:Arial,sans-serif;max-width:1100px;margin:30px auto;padding:0 20px;">
 <h1>Order Split Test — Sale ${sale.invoice_number || saleRef}</h1>
-<p><strong>Original sale is not modified by this test unless you use one of the write actions below.</strong></p>
+<p><strong>Use the actions below only for test orders.</strong></p>
 <div style="margin:16px 0;padding:12px;border:1px solid #ddd;background:#fafafa;">
   <div><strong>Current store credit:</strong> ${storeCreditDisplay}</div>
   <div><strong>Current payment/deposit total:</strong> ${paymentTotalDisplay}</div>
@@ -244,7 +251,13 @@ export function createOrderSplitRouter({ domain, token }) {
 <pre id="result" style="margin-top:20px;background:#f5f5f5;padding:15px;white-space:pre-wrap;"></pre>
 <script>
 async function convertDeposit() {
-  if (!confirm('Remove all current payments from this sale and issue the same total as customer store credit?')) return;
+  const amountInput = document.getElementById('convert-amount');
+  const amount = Number(amountInput && amountInput.value ? amountInput.value : 0);
+  if (!(amount > 0)) {
+    alert('Enter an amount greater than zero.');
+    return;
+  }
+  if (!confirm('Move ' + amount.toFixed(2) + ' from this sale payment/deposit into customer store credit?')) return;
   const out = document.getElementById('result');
   const btn = document.getElementById('convert-deposit-btn');
   btn.disabled = true;
@@ -253,7 +266,7 @@ async function convertDeposit() {
     const response = await fetch('/api/order-split/sales/${encodeURIComponent(saleRef)}/convert-deposit', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({})
+      body: JSON.stringify({ amount })
     });
     const data = await response.json();
     out.textContent = JSON.stringify(data, null, 2);
@@ -265,7 +278,7 @@ async function convertDeposit() {
 }
 
 async function repairPickup() {
-  if (!confirm('Restore the pickup attribute on this sale while preserving its current lines?')) return;
+  if (!confirm('Restore pickup metadata on this sale?')) return;
   const out = document.getElementById('result');
   out.textContent = 'Repairing pickup metadata...';
   try {
@@ -290,7 +303,7 @@ async function splitSelected() {
   const items = selected.map(box => {
     const lineItemId = box.dataset.lineId;
     const qtyInput = document.querySelector('.split-qty[data-line-id="' + lineItemId + '"]');
-    return { lineItemId, quantity: parseInt(qtyInput?.value || '1', 10) };
+    return { lineItemId, quantity: parseInt(qtyInput && qtyInput.value ? qtyInput.value : '1', 10) };
   });
   if (!confirm('Create a new parked sale for the selected items and remove them from the original sale?')) return;
   const out = document.getElementById('result');
@@ -313,7 +326,7 @@ async function splitSelected() {
 }
 
 async function removeOriginal(lineItemId) {
-  if (!confirm('REMOVE this line from the ORIGINAL sale? Use this only after a parked copy has been created.')) return;
+  if (!confirm('Remove this line from the original sale?')) return;
   const out = document.getElementById('result');
   out.textContent = 'Updating original sale...';
   try {
@@ -330,7 +343,7 @@ async function removeOriginal(lineItemId) {
 }
 
 async function createCopy(lineItemId, quantity) {
-  if (!confirm('Create a NEW parked test sale from this line? The original sale will remain unchanged.')) return;
+  if (!confirm('Create a new parked test sale from this line?')) return;
   const out = document.getElementById('result');
   out.textContent = 'Creating parked test sale...';
   try {
@@ -348,7 +361,7 @@ async function createCopy(lineItemId, quantity) {
 </script>
 </body></html>`);
     } catch (error) {
-      res.status(error.status || 500).send(`Unable to load split test page: ${error.message}`);
+      res.status(error.status || 500).send('Unable to load split test page: ' + error.message);
     }
   });
 
