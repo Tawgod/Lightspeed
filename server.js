@@ -8,6 +8,7 @@ import fs from 'fs/promises';
 import { createOrderSplitRouter } from './routes/orderSplit.js';
 import { createOrderSplitExecuteRouter } from './routes/orderSplitExecute.js';
 import { createDepositConversionRouter } from './routes/depositConversion.js';
+import { createWorkOrderCombineRouter } from './routes/workOrderCombine.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,6 +34,10 @@ app.use('/api/order-split', createOrderSplitExecuteRouter({
   token: LIGHTSPEED_TOKEN
 }));
 app.use('/api/order-split', createDepositConversionRouter({
+  domain: LIGHTSPEED_DOMAIN,
+  token: LIGHTSPEED_TOKEN
+}));
+app.use('/api/work-orders', createWorkOrderCombineRouter({
   domain: LIGHTSPEED_DOMAIN,
   token: LIGHTSPEED_TOKEN
 }));
