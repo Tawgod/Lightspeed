@@ -206,7 +206,7 @@ export function createOrderSplitRouter({ domain, token }) {
               <button style="margin-left:6px;" onclick="removeOriginal('${line.id}')">Remove from original</button>
             </td>
           </tr>`;
-
+      }).join('');
 
       res.type('html').send(`<!doctype html>
 <html>
