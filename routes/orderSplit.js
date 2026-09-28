@@ -100,6 +100,25 @@ export function createOrderSplitRouter({ domain, token }) {
       }
 
       const totalPayments = payments.reduce((sum, payment) => sum + amountFromPayment(payment), 0);
+      const currentSaleLineIds = new Set(lineItems.map(line => line.id).filter(Boolean));
+      const fulfillmentList = Array.isArray(fulfillments) ? fulfillments : [];
+      const orphanedFulfillmentLines = [];
+      for (const fulfillment of fulfillmentList) {
+        for (const fLine of (fulfillment.line_items || [])) {
+          if (fLine.sale_line_item_id && !currentSaleLineIds.has(fLine.sale_line_item_id)) {
+            orphanedFulfillmentLines.push({
+              fulfillmentId: fulfillment.id,
+              saleLineItemId: fLine.sale_line_item_id,
+              productId: fLine.product_id || null,
+              quantity: fLine.quantity ?? null,
+              pickedQuantity: fLine.picked_quantity ?? null,
+              packedQuantity: fLine.packed_quantity ?? null,
+              fulfilledQuantity: fLine.fulfilled_quantity ?? null
+            });
+          }
+        }
+      }
+
       const state = String(sale.state || sale.status || '').toLowerCase();
       const blockedStates = new Set(['closed', 'voided', 'completed', 'return']);
 
@@ -133,8 +152,13 @@ export function createOrderSplitRouter({ domain, token }) {
         },
         customer,
         fulfillment: {
-          count: Array.isArray(fulfillments) ? fulfillments.length : 0,
-          records: Array.isArray(fulfillments) ? fulfillments : []
+          count: fulfillmentList.length,
+          records: fulfillmentList,
+          integrity: {
+            orphanedLineCount: orphanedFulfillmentLines.length,
+            orphanedLines: orphanedFulfillmentLines,
+            consistentWithCurrentSaleLines: orphanedFulfillmentLines.length === 0
+          }
         },
         depositPlan: {
           proposedAction: totalPayments > 0
