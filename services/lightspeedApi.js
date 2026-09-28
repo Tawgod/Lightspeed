@@ -46,7 +46,7 @@ export function createLightspeedClient({ domain, token }) {
     },
 
     searchSalesByInvoiceNumber(invoiceNumber) {
-      return request(`/api/${DEFAULT_API_VERSION}/search?invoice_number=${encodeURIComponent(invoiceNumber)}`);
+      return request(`/api/${DEFAULT_API_VERSION}/search?type=sales&invoice_number=${encodeURIComponent(invoiceNumber)}&page_size=20`);
     },
 
     getFulfillmentsForSale(saleId) {
