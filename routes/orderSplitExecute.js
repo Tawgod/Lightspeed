@@ -162,5 +162,71 @@ export function createOrderSplitExecuteRouter({ domain, token }) {
     }
   });
 
+  router.post('/sales/:saleRef/repair-pickup', async (req, res) => {
+    try {
+      const client = createLightspeedClient({ domain, token });
+      const saleId = await resolve(client, req.params.saleRef);
+      const original = unwrap(await client.getSale(saleId)) || {};
+      const fulfillments = unwrap(await client.getFulfillmentsForSale(saleId)) || [];
+      const hasPickup = (Array.isArray(fulfillments) ? fulfillments : []).some(f => f.type === 'PICKUP');
+
+      if (!hasPickup) {
+        return res.status(409).json({ repaired: false, error: 'No PICKUP fulfillment exists for this sale.' });
+      }
+
+      const source = original.source || {};
+      const authorId = source.author?.id || source.author_id || original.user_id || original.salesperson_id;
+      const registerId = source.register_id || original.register_id;
+      if (!authorId) return res.status(422).json({ repaired:false, error:'Could not determine author/cashier ID.' });
+
+      const attributes = Array.from(new Set([...(Array.isArray(original.attributes) ? original.attributes : []), 'pickup']));
+
+      const lines = (original.line_items || []).map(line => ({
+        id: line.id,
+        product: { id: line.product_id || line.product?.id },
+        quantity: Number(line.quantity || 0),
+        pricing: {
+          price: String(line.unit_price ?? line.price ?? line.pricing?.price ?? 0),
+          cost: String(line.unit_cost ?? line.cost ?? line.pricing?.cost ?? 0),
+          discount: String(line.unit_discount ?? line.discount ?? line.pricing?.discount ?? 0),
+          loyalty_amount: String(line.unit_loyalty_value ?? line.loyalty_value ?? line.pricing?.loyalty_amount ?? 0)
+        },
+        tax: {
+          id: line.tax_id || line.tax?.id,
+          amount: String(line.unit_tax ?? line.tax?.amount ?? line.tax ?? 0)
+        },
+        status: line.status || 'CONFIRMED'
+      }));
+
+      const updated = unwrap(await client.updateSale(saleId, {
+        source: {
+          author_id: authorId,
+          ...(registerId ? {register_id: registerId} : {}),
+          ...(source.id ? {id: source.id} : {}),
+          ...(source.type ? {type: source.type} : {})
+        },
+        state: original.state || 'pending',
+        ...(original.date ? {date: original.date} : {}),
+        ...(original.invoice_number ? {invoice_number: original.invoice_number} : {}),
+        ...(original.short_code ? {short_code: original.short_code} : {}),
+        attributes,
+        customer_id: original.customer_id || null,
+        note: original.note || null,
+        line_items: lines,
+        payments: original.payments || []
+      }));
+
+      res.json({
+        repaired: true,
+        saleId,
+        invoiceNumber: updated?.invoice_number || original.invoice_number || null,
+        attributes: updated?.attributes || attributes,
+        lineItemCount: (updated?.line_items || original.line_items || []).length
+      });
+    } catch (e) {
+      res.status(e.status || 500).json({ repaired:false, error:e.message, details:e.details || null });
+    }
+  });
+
   return router;
 }
