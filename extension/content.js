@@ -379,7 +379,7 @@ function openSplitOverlay(saleRef) {
           (attrs || order.state || 'open') +
           ' · ' + String(order.lineCount || 0) + ' lines' +
           ' · Qty ' + String(order.quantityTotal || 0) +
-          ' · Payment 
+          ' · Payment $' + Number(order.paymentTotal || 0).toFixed(2);
         Object.assign(meta.style, {
           fontSize:'12px',
           color:'#64748b'
@@ -439,72 +439,7 @@ function openSplitOverlay(saleRef) {
   });
   document.body.appendChild(overlay);
 }
-window.addEventListener('message', (event) => {
-  if (event.origin !== new URL(HCT_BACKEND).origin) return;
-  if (event.data?.type === 'HCT_SPLIT_COMPLETE') {
-    closeSplitOverlay();
-  }
-});
- + Number(order.paymentTotal || 0).toFixed(2);
-        Object.assign(meta.style, {
-          fontSize:'12px',
-          color:'#64748b'
-        });
 
-        row.append(titleLine, meta);
-        row.addEventListener('click', () => loadOrder(order.invoiceNumber || order.id));
-        list.appendChild(row);
-      }
-    };
-
-    fetch(HCT_BACKEND + '/api/work-orders/eligible')
-      .then(async response => {
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Could not load eligible orders.');
-        orders = Array.isArray(data.orders) ? data.orders : [];
-        renderOrders();
-      })
-      .catch(error => {
-        list.innerHTML = '';
-        const failed = document.createElement('div');
-        failed.textContent = 'Could not load order list: ' + error.message;
-        Object.assign(failed.style, {
-          padding:'16px',
-          color:'#b91c1c',
-          fontSize:'13px'
-        });
-        list.appendChild(failed);
-      });
-
-    input.addEventListener('input', renderOrders);
-
-    const submitManual = () => {
-      const ref = manualInput.value.trim();
-      if (!ref) {
-        manualInput.focus();
-        return;
-      }
-      loadOrder(ref);
-    };
-
-    open.addEventListener('click', submitManual);
-    manualInput.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter') submitManual();
-    });
-
-    manualRow.append(manualInput, open);
-    card.append(heading, help, input, list, manualRow);
-    lookup.appendChild(card);
-    panel.appendChild(lookup);
-    setTimeout(() => input.focus(), 0);
-  }
-
-  overlay.appendChild(panel);
-  overlay.addEventListener('click', (event) => {
-    if (event.target === overlay) closeSplitOverlay();
-  });
-  document.body.appendChild(overlay);
-}
 window.addEventListener('message', (event) => {
   if (event.origin !== new URL(HCT_BACKEND).origin) return;
   if (event.data?.type === 'HCT_SPLIT_COMPLETE') {
