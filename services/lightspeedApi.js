@@ -66,6 +66,13 @@ export function createLightspeedClient({ domain, token }) {
         method: 'POST',
         body: JSON.stringify(sale)
       });
+    },
+
+    updateSale(saleId, sale) {
+      return request(`/api/2026-01/sales/${encodeURIComponent(saleId)}`, {
+        method: 'PUT',
+        body: JSON.stringify(sale)
+      });
     }
   };
 }
