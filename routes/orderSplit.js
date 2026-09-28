@@ -8,6 +8,15 @@ function unwrapData(payload) {
   return payload;
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
 function amountFromPayment(payment) {
   const candidates = [
     payment?.amount,
@@ -190,6 +199,17 @@ export function createOrderSplitRouter({ domain, token }) {
       const sale = unwrapData(await client.getSale(resolved.saleId)) || {};
       const lines = sale.line_items || [];
       const payments = sale.payments || [];
+
+      const uniqueProductIds = [...new Set(lines.map(line => line.product_id).filter(Boolean))];
+      const productEntries = await Promise.all(uniqueProductIds.map(async (productId) => {
+        try {
+          const product = unwrapData(await client.getProduct(productId)) || {};
+          return [productId, product];
+        } catch {
+          return [productId, {}];
+        }
+      }));
+      const productsById = Object.fromEntries(productEntries);
       const paymentTotal = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
 
       let storeCreditBalance = null;
@@ -211,11 +231,14 @@ export function createOrderSplitRouter({ domain, token }) {
       const rows = lines.map((line) => {
         const price = line.unit_price ?? line.price ?? 0;
         const qty = Number(line.quantity || 1);
+        const product = productsById[line.product_id] || {};
+        const productName = product.name || 'Unknown Product';
+        const sku = product.sku || product.code || 'No SKU';
         return `
           <tr>
             <td style="padding:8px;border-bottom:1px solid #ddd;"><input type="checkbox" class="split-select" data-line-id="${line.id}"></td>
-            <td style="padding:8px;border-bottom:1px solid #ddd;">${line.id}</td>
-            <td style="padding:8px;border-bottom:1px solid #ddd;">${line.product_id}</td>
+            <td style="padding:8px;border-bottom:1px solid #ddd;"><strong>${escapeHtml(productName)}</strong></td>
+            <td style="padding:8px;border-bottom:1px solid #ddd;">${escapeHtml(sku)}</td>
             <td style="padding:8px;border-bottom:1px solid #ddd;">${qty}</td>
             <td style="padding:8px;border-bottom:1px solid #ddd;"><input type="number" min="1" max="${qty}" value="1" class="split-qty" data-line-id="${line.id}" style="width:70px;padding:4px;"></td>
             <td style="padding:8px;border-bottom:1px solid #ddd;">${Number(price).toFixed(2)}</td>
@@ -242,7 +265,7 @@ export function createOrderSplitRouter({ domain, token }) {
   </div>
 </div>
 <table style="border-collapse:collapse;width:100%;">
-<thead><tr><th>Select</th><th>Line ID</th><th>Product ID</th><th>Qty</th><th>Split Qty</th><th>Price</th><th>Action</th></tr></thead>
+<thead><tr><th>Select</th><th>Product</th><th>SKU</th><th>Qty</th><th>Split Qty</th><th>Price</th><th>Action</th></tr></thead>
 <tbody>${rows}</tbody>
 </table>
 <button id="split-selected-btn" onclick="splitSelected()" style="margin-top:16px;padding:10px 16px;font-weight:bold;">Split selected items</button>
