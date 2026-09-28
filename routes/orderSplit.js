@@ -155,5 +155,111 @@ export function createOrderSplitRouter({ domain, token }) {
     }
   });
 
+
+  // Controlled write test: create a NEW parked sale from selected quantities.
+  // The original sale is never updated by this endpoint.
+  router.post('/sales/:saleId/create-test-copy', async (req, res) => {
+    try {
+      const client = createLightspeedClient({ domain, token });
+      const saleRef = req.params.saleId;
+      const { lineItemId, quantity = 1 } = req.body || {};
+
+      if (!lineItemId) {
+        return res.status(400).json({ error: 'lineItemId is required.' });
+      }
+
+      const requestedQty = Number(quantity);
+      if (!Number.isFinite(requestedQty) || requestedQty <= 0) {
+        return res.status(400).json({ error: 'quantity must be greater than zero.' });
+      }
+
+      const resolved = await resolveSaleId(client, saleRef);
+      const original = unwrapData(await client.getSale(resolved.saleId)) || {};
+      const originalLines = original.line_items || [];
+      const selected = originalLines.find(line => line.id === lineItemId);
+
+      if (!selected) {
+        return res.status(404).json({ error: 'Selected line item was not found on the original sale.' });
+      }
+
+      const availableQty = Number(selected.quantity || 0);
+      if (requestedQty > availableQty) {
+        return res.status(400).json({
+          error: 'Requested quantity exceeds the quantity on the original line.',
+          requestedQty,
+          availableQty
+        });
+      }
+
+      if (!original.customer_id) {
+        return res.status(400).json({ error: 'Original sale must have a customer before it can be split.' });
+      }
+
+      const state = String(original.state || '').toLowerCase();
+      if (['closed', 'voided'].includes(state)) {
+        return res.status(409).json({ error: `Original sale state "${state}" cannot be used for this test.` });
+      }
+
+      const source = original.source || {};
+      const authorId =
+        source.author_id ||
+        original.user_id ||
+        original.salesperson_id;
+
+      if (!authorId) {
+        return res.status(422).json({
+          error: 'Could not determine the source author/cashier ID required to create the parked sale.',
+          hint: 'Inspect the original sale source/user fields before retrying.'
+        });
+      }
+
+      const payload = {
+        source: {
+          author_id: authorId,
+          ...(source.register_id || original.register_id
+            ? { register_id: source.register_id || original.register_id }
+            : {}),
+          type: 'HobbyCornerOrderSplitPOC'
+        },
+        state: 'parked',
+        customer_id: original.customer_id,
+        note: `TEST SPLIT from sale ${original.invoice_number || resolved.saleId}. Original sale unchanged.`,
+        line_items: [
+          {
+            product: { id: selected.product_id },
+            quantity: requestedQty,
+            pricing: {
+              price: String(selected.unit_price ?? selected.price ?? 0)
+            },
+            tax: {
+              id: selected.tax_id,
+              amount: String((selected.unit_tax ?? selected.tax ?? 0) * requestedQty)
+            }
+          }
+        ]
+      };
+
+      const createdPayload = await client.createSale(payload);
+      const created = unwrapData(createdPayload) || createdPayload;
+
+      res.status(201).json({
+        created: true,
+        originalSaleId: resolved.saleId,
+        originalInvoiceNumber: original.invoice_number || null,
+        originalSaleModified: false,
+        selectedLineItemId: lineItemId,
+        quantity: requestedQty,
+        newSale: created
+      });
+    } catch (error) {
+      console.error('Test split copy failed:', error);
+      res.status(error.status || 500).json({
+        error: error.message,
+        details: error.details || null,
+        originalSaleModified: false
+      });
+    }
+  });
+
   return router;
 }
