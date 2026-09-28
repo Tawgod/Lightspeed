@@ -34,8 +34,14 @@ document.getElementById('detect').addEventListener('click', detectContext);
 document.getElementById('split').addEventListener('click', async () => {
   const ref = saleRef();
   if (!ref) return setStatus('Enter an invoice/order number first.');
-  const url = BACKEND + '/api/order-split/sales/' + encodeURIComponent(ref) + '/test';
-  await chrome.tabs.create({url});
+  try {
+    const [tab] = await chrome.tabs.query({active:true,currentWindow:true});
+    if (!tab?.id) throw new Error('No active Lightspeed tab.');
+    await chrome.tabs.sendMessage(tab.id, {type:'HCT_OPEN_SPLIT', saleRef:ref});
+    window.close();
+  } catch (e) {
+    setStatus('Open a Lightspeed page first, then try again.');
+  }
 });
 
 document.getElementById('combine').addEventListener('click', async () => {
