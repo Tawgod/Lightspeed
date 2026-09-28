@@ -38,13 +38,13 @@ export function createDepositConversionRouter({ domain, token }) {
     ...(line.note ? { note: line.note } : {})
   });
 
-  const mapPayment = (payment) => ({
+  const mapPayment = (payment, amountOverride) => ({
     ...(payment.id ? { id: payment.id } : {}),
     type: {
       config_id: payment.type?.config_id || payment.retailer_payment_type_id
     },
     ...(payment.date || payment.payment_date ? { date: payment.date || payment.payment_date } : {}),
-    amount: String(payment.amount ?? 0),
+    amount: String(amountOverride ?? payment.amount ?? 0),
     ...(payment.source?.register_id || payment.register_id
       ? { source: { register_id: payment.source?.register_id || payment.register_id } }
       : {})
@@ -119,12 +119,18 @@ export function createDepositConversionRouter({ domain, token }) {
       const creditBefore = unwrap(await client.getStoreCredit(original.customer_id)) || {};
       const balanceBefore = Number(creditBefore.balance || 0);
 
-      const cleared = unwrap(await client.updateSale(saleId, baseSalePayload(original, []))) || {};
+      const neutralizedPayments = payments.map(p => mapPayment(p, 0));
+      const cleared = unwrap(await client.updateSale(saleId, baseSalePayload(original, neutralizedPayments))) || {};
       paymentRemoved = true;
 
       const verifyCleared = unwrap(await client.getSale(saleId)) || {};
-      if ((verifyCleared.payments || []).length !== 0) {
-        throw Object.assign(new Error('Payment removal did not verify cleanly.'), { status: 502 });
+      const verifiedPayments = verifyCleared.payments || [];
+      const remainingPaymentTotal = verifiedPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+      if (Math.abs(remainingPaymentTotal) > 0.0001) {
+        throw Object.assign(new Error('Payment neutralization did not verify cleanly.'), {
+          status: 502,
+          details: { remainingPaymentTotal, payments: verifiedPayments }
+        });
       }
 
       const clientId = 'hc-deposit-' + createHash('sha256')
@@ -145,9 +151,11 @@ export function createDepositConversionRouter({ domain, token }) {
       } catch (creditError) {
         let rollback = { attempted:true, restored:false, error:null };
         try {
-          await client.updateSale(saleId, baseSalePayload(original, payments.map(mapPayment)));
+          await client.updateSale(saleId, baseSalePayload(original, payments.map(p => mapPayment(p))));
           const check = unwrap(await client.getSale(saleId)) || {};
-          rollback.restored = (check.payments || []).length === payments.length;
+          const restoredPayments = check.payments || [];
+          const restoredTotal = restoredPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+          rollback.restored = Math.abs(restoredTotal - amount) < 0.0001;
         } catch (rollbackError) {
           rollback.error = rollbackError.message;
         }
@@ -179,7 +187,8 @@ export function createDepositConversionRouter({ domain, token }) {
           transaction: creditTxn
         },
         sale: {
-          paymentsRemaining: (cleared.payments || []).length
+          paymentRecordsRemaining: (verifyCleared.payments || []).length,
+          remainingPaymentTotal: (verifyCleared.payments || []).reduce((sum, p) => sum + Number(p.amount || 0), 0)
         }
       });
     } catch (e) {
