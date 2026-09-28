@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import PDFDocument from 'pdfkit';
 import bwipjs from 'bwip-js';
+import AdmZip from 'adm-zip';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs/promises';
@@ -41,6 +42,47 @@ app.use('/api/work-orders', createWorkOrderCombineRouter({
   domain: LIGHTSPEED_DOMAIN,
   token: LIGHTSPEED_TOKEN
 }));
+
+
+app.get('/extension', (req, res) => {
+  res.type('html').send(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Hobby Corner Lightspeed Toolkit</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+</head>
+<body style="font-family:Arial,sans-serif;max-width:720px;margin:40px auto;padding:0 20px;line-height:1.5;">
+  <h1>Hobby Corner Lightspeed Toolkit</h1>
+  <p>Download the current Chrome extension package, then install it as an unpacked extension.</p>
+  <p><a href="/extension/download" style="display:inline-block;padding:12px 18px;background:#222;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;">Download Extension ZIP</a></p>
+  <ol>
+    <li>Download the ZIP and extract it.</li>
+    <li>Open <code>chrome://extensions</code>.</li>
+    <li>Turn on <strong>Developer mode</strong>.</li>
+    <li>Click <strong>Load unpacked</strong>.</li>
+    <li>Select the extracted <code>extension</code> folder.</li>
+  </ol>
+  <p style="color:#666;font-size:13px;">This test build points to the isolated Railway test backend.</p>
+</body>
+</html>`);
+});
+
+app.get('/extension/download', async (req, res) => {
+  try {
+    const extensionDir = path.join(__dirname, 'extension');
+    const zip = new AdmZip();
+    zip.addLocalFolder(extensionDir, 'extension');
+    const buffer = zip.toBuffer();
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename="Hobby-Corner-Lightspeed-Toolkit.zip"');
+    res.send(buffer);
+  } catch (error) {
+    console.error('Extension ZIP generation failed:', error);
+    res.status(500).send('Could not build the extension download.');
+  }
+});
 
 // Health-check route
 app.get('/', (req, res) => {
