@@ -192,19 +192,21 @@ export function createOrderSplitRouter({ domain, token }) {
 
       const rows = lines.map((line) => {
         const price = line.unit_price ?? line.price ?? 0;
+        const qty = Number(line.quantity || 1);
         return `
           <tr>
             <td style="padding:8px;border-bottom:1px solid #ddd;"><input type="checkbox" class="split-select" data-line-id="${line.id}"></td>
             <td style="padding:8px;border-bottom:1px solid #ddd;">${line.id}</td>
             <td style="padding:8px;border-bottom:1px solid #ddd;">${line.product_id}</td>
-            <td style="padding:8px;border-bottom:1px solid #ddd;">${line.quantity}</td>
-            <td style="padding:8px;border-bottom:1px solid #ddd;">${Number(price).toFixed(2)}</td>
+            <td style="padding:8px;border-bottom:1px solid #ddd;">${qty}</td>
+            <td style="padding:8px;border-bottom:1px solid #ddd;"><input type="number" min="1" max="${qty}" value="1" class="split-qty" data-line-id="${line.id}" style="width:70px;padding:4px;"></td>
+            <td style="padding:8px;border-bottom:1px solid #ddd;">$${Number(price).toFixed(2)}</td>
             <td style="padding:8px;border-bottom:1px solid #ddd;">
-              <button onclick="createCopy('${line.id}', ${Number(line.quantity || 1)})">Create parked copy</button>
+              <button onclick="createCopy('${line.id}', ${qty})">Create parked copy</button>
               <button style="margin-left:6px;" onclick="removeOriginal('${line.id}')">Remove from original</button>
             </td>
           </tr>`;
-      }).join('');
+
 
       res.type('html').send(`<!doctype html>
 <html>
