@@ -63,6 +63,7 @@ export function createOrderSplitExecuteRouter({ domain, token }) {
       const source = original.source || {};
       const authorId = source.author?.id || source.author_id || original.user_id || original.salesperson_id;
       const registerId = source.register_id || original.register_id;
+      const originalAttributes = Array.isArray(original.attributes) ? original.attributes : [];
       if (!authorId) return res.status(422).json({ error: 'Could not determine author/cashier ID.' });
 
       const newLine = ({line,quantity}) => ({
@@ -102,8 +103,17 @@ export function createOrderSplitExecuteRouter({ domain, token }) {
 
       try {
         await client.updateSale(saleId, {
-          source: { author_id: authorId, ...(registerId ? {register_id: registerId} : {}), type: source.type || 'HobbyCornerOrderSplit' },
+          source: {
+            author_id: authorId,
+            ...(registerId ? {register_id: registerId} : {}),
+            ...(source.id ? {id: source.id} : {}),
+            ...(source.type ? {type: source.type} : {})
+          },
           state: original.state || 'pending',
+          ...(original.date ? {date: original.date} : {}),
+          ...(original.invoice_number ? {invoice_number: original.invoice_number} : {}),
+          ...(original.short_code ? {short_code: original.short_code} : {}),
+          attributes: originalAttributes,
           customer_id: original.customer_id,
           note: original.note || null,
           line_items: remaining.map(keepLine),
