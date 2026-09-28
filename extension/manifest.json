@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Hobby Corner Lightspeed Toolkit",
+  "version": "0.2.0",
+  "description": "Hobby Corner tools for Lightspeed X-Series order splitting, work-order combining, and PO labels.",
+  "permissions": [
+    "activeTab",
+    "tabs"
+  ],
+  "host_permissions": [
+    "*://*.retail.lightspeed.app/*",
+    "https://lightspeed-production.up.railway.app/*"
+  ],
+  "action": {
+    "default_title": "Hobby Corner Toolkit",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.retail.lightspeed.app/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
