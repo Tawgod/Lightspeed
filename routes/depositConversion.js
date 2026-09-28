@@ -100,10 +100,24 @@ export function createDepositConversionRouter({ domain, token }) {
         return res.status(409).json({ converted:false, error:'Sale has no payment/deposit to convert.' });
       }
 
-      const amount = payments.reduce((sum,p) => sum + Number(p.amount || 0), 0);
-      if (!(amount > 0)) {
-        return res.status(409).json({ converted:false, error:'No positive payment amount detected.', amount });
+      const paymentTotal = payments.reduce((sum,p) => sum + Number(p.amount || 0), 0);
+      if (!(paymentTotal > 0)) {
+        return res.status(409).json({ converted:false, error:'No positive payment amount detected.', paymentTotal });
       }
+
+      const requestedAmount = req.body?.amount == null ? paymentTotal : Number(req.body.amount);
+      if (!Number.isFinite(requestedAmount) || requestedAmount <= 0) {
+        return res.status(400).json({ converted:false, error:'Conversion amount must be greater than zero.' });
+      }
+      if (requestedAmount - paymentTotal > 0.0001) {
+        return res.status(400).json({
+          converted:false,
+          error:'Conversion amount cannot exceed the current payment/deposit total.',
+          requestedAmount,
+          paymentTotal
+        });
+      }
+      const amount = Math.round(requestedAmount * 100) / 100;
 
       for (const p of payments) {
         const configId = p.type?.config_id || p.retailer_payment_type_id;
@@ -119,22 +133,33 @@ export function createDepositConversionRouter({ domain, token }) {
       const creditBefore = unwrap(await client.getStoreCredit(original.customer_id)) || {};
       const balanceBefore = Number(creditBefore.balance || 0);
 
-      const neutralizedPayments = payments.map(p => mapPayment(p, 0));
-      const cleared = unwrap(await client.updateSale(saleId, baseSalePayload(original, neutralizedPayments))) || {};
+      let leftToConvert = amount;
+      const adjustedPayments = payments.map(p => {
+        const current = Number(p.amount || 0);
+        const reduction = Math.min(current, leftToConvert);
+        leftToConvert = Math.round((leftToConvert - reduction) * 100) / 100;
+        return mapPayment(p, Math.round((current - reduction) * 100) / 100);
+      });
+
+      const cleared = unwrap(await client.updateSale(saleId, baseSalePayload(original, adjustedPayments))) || {};
       paymentRemoved = true;
 
       const verifyCleared = unwrap(await client.getSale(saleId)) || {};
       const verifiedPayments = verifyCleared.payments || [];
       const remainingPaymentTotal = verifiedPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
-      if (Math.abs(remainingPaymentTotal) > 0.0001) {
-        throw Object.assign(new Error('Payment neutralization did not verify cleanly.'), {
+      const expectedRemaining = Math.round((paymentTotal - amount) * 100) / 100;
+      if (Math.abs(remainingPaymentTotal - expectedRemaining) > 0.0001) {
+        throw Object.assign(new Error('Payment reduction did not verify cleanly.'), {
           status: 502,
-          details: { remainingPaymentTotal, payments: verifiedPayments }
+          details: { remainingPaymentTotal, expectedRemaining, payments: verifiedPayments }
         });
       }
 
-      const clientId = 'hc-deposit-' + createHash('sha256')
-        .update(saleId + ':' + payments.map(p => p.id || '').join(':') + ':' + amount.toFixed(4))
+      const paymentFingerprint = payments
+        .map(p => (p.id || '') + ':' + Number(p.amount || 0).toFixed(2))
+        .join('|');
+      const clientId = 'hcs-' + createHash('sha256')
+        .update(saleId + ':' + paymentFingerprint + ':' + amount.toFixed(2))
         .digest('hex')
         .slice(0, 32);
 
@@ -155,7 +180,7 @@ export function createDepositConversionRouter({ domain, token }) {
           const check = unwrap(await client.getSale(saleId)) || {};
           const restoredPayments = check.payments || [];
           const restoredTotal = restoredPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
-          rollback.restored = Math.abs(restoredTotal - amount) < 0.0001;
+          rollback.restored = Math.abs(restoredTotal - paymentTotal) < 0.0001;
         } catch (rollbackError) {
           rollback.error = rollbackError.message;
         }
@@ -176,8 +201,9 @@ export function createDepositConversionRouter({ domain, token }) {
         converted:true,
         saleId,
         invoiceNumber: original.invoice_number || null,
-        removedPaymentAmount: amount,
-        paymentCountRemoved: payments.length,
+        convertedPaymentAmount: amount,
+        originalPaymentTotal: paymentTotal,
+        remainingPaymentTotal,
         storeCredit: {
           clientId,
           balanceBefore,
