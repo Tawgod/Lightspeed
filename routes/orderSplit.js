@@ -176,6 +176,7 @@ export function createOrderSplitRouter({ domain, token }) {
             <td style="padding:8px;border-bottom:1px solid #ddd;">${Number(price).toFixed(2)}</td>
             <td style="padding:8px;border-bottom:1px solid #ddd;">
               <button onclick="createCopy('${line.id}', ${Number(line.quantity || 1)})">Create parked copy</button>
+              <button style="margin-left:6px;" onclick="removeOriginal('${line.id}')">Remove from original</button>
             </td>
           </tr>`;
       }).join('');
@@ -192,6 +193,23 @@ export function createOrderSplitRouter({ domain, token }) {
 </table>
 <pre id="result" style="margin-top:20px;background:#f5f5f5;padding:15px;white-space:pre-wrap;"></pre>
 <script>
+async function removeOriginal(lineItemId) {
+  if (!confirm('REMOVE this line from the ORIGINAL sale? Use this only after a parked copy has been created.')) return;
+  const out = document.getElementById('result');
+  out.textContent = 'Updating original sale...';
+  try {
+    const response = await fetch('/api/order-split/sales/${encodeURIComponent(saleRef)}/remove-from-original', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ lineItemId })
+    });
+    const data = await response.json();
+    out.textContent = JSON.stringify(data, null, 2);
+  } catch (error) {
+    out.textContent = String(error);
+  }
+}
+
 async function createCopy(lineItemId, quantity) {
   if (!confirm('Create a NEW parked test sale from this line? The original sale will remain unchanged.')) return;
   const out = document.getElementById('result');
@@ -316,6 +334,107 @@ async function createCopy(lineItemId, quantity) {
         error: error.message,
         details: error.details || null,
         originalSaleModified: false
+      });
+    }
+  });
+
+
+  // Controlled write test: remove one selected line from the ORIGINAL sale by
+  // resubmitting all remaining lines. This endpoint never touches the copied sale.
+  router.post('/sales/:saleId/remove-from-original', async (req, res) => {
+    try {
+      const client = createLightspeedClient({ domain, token });
+      const saleRef = req.params.saleId;
+      const { lineItemId } = req.body || {};
+
+      if (!lineItemId) {
+        return res.status(400).json({ error: 'lineItemId is required.' });
+      }
+
+      const resolved = await resolveSaleId(client, saleRef);
+      const original = unwrapData(await client.getSale(resolved.saleId)) || {};
+      const originalLines = original.line_items || [];
+      const selected = originalLines.find(line => line.id === lineItemId);
+
+      if (!selected) {
+        return res.status(404).json({ error: 'Selected line item was not found on the original sale.' });
+      }
+
+      const remainingLines = originalLines.filter(line => line.id !== lineItemId);
+      if (remainingLines.length === 0) {
+        return res.status(409).json({ error: 'Refusing to remove the final line item from the original sale.' });
+      }
+
+      const state = String(original.state || '').toLowerCase();
+      if (['closed', 'voided'].includes(state)) {
+        return res.status(409).json({ error: `Original sale state "${state}" cannot be changed by this test.` });
+      }
+
+      const source = original.source || {};
+      const authorId = source.author?.id || source.author_id || original.user_id || original.salesperson_id;
+      const registerId = source.register_id || original.register_id;
+
+      if (!authorId) {
+        return res.status(422).json({ error: 'Could not determine source author/cashier ID.' });
+      }
+
+      const mapExistingLine = (line) => ({
+        id: line.id,
+        product: { id: line.product_id || line.product?.id },
+        quantity: Number(line.quantity),
+        pricing: {
+          price: String(line.unit_price ?? line.price ?? line.pricing?.price ?? 0),
+          ...(line.unit_cost ?? line.cost ?? line.pricing?.cost) !== undefined
+            ? { cost: String(line.unit_cost ?? line.cost ?? line.pricing?.cost) }
+            : {},
+          discount: String(line.unit_discount ?? line.discount ?? line.pricing?.discount ?? 0),
+          loyalty_amount: String(line.unit_loyalty_value ?? line.loyalty_value ?? line.pricing?.loyalty_amount ?? 0)
+        },
+        tax: {
+          id: line.tax_id || line.tax?.id,
+          amount: String(line.unit_tax ?? line.tax ?? line.tax?.amount ?? 0)
+        },
+        status: line.status || 'CONFIRMED',
+        ...(line.note ? { note: line.note } : {})
+      });
+
+      const payload = {
+        source: {
+          author_id: authorId,
+          ...(registerId ? { register_id: registerId } : {}),
+          type: source.type || 'HobbyCornerOrderSplitPOC',
+          ...(source.id ? { id: source.id } : {})
+        },
+        state: original.state || 'pending',
+        customer_id: original.customer_id || null,
+        note: original.note || null,
+        line_items: remainingLines.map(mapExistingLine),
+        payments: (original.payments || []).map(payment => ({
+          id: payment.id,
+          ...(payment.type ? { type: payment.type } : {}),
+          ...(payment.date ? { date: payment.date } : {}),
+          amount: String(payment.amount ?? 0)
+        }))
+      };
+
+      const updatedPayload = await client.updateSale(resolved.saleId, payload);
+      const updated = unwrapData(updatedPayload) || updatedPayload;
+
+      res.json({
+        updated: true,
+        originalSaleId: resolved.saleId,
+        originalInvoiceNumber: original.invoice_number || null,
+        removedLineItemId: lineItemId,
+        removedProductId: selected.product_id || selected.product?.id || null,
+        remainingLineCount: remainingLines.length,
+        sale: updated
+      });
+    } catch (error) {
+      console.error('Original sale line removal test failed:', error);
+      res.status(error.status || 500).json({
+        updated: false,
+        error: error.message,
+        details: error.details || null
       });
     }
   });
