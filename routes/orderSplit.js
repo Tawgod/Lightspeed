@@ -194,6 +194,7 @@ export function createOrderSplitRouter({ domain, token }) {
         const price = line.unit_price ?? line.price ?? 0;
         return `
           <tr>
+            <td style="padding:8px;border-bottom:1px solid #ddd;"><input type="checkbox" class="split-select" data-line-id="${line.id}"></td>
             <td style="padding:8px;border-bottom:1px solid #ddd;">${line.id}</td>
             <td style="padding:8px;border-bottom:1px solid #ddd;">${line.product_id}</td>
             <td style="padding:8px;border-bottom:1px solid #ddd;">${line.quantity}</td>
@@ -212,11 +213,43 @@ export function createOrderSplitRouter({ domain, token }) {
 <h1>Order Split Test — Sale ${sale.invoice_number || saleRef}</h1>
 <p><strong>Original sale is not modified by this test.</strong></p>
 <table style="border-collapse:collapse;width:100%;">
-<thead><tr><th>Line ID</th><th>Product ID</th><th>Qty</th><th>Price</th><th>Action</th></tr></thead>
+<thead><tr><th>Select</th><th>Line ID</th><th>Product ID</th><th>Qty</th><th>Split Qty</th><th>Price</th><th>Action</th></tr></thead>
 <tbody>${rows}</tbody>
 </table>
+<button id="split-selected-btn" onclick="splitSelected()" style="margin-top:16px;padding:10px 16px;font-weight:bold;">Split selected items</button>
 <pre id="result" style="margin-top:20px;background:#f5f5f5;padding:15px;white-space:pre-wrap;"></pre>
 <script>
+async function splitSelected() {
+  const selected = [...document.querySelectorAll('.split-select:checked')];
+  if (!selected.length) {
+    alert('Select at least one item to split.');
+    return;
+  }
+  const items = selected.map(box => {
+    const lineItemId = box.dataset.lineId;
+    const qtyInput = document.querySelector('.split-qty[data-line-id="' + lineItemId + '"]');
+    return { lineItemId, quantity: parseInt(qtyInput?.value || '1', 10) };
+  });
+  if (!confirm('Create a new parked sale for the selected items and remove them from the original sale?')) return;
+  const out = document.getElementById('result');
+  const btn = document.getElementById('split-selected-btn');
+  btn.disabled = true;
+  out.textContent = 'Running combined split...';
+  try {
+    const response = await fetch('/api/order-split/sales/${encodeURIComponent(saleRef)}/split', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ items })
+    });
+    const data = await response.json();
+    out.textContent = JSON.stringify(data, null, 2);
+  } catch (error) {
+    out.textContent = String(error);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function removeOriginal(lineItemId) {
   if (!confirm('REMOVE this line from the ORIGINAL sale? Use this only after a parked copy has been created.')) return;
   const out = document.getElementById('result');
