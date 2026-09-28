@@ -61,6 +61,13 @@ export function createLightspeedClient({ domain, token }) {
       return request(`/api/2026-07/store_credits/${encodeURIComponent(customerId)}`);
     },
 
+    createStoreCreditTransaction(customerId, transaction) {
+      return request(`/api/2026-01/store_credits/${encodeURIComponent(customerId)}/transactions`, {
+        method: 'POST',
+        body: JSON.stringify(transaction)
+      });
+    },
+
     createSale(sale) {
       return request('/api/2026-01/sales', {
         method: 'POST',
