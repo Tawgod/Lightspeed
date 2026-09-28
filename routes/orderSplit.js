@@ -243,7 +243,7 @@ async function convertDeposit() {
     alert('Enter an amount greater than zero.');
     return;
   }
-  if (!confirm('Move 
+  if (!confirm('Move ' + amount.toFixed(2) + ' dollars from this sale payment/deposit into customer store credit?')) return;
   const out = document.getElementById('result');
   const btn = document.getElementById('convert-deposit-btn');
   btn.disabled = true;
