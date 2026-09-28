@@ -217,8 +217,26 @@ export function createOrderSplitRouter({ domain, token }) {
 <tbody>${rows}</tbody>
 </table>
 <button id="split-selected-btn" onclick="splitSelected()" style="margin-top:16px;padding:10px 16px;font-weight:bold;">Split selected items</button>
+<button onclick="repairPickup()" style="margin-top:16px;margin-left:8px;padding:10px 16px;">Repair pickup metadata</button>
 <pre id="result" style="margin-top:20px;background:#f5f5f5;padding:15px;white-space:pre-wrap;"></pre>
 <script>
+async function repairPickup() {
+  if (!confirm('Restore the pickup attribute on this sale while preserving its current lines?')) return;
+  const out = document.getElementById('result');
+  out.textContent = 'Repairing pickup metadata...';
+  try {
+    const response = await fetch('/api/order-split/sales/${encodeURIComponent(saleRef)}/repair-pickup', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({})
+    });
+    const data = await response.json();
+    out.textContent = JSON.stringify(data, null, 2);
+  } catch (error) {
+    out.textContent = String(error);
+  }
+}
+
 async function splitSelected() {
   const selected = [...document.querySelectorAll('.split-select:checked')];
   if (!selected.length) {
