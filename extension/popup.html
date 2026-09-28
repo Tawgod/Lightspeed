@@ -1,0 +1,32 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Hobby Corner Toolkit</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <h1>Hobby Corner Toolkit</h1>
+    <div class="sub">Lightspeed X-Series</div>
+  </header>
+
+  <section>
+    <label for="sale-ref">Invoice / order number</label>
+    <div class="row">
+      <input id="sale-ref" inputmode="numeric" placeholder="e.g. 20">
+      <button id="detect" class="secondary">Detect</button>
+    </div>
+  </section>
+
+  <section class="actions">
+    <button id="split">Split / Partial Pickup</button>
+    <button id="combine">Find Same-Customer Work Orders</button>
+  </section>
+
+  <section id="status" class="status"></section>
+  <section id="results"></section>
+
+  <script src="popup.js"></script>
+</body>
+</html>
