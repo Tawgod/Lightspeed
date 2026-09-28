@@ -72,7 +72,7 @@ export function createOrderSplitExecuteRouter({ domain, token }) {
         pricing: { price: String(line.unit_price ?? line.price ?? line.pricing?.price ?? 0) },
         tax: {
           id: line.tax_id || line.tax?.id,
-          amount: String((line.unit_tax ?? line.tax?.amount ?? line.tax ?? 0) * quantity)
+          amount: String(line.unit_tax ?? line.tax?.amount ?? line.tax ?? 0)
         }
       });
 
