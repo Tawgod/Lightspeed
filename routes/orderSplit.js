@@ -263,6 +263,14 @@ export function createOrderSplitRouter({ domain, token }) {
       <input id="convert-amount" type="number" min="0.01" max="${paymentTotalValue}" step="0.01" value="${paymentTotalValue}" style="width:90px;padding:4px;margin-left:6px;">
     </label>
   </div>
+  <div style="margin-top:10px;">
+    <label><strong>Destination:</strong>
+      <select id="split-destination" style="padding:5px;margin-left:6px;min-width:260px;">
+        <option value="">Create a new parked order</option>
+      </select>
+    </label>
+    <div id="destination-note" style="font-size:12px;color:#666;margin-top:4px;">Loading other open orders for this customer...</div>
+  </div>
 </div>
 <table style="border-collapse:collapse;width:100%;">
 <thead><tr><th>Select</th><th>Product</th><th>SKU</th><th>Qty</th><th>Split Qty</th><th>Price</th><th>Action</th></tr></thead>
@@ -317,6 +325,30 @@ async function repairPickup() {
   }
 }
 
+async function loadDestinations() {
+  const select = document.getElementById('split-destination');
+  const note = document.getElementById('destination-note');
+  if (!select || !note) return;
+  try {
+    const response = await fetch('/api/work-orders/sales/${encodeURIComponent(saleRef)}/combine-preview');
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Could not load destinations.');
+    const orders = data.otherOpenWorkOrders || [];
+    for (const order of orders) {
+      const option = document.createElement('option');
+      option.value = String(order.invoiceNumber || order.id || '');
+      option.textContent = 'Add to existing order ' + String(order.invoiceNumber || '') +
+        ' (' + String(order.state || '') + ', ' + String(order.lineCount || 0) + ' lines)';
+      select.appendChild(option);
+    }
+    note.textContent = orders.length
+      ? 'Choose an existing open order for this customer, or leave New Order selected.'
+      : 'No other open work orders found. A new parked order will be created.';
+  } catch (error) {
+    note.textContent = 'Could not load existing-order destinations: ' + error.message;
+  }
+}
+
 async function splitSelected() {
   const selected = [...document.querySelectorAll('.split-select:checked')];
   if (!selected.length) {
@@ -328,7 +360,11 @@ async function splitSelected() {
     const qtyInput = document.querySelector('.split-qty[data-line-id="' + lineItemId + '"]');
     return { lineItemId, quantity: parseInt(qtyInput && qtyInput.value ? qtyInput.value : '1', 10) };
   });
-  if (!confirm('Create a new parked sale for the selected items and remove them from the original sale?')) return;
+  const destinationSaleRef = document.getElementById('split-destination')?.value || '';
+  const destinationMessage = destinationSaleRef
+    ? 'Add the selected items to existing order ' + destinationSaleRef + ' and remove them from this order?'
+    : 'Create a new parked sale for the selected items and remove them from the original sale?';
+  if (!confirm(destinationMessage)) return;
   const out = document.getElementById('result');
   const btn = document.getElementById('split-selected-btn');
   btn.disabled = true;
@@ -337,10 +373,19 @@ async function splitSelected() {
     const response = await fetch('/api/order-split/sales/${encodeURIComponent(saleRef)}/split', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ items })
+      body: JSON.stringify({ items, destinationSaleRef: destinationSaleRef || null })
     });
     const data = await response.json();
     out.textContent = JSON.stringify(data, null, 2);
+    if (response.ok && data.splitCompleted) {
+      setTimeout(() => {
+        window.parent.postMessage({
+          type: 'HCT_SPLIT_COMPLETE',
+          originalInvoiceNumber: data.originalSale?.invoiceNumber || null,
+          destinationInvoiceNumber: data.destinationSale?.invoiceNumber || data.newSale?.invoiceNumber || null
+        }, '*');
+      }, 900);
+    }
   } catch (error) {
     out.textContent = String(error);
   } finally {
@@ -364,6 +409,8 @@ async function removeOriginal(lineItemId) {
     out.textContent = String(error);
   }
 }
+
+loadDestinations();
 
 async function createCopy(lineItemId, quantity) {
   if (!confirm('Create a new parked test sale from this line?')) return;
