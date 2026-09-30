@@ -10,6 +10,8 @@ const TIMEZONE = process.env.TIMECLOCK_TIMEZONE || 'America/Chicago';
 const DATABASE_URL = process.env.DATABASE_URL;
 const PIN_PEPPER = process.env.TIMECLOCK_PIN_PEPPER || '';
 const ADMIN_SECRET = process.env.TIMECLOCK_ADMIN_SECRET || '';
+const LIGHTSPEED_DOMAIN = process.env.LIGHTSPEED_DOMAIN || '';
+const LIGHTSPEED_TOKEN = process.env.LIGHTSPEED_TOKEN || '';
 
 if (!DATABASE_URL) {
   console.error('DATABASE_URL is required.');
@@ -388,6 +390,129 @@ async function linkEmployeeDiscord({
   }
 }
 
+function lightspeedUserName(user) {
+  const direct = [
+    user?.display_name,
+    user?.displayName,
+    user?.name,
+    user?.username
+  ].find(value => String(value || '').trim());
+
+  if (direct) return String(direct).trim();
+
+  const first = String(user?.first_name || user?.firstName || '').trim();
+  const last = String(user?.last_name || user?.lastName || '').trim();
+  const combined = [first, last].filter(Boolean).join(' ').trim();
+  if (combined) return combined;
+
+  const email = String(user?.email || '').trim();
+  return email || '';
+}
+
+async function fetchLightspeedUsers() {
+  if (!LIGHTSPEED_DOMAIN || !LIGHTSPEED_TOKEN) {
+    const err = new Error('Lightspeed user sync is not configured.');
+    err.status = 500;
+    throw err;
+  }
+
+  const response = await fetch(
+    `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/users?page_size=1000`,
+    {
+      headers:{
+        Authorization:`Bearer ${LIGHTSPEED_TOKEN}`,
+        Accept:'application/json',
+        'User-Agent':'HobbyCorner-Timeclock/1.0'
+      }
+    }
+  );
+
+  const text = await response.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = text;
+  }
+
+  if (!response.ok) {
+    const err = new Error(`Lightspeed user sync failed (${response.status}).`);
+    err.status = response.status;
+    err.details = data;
+    throw err;
+  }
+
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.data)) return data.data;
+  if (Array.isArray(data?.users)) return data.users;
+  return [];
+}
+
+async function syncLightspeedUsers() {
+  const users = await fetchLightspeedUsers();
+  const client = await pool.connect();
+
+  let inserted = 0;
+  let updated = 0;
+  let skipped = 0;
+
+  try {
+    await client.query('BEGIN');
+
+    for (const user of users) {
+      const lightspeedId = String(user?.id || user?.user_id || user?.userId || '').trim();
+      const name = lightspeedUserName(user);
+      if (!lightspeedId || !name) {
+        skipped++;
+        continue;
+      }
+
+      const key = name.toLowerCase().replace(/\s+/g, ' ');
+
+      let existing = await client.query(
+        'SELECT * FROM employees WHERE lightspeed_user_id=$1 LIMIT 1 FOR UPDATE',
+        [lightspeedId]
+      );
+
+      if (!existing.rows.length) {
+        existing = await client.query(
+          'SELECT * FROM employees WHERE name_key=$1 LIMIT 1 FOR UPDATE',
+          [key]
+        );
+      }
+
+      if (existing.rows.length) {
+        const row = existing.rows[0];
+        await client.query(
+          `UPDATE employees
+           SET lightspeed_user_id=$2,
+               name=$3,
+               name_key=$4,
+               active=TRUE
+           WHERE id=$1`,
+          [row.id, lightspeedId, name, key]
+        );
+        updated++;
+      } else {
+        await client.query(
+          `INSERT INTO employees(lightspeed_user_id, name, name_key, active)
+           VALUES ($1,$2,$3,TRUE)`,
+          [lightspeedId, name, key]
+        );
+        inserted++;
+      }
+    }
+
+    await client.query('COMMIT');
+    return { total:users.length, inserted, updated, skipped };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 async function employeeStatus(employee) {
   const openResult = await pool.query(
     `SELECT * FROM time_entries
@@ -568,8 +693,23 @@ app.get('/api/timeclock/admin/employees', async (req,res) => {
     if (!ADMIN_SECRET || req.get('x-timeclock-admin-secret') !== ADMIN_SECRET) {
       return res.status(403).json({ error:'Forbidden.' });
     }
+
+    let sync = null;
+    let syncWarning = null;
+    try {
+      sync = await syncLightspeedUsers();
+    } catch (error) {
+      syncWarning = error.message;
+      console.error('Lightspeed employee sync failed:', error.message, error.details || '');
+    }
+
     const employees = await listEmployees();
-    res.json({ count:employees.length, employees });
+    res.json({
+      count:employees.length,
+      employees,
+      lightspeedSync:sync,
+      syncWarning
+    });
   } catch (error) {
     res.status(500).json({ error:error.message });
   }
