@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Hobby Corner Lightspeed Toolkit",
-  "version": "0.3.11",
+  "version": "0.3.12",
   "description": "Hobby Corner tools for Lightspeed X-Series order splitting, work-order combining, and PO labels.",
   "permissions": [
     "activeTab",
