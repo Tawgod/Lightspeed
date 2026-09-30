@@ -1,4 +1,4 @@
-const BACKEND = 'https://lightspeed-production.up.railway.app';
+const BACKEND = 'https://lightspeed-api-production-c087.up.railway.app';
 
 const saleInput = document.getElementById('sale-ref');
 const statusEl = document.getElementById('status');
