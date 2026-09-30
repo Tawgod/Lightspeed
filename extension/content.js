@@ -157,6 +157,60 @@ function ensureTimeclockButton() {
   positionTimeclockButton(button);
 }
 
+function detectLightspeedUserName() {
+  const selectors = [
+    '[data-testid*="user"]',
+    '[data-testid*="profile"]',
+    '[aria-label*="account" i]',
+    '[aria-label*="profile" i]',
+    '[aria-label*="user" i]',
+    'header button',
+    'header [role="button"]',
+    'nav button',
+    'nav [role="button"]'
+  ];
+
+  const candidates = [];
+  for (const selector of selectors) {
+    for (const el of document.querySelectorAll(selector)) {
+      const rect = el.getBoundingClientRect();
+      if (
+        rect.width <= 0 ||
+        rect.height <= 0 ||
+        rect.top < 0 ||
+        rect.top > 140
+      ) continue;
+
+      const aria = String(el.getAttribute('aria-label') || '').trim();
+      const title = String(el.getAttribute('title') || '').trim();
+      const text = String(el.textContent || '').trim();
+      const values = [aria, title, text].filter(Boolean);
+
+      for (const raw of values) {
+        const cleaned = raw
+          .replace(/^(account|profile|user|signed in as|logged in as)[:\s-]*/i, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        if (
+          cleaned.length >= 2 &&
+          cleaned.length <= 80 &&
+          /[a-z]/i.test(cleaned) &&
+          !/^(help|search|sell|register|notifications?|settings?|menu|more|support)$/i.test(cleaned)
+        ) {
+          candidates.push(cleaned);
+        }
+      }
+    }
+  }
+
+  const likelyFullName = candidates.find(value =>
+    /^[A-Za-z][A-Za-z'’-]+(?:\s+[A-Za-z][A-Za-z'’-]+)+$/.test(value)
+  );
+
+  return likelyFullName || '';
+}
+
 function closeTimeclockOverlay() {
   document.getElementById('hct-timeclock-overlay')?.remove();
 }
@@ -229,7 +283,8 @@ function openTimeclockOverlay() {
   const nameInput = document.createElement('input');
   nameInput.type = 'text';
   nameInput.placeholder = 'Your name';
-  nameInput.value = localStorage.getItem('hct_timeclock_employee_name') || '';
+  const detectedLightspeedUser = detectLightspeedUserName();
+  nameInput.value = detectedLightspeedUser || localStorage.getItem('hct_timeclock_employee_name') || '';
   Object.assign(nameInput.style, {
     width:'100%',
     boxSizing:'border-box',
@@ -249,7 +304,9 @@ function openTimeclockOverlay() {
     color:'#0f172a',
     lineHeight:'1.5'
   });
-  status.textContent = 'Enter your name to load your timeclock.';
+  status.textContent = detectedLightspeedUser
+    ? 'Detected Lightspeed user: ' + detectedLightspeedUser
+    : 'Enter your name to load your timeclock.';
 
   const history = document.createElement('div');
   Object.assign(history.style, {
