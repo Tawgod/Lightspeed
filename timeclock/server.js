@@ -251,6 +251,64 @@ async function employeeStatus(employee) {
   };
 }
 
+async function autoCloseOverlongShifts() {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const overdue = await client.query(
+      `SELECT te.*, e.name AS employee_name
+       FROM time_entries te
+       JOIN employees e ON e.id = te.employee_id
+       WHERE te.clock_out IS NULL
+         AND te.clock_in <= NOW() - INTERVAL '14 hours'
+       ORDER BY te.clock_in
+       FOR UPDATE OF te`
+    );
+
+    for (const entry of overdue.rows) {
+      const autoClockOutAt = new Date(new Date(entry.clock_in).getTime() + (14 * 60 * 60 * 1000));
+
+      const updated = await client.query(
+        `UPDATE time_entries
+         SET clock_out=$2,
+             status='AUTO_CLOSED',
+             needs_review=TRUE,
+             updated_at=NOW()
+         WHERE id=$1
+         RETURNING *`,
+        [entry.id, autoClockOutAt]
+      );
+
+      await client.query(
+        `INSERT INTO clock_events(employee_id, event_type, timestamp_utc, source)
+         VALUES ($1, 'AUTO_CLOCK_OUT', $2, 'server-auto-close')`,
+        [entry.employee_id, autoClockOutAt]
+      );
+
+      await client.query(
+        `INSERT INTO audit_log(actor, action, object_type, object_id, before_json, after_json)
+         VALUES ('SYSTEM', 'AUTO_CLOCK_OUT_14H', 'time_entry', $1, $2::jsonb, $3::jsonb)`,
+        [String(entry.id), JSON.stringify(entry), JSON.stringify(updated.rows[0])]
+      );
+    }
+
+    await client.query('COMMIT');
+
+    if (overdue.rows.length) {
+      console.log(`Auto-closed ${overdue.rows.length} time entr${overdue.rows.length === 1 ? 'y' : 'ies'} at the 14-hour limit.`);
+    }
+
+    return overdue.rows.length;
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('14-hour auto clock-out sweep failed:', error);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 app.get('/health', async (req,res) => {
   try {
     await pool.query('SELECT 1');
@@ -363,7 +421,14 @@ app.post('/api/timeclock/clock-out', async (req,res) => {
 });
 
 ensureSchema()
-  .then(() => app.listen(PORT, () => console.log(`Timeclock listening on port ${PORT}`)))
+  .then(async () => {
+    await autoCloseOverlongShifts();
+    setInterval(() => {
+      autoCloseOverlongShifts().catch(() => {});
+    }, 5 * 60 * 1000);
+
+    app.listen(PORT, () => console.log(`Timeclock listening on port ${PORT}`));
+  })
   .catch(error => {
     console.error('Timeclock schema startup failed:', error);
     process.exit(1);
