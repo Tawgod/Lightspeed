@@ -69,6 +69,8 @@ async function ensureSchema() {
       id BIGSERIAL PRIMARY KEY,
       lightspeed_user_id TEXT UNIQUE,
       discord_user_id TEXT UNIQUE,
+      discord_username TEXT,
+      discord_display_name TEXT,
       pin_hash TEXT UNIQUE,
       name TEXT NOT NULL,
       name_key TEXT NOT NULL UNIQUE,
@@ -77,6 +79,8 @@ async function ensureSchema() {
     );
 
     ALTER TABLE employees ADD COLUMN IF NOT EXISTS pin_hash TEXT UNIQUE;
+    ALTER TABLE employees ADD COLUMN IF NOT EXISTS discord_username TEXT;
+    ALTER TABLE employees ADD COLUMN IF NOT EXISTS discord_display_name TEXT;
 
     CREATE TABLE IF NOT EXISTS clock_events (
       id BIGSERIAL PRIMARY KEY,
@@ -172,22 +176,23 @@ async function resolveEmployee(identifier) {
 
   const key = clean.toLowerCase().replace(/\s+/g,' ');
   const result = await pool.query(
-    `INSERT INTO employees(name, name_key)
-     VALUES ($1, $2)
-     ON CONFLICT(name_key) DO UPDATE SET name = EXCLUDED.name
-     RETURNING *`,
-    [clean, key]
+    'SELECT * FROM employees WHERE name_key=$1 AND active=TRUE LIMIT 1',
+    [key]
   );
+  if (!result.rows.length) {
+    const err = new Error('Employee not found. Ask a timeclock admin to link this user before clocking in.');
+    err.status = 404;
+    throw err;
+  }
   return result.rows[0];
 }
 
-async function assignEmployeePin({ employeeName, discordUserId, pin }) {
-  const cleanName = String(employeeName || '').trim();
+async function assignEmployeePin({ discordUserId, pin }) {
   const cleanDiscordId = String(discordUserId || '').trim();
   const cleanPin = String(pin || '').trim();
 
-  if (!cleanName) {
-    const err = new Error('employeeName is required.');
+  if (!cleanDiscordId) {
+    const err = new Error('discordUserId is required.');
     err.status = 400;
     throw err;
   }
@@ -197,72 +202,42 @@ async function assignEmployeePin({ employeeName, discordUserId, pin }) {
     throw err;
   }
 
-  const key = cleanName.toLowerCase().replace(/\s+/g,' ');
   const hash = pinHash(cleanPin);
-
   const client = await pool.connect();
+
   try {
     await client.query('BEGIN');
 
-    const duplicate = await client.query(
-      'SELECT id, name FROM employees WHERE pin_hash=$1 LIMIT 1',
-      [hash]
+    const employeeResult = await client.query(
+      'SELECT * FROM employees WHERE discord_user_id=$1 AND active=TRUE LIMIT 1 FOR UPDATE',
+      [cleanDiscordId]
     );
+
+    if (!employeeResult.rows.length) {
+      const err = new Error('Discord user is not linked to an employee. Use /hc timeclock employees and /hc timeclock link first.');
+      err.status = 404;
+      throw err;
+    }
+
+    const employee = employeeResult.rows[0];
+    const duplicate = await client.query(
+      'SELECT id FROM employees WHERE pin_hash=$1 AND id<>$2 LIMIT 1',
+      [hash, employee.id]
+    );
+
     if (duplicate.rows.length) {
-      const sameDiscord = cleanDiscordId
-        ? await client.query('SELECT id FROM employees WHERE discord_user_id=$1 LIMIT 1', [cleanDiscordId])
-        : { rows: [] };
-      const sameName = await client.query('SELECT id FROM employees WHERE name_key=$1 LIMIT 1', [key]);
-      const allowedIds = new Set([
-        ...sameDiscord.rows.map(r => String(r.id)),
-        ...sameName.rows.map(r => String(r.id))
-      ]);
-      if (!allowedIds.has(String(duplicate.rows[0].id))) {
-        const err = new Error('That PIN is already assigned to another employee.');
-        err.status = 409;
-        throw err;
-      }
+      const err = new Error('That PIN is already assigned to another employee.');
+      err.status = 409;
+      throw err;
     }
 
-    let employee = null;
-
-    if (cleanDiscordId) {
-      const byDiscord = await client.query(
-        'SELECT * FROM employees WHERE discord_user_id=$1 LIMIT 1 FOR UPDATE',
-        [cleanDiscordId]
-      );
-      employee = byDiscord.rows[0] || null;
-    }
-
-    if (!employee) {
-      const byName = await client.query(
-        'SELECT * FROM employees WHERE name_key=$1 LIMIT 1 FOR UPDATE',
-        [key]
-      );
-      employee = byName.rows[0] || null;
-    }
-
-    let updated;
-    if (employee) {
-      updated = await client.query(
-        `UPDATE employees
-         SET name=$2,
-             name_key=$3,
-             discord_user_id=COALESCE(NULLIF($4,''), discord_user_id),
-             pin_hash=$5,
-             active=TRUE
-         WHERE id=$1
-         RETURNING *`,
-        [employee.id, cleanName, key, cleanDiscordId, hash]
-      );
-    } else {
-      updated = await client.query(
-        `INSERT INTO employees(name, name_key, discord_user_id, pin_hash)
-         VALUES ($1, $2, NULLIF($3,''), $4)
-         RETURNING *`,
-        [cleanName, key, cleanDiscordId, hash]
-      );
-    }
+    const updated = await client.query(
+      `UPDATE employees
+       SET pin_hash=$2, active=TRUE
+       WHERE id=$1
+       RETURNING *`,
+      [employee.id, hash]
+    );
 
     const row = updated.rows[0];
     await client.query(
@@ -286,6 +261,106 @@ async function assignEmployeePin({ employeeName, discordUserId, pin }) {
       discordUserId: row.discord_user_id,
       pinAssigned: true
     };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function listEmployees() {
+  const result = await pool.query(
+    `SELECT
+       id,
+       name,
+       lightspeed_user_id,
+       discord_user_id,
+       discord_username,
+       discord_display_name,
+       active,
+       (pin_hash IS NOT NULL) AS has_pin,
+       created_at
+     FROM employees
+     ORDER BY active DESC, name ASC`
+  );
+
+  return result.rows;
+}
+
+async function linkEmployeeDiscord({
+  employeeId,
+  discordUserId,
+  discordUsername,
+  discordDisplayName,
+  actor
+}) {
+  const id = Number(employeeId);
+  const cleanDiscordId = String(discordUserId || '').trim();
+  const username = String(discordUsername || '').trim();
+  const displayName = String(discordDisplayName || '').trim();
+  const cleanActor = String(actor || 'DISCORD_ADMIN').trim() || 'DISCORD_ADMIN';
+
+  if (!Number.isInteger(id) || id <= 0) {
+    const err = new Error('Valid employeeId is required.');
+    err.status = 400;
+    throw err;
+  }
+  if (!cleanDiscordId) {
+    const err = new Error('discordUserId is required.');
+    err.status = 400;
+    throw err;
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const existing = await client.query(
+      'SELECT * FROM employees WHERE id=$1 LIMIT 1 FOR UPDATE',
+      [id]
+    );
+    if (!existing.rows.length) {
+      const err = new Error('Employee not found.');
+      err.status = 404;
+      throw err;
+    }
+
+    const duplicate = await client.query(
+      'SELECT id, name FROM employees WHERE discord_user_id=$1 AND id<>$2 LIMIT 1',
+      [cleanDiscordId, id]
+    );
+    if (duplicate.rows.length) {
+      const err = new Error(`That Discord account is already linked to employee #${duplicate.rows[0].id} (${duplicate.rows[0].name}).`);
+      err.status = 409;
+      throw err;
+    }
+
+    const before = existing.rows[0];
+    const updated = await client.query(
+      `UPDATE employees
+       SET discord_user_id=$2,
+           discord_username=NULLIF($3,''),
+           discord_display_name=NULLIF($4,''),
+           active=TRUE
+       WHERE id=$1
+       RETURNING *`,
+      [id, cleanDiscordId, username, displayName]
+    );
+
+    await client.query(
+      `INSERT INTO audit_log(actor, action, object_type, object_id, before_json, after_json)
+       VALUES ($1, 'LINK_DISCORD_EMPLOYEE', 'employee', $2, $3::jsonb, $4::jsonb)`,
+      [
+        cleanActor,
+        String(id),
+        JSON.stringify(before),
+        JSON.stringify(updated.rows[0])
+      ]
+    );
+
+    await client.query('COMMIT');
+    return updated.rows[0];
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     throw error;
@@ -469,6 +544,48 @@ app.get('/api/timeclock/status', async (req,res) => {
   }
 });
 
+app.get('/api/timeclock/admin/employees', async (req,res) => {
+  try {
+    if (!ADMIN_SECRET || req.get('x-timeclock-admin-secret') !== ADMIN_SECRET) {
+      return res.status(403).json({ error:'Forbidden.' });
+    }
+    const employees = await listEmployees();
+    res.json({ count:employees.length, employees });
+  } catch (error) {
+    res.status(500).json({ error:error.message });
+  }
+});
+
+app.post('/api/timeclock/admin/link-discord', async (req,res) => {
+  try {
+    if (!ADMIN_SECRET || req.get('x-timeclock-admin-secret') !== ADMIN_SECRET) {
+      return res.status(403).json({ error:'Forbidden.' });
+    }
+
+    const employee = await linkEmployeeDiscord({
+      employeeId:req.body?.employeeId,
+      discordUserId:req.body?.discordUserId,
+      discordUsername:req.body?.discordUsername,
+      discordDisplayName:req.body?.discordDisplayName,
+      actor:req.body?.actor
+    });
+
+    res.json({
+      linked:true,
+      employee:{
+        id:employee.id,
+        name:employee.name,
+        lightspeedUserId:employee.lightspeed_user_id,
+        discordUserId:employee.discord_user_id,
+        discordUsername:employee.discord_username,
+        discordDisplayName:employee.discord_display_name
+      }
+    });
+  } catch (error) {
+    res.status(error.status || 500).json({ error:error.message });
+  }
+});
+
 app.post('/api/timeclock/admin/assign-pin', async (req,res) => {
   try {
     if (!ADMIN_SECRET || req.get('x-timeclock-admin-secret') !== ADMIN_SECRET) {
@@ -476,7 +593,6 @@ app.post('/api/timeclock/admin/assign-pin', async (req,res) => {
     }
 
     const result = await assignEmployeePin({
-      employeeName: req.body?.employeeName,
       discordUserId: req.body?.discordUserId,
       pin: req.body?.pin
     });
