@@ -1,4 +1,5 @@
 const HCT_BACKEND = 'https://lightspeed-api-production-c087.up.railway.app';
+const HCT_TIMECLOCK_BACKEND = 'https://timeclock-production-2bfa.up.railway.app';
 
 function extractPurchaseOrderId() {
   const match = location.pathname.match(/\/inventory\/purchase-order\/([^/?#]+)/i);
@@ -58,10 +59,256 @@ function ensurePoLabelButton() {
 
 ensurePoLabelButton();
 ensureSplitLauncher();
+ensureTimeclockButton();
 new MutationObserver(() => {
   ensurePoLabelButton();
   ensureSplitLauncher();
+  ensureTimeclockButton();
 }).observe(document.documentElement, {childList:true, subtree:true});
+
+
+function formatMinutes(totalMinutes) {
+  const minutes = Math.max(0, Number(totalMinutes || 0));
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return hours + 'h ' + remainder + 'm';
+}
+
+function ensureTimeclockButton() {
+  if (document.getElementById('hct-timeclock-launcher')) return;
+
+  const button = document.createElement('button');
+  button.id = 'hct-timeclock-launcher';
+  button.textContent = '🕒 Timeclock';
+  Object.assign(button.style, {
+    position:'fixed',
+    left:'20px',
+    bottom:'20px',
+    zIndex:'2147483645',
+    padding:'11px 16px',
+    borderRadius:'7px',
+    border:'2px solid #0f172a',
+    background:'#0f766e',
+    color:'#fff',
+    fontWeight:'800',
+    fontSize:'14px',
+    cursor:'pointer',
+    boxShadow:'0 4px 14px rgba(0,0,0,.35)'
+  });
+  button.addEventListener('click', openTimeclockOverlay);
+  document.body.appendChild(button);
+}
+
+function closeTimeclockOverlay() {
+  document.getElementById('hct-timeclock-overlay')?.remove();
+}
+
+function openTimeclockOverlay() {
+  closeTimeclockOverlay();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'hct-timeclock-overlay';
+  Object.assign(overlay.style, {
+    position:'fixed',
+    inset:'0',
+    zIndex:'2147483647',
+    background:'rgba(15,23,42,.62)',
+    display:'flex',
+    alignItems:'center',
+    justifyContent:'center',
+    padding:'24px'
+  });
+
+  const card = document.createElement('div');
+  Object.assign(card.style, {
+    width:'min(460px, 94vw)',
+    background:'#fff',
+    borderRadius:'12px',
+    padding:'20px',
+    boxShadow:'0 20px 60px rgba(0,0,0,.4)',
+    fontFamily:'Arial,sans-serif'
+  });
+
+  const header = document.createElement('div');
+  Object.assign(header.style, {
+    display:'flex',
+    alignItems:'center',
+    justifyContent:'space-between',
+    gap:'12px',
+    marginBottom:'14px'
+  });
+
+  const title = document.createElement('h2');
+  title.textContent = 'Hobby Corner Timeclock';
+  Object.assign(title.style, { margin:'0', fontSize:'21px', color:'#0f172a' });
+
+  const close = document.createElement('button');
+  close.textContent = 'Close';
+  Object.assign(close.style, {
+    border:'1px solid #94a3b8',
+    background:'#fff',
+    borderRadius:'6px',
+    padding:'7px 10px',
+    cursor:'pointer',
+    fontWeight:'700'
+  });
+  close.addEventListener('click', closeTimeclockOverlay);
+
+  header.append(title, close);
+
+  const label = document.createElement('label');
+  label.textContent = 'Employee name';
+  Object.assign(label.style, {
+    display:'block',
+    fontSize:'12px',
+    fontWeight:'800',
+    color:'#475569',
+    marginBottom:'5px'
+  });
+
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.placeholder = 'Your name';
+  nameInput.value = localStorage.getItem('hct_timeclock_employee_name') || '';
+  Object.assign(nameInput.style, {
+    width:'100%',
+    boxSizing:'border-box',
+    padding:'10px 11px',
+    border:'1px solid #94a3b8',
+    borderRadius:'6px',
+    fontSize:'16px'
+  });
+
+  const status = document.createElement('div');
+  Object.assign(status.style, {
+    marginTop:'14px',
+    padding:'14px',
+    background:'#f8fafc',
+    border:'1px solid #e2e8f0',
+    borderRadius:'8px',
+    color:'#0f172a',
+    lineHeight:'1.5'
+  });
+  status.textContent = 'Enter your name to load your timeclock.';
+
+  const action = document.createElement('button');
+  action.textContent = 'Load Timeclock';
+  Object.assign(action.style, {
+    width:'100%',
+    marginTop:'12px',
+    padding:'12px 16px',
+    border:'2px solid #0f172a',
+    borderRadius:'7px',
+    background:'#2563eb',
+    color:'#fff',
+    fontSize:'16px',
+    fontWeight:'800',
+    cursor:'pointer'
+  });
+
+  const error = document.createElement('div');
+  Object.assign(error.style, {
+    minHeight:'18px',
+    marginTop:'9px',
+    color:'#b91c1c',
+    fontSize:'13px'
+  });
+
+  let currentStatus = null;
+
+  const employeeName = () => nameInput.value.trim();
+
+  const render = (data) => {
+    currentStatus = data;
+    const since = data.clockIn ? new Date(data.clockIn).toLocaleString() : null;
+    status.innerHTML =
+      '<div style="font-weight:800;font-size:17px;margin-bottom:6px;">' +
+      (data.clockedIn ? 'Clocked In' : 'Clocked Out') +
+      '</div>' +
+      (since ? '<div>Since: ' + since + '</div>' : '') +
+      '<div>Today: <strong>' + formatMinutes(data.todayMinutes) + '</strong></div>' +
+      '<div>Current pay period: <strong>' + formatMinutes(data.payPeriodMinutes) + '</strong></div>' +
+      '<div style="font-size:12px;color:#64748b;margin-top:5px;">' +
+      data.payPeriod.start + ' through ' + data.payPeriod.end +
+      '</div>';
+
+    action.textContent = data.clockedIn ? 'Clock Out' : 'Clock In';
+    action.style.background = data.clockedIn ? '#b91c1c' : '#16a34a';
+  };
+
+  const loadStatus = async () => {
+    const name = employeeName();
+    if (!name) {
+      error.textContent = 'Enter your name first.';
+      nameInput.focus();
+      return;
+    }
+
+    localStorage.setItem('hct_timeclock_employee_name', name);
+    error.textContent = '';
+    action.disabled = true;
+    status.textContent = 'Loading...';
+
+    try {
+      const response = await fetch(
+        HCT_TIMECLOCK_BACKEND + '/api/timeclock/status?employeeName=' + encodeURIComponent(name)
+      );
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Could not load timeclock.');
+      render(data);
+    } catch (e) {
+      status.textContent = 'Timeclock unavailable.';
+      error.textContent = e.message;
+    } finally {
+      action.disabled = false;
+    }
+  };
+
+  action.addEventListener('click', async () => {
+    if (!currentStatus) {
+      await loadStatus();
+      return;
+    }
+
+    const name = employeeName();
+    if (!name) return;
+
+    error.textContent = '';
+    action.disabled = true;
+    action.textContent = currentStatus.clockedIn ? 'Clocking out...' : 'Clocking in...';
+
+    try {
+      const endpoint = currentStatus.clockedIn ? 'clock-out' : 'clock-in';
+      const response = await fetch(HCT_TIMECLOCK_BACKEND + '/api/timeclock/' + endpoint, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ employeeName:name })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Timeclock action failed.');
+      render(data);
+    } catch (e) {
+      error.textContent = e.message;
+      if (currentStatus) render(currentStatus);
+    } finally {
+      action.disabled = false;
+    }
+  });
+
+  nameInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') loadStatus();
+  });
+
+  card.append(header, label, nameInput, status, action, error);
+  overlay.appendChild(card);
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) closeTimeclockOverlay();
+  });
+  document.body.appendChild(overlay);
+
+  if (employeeName()) loadStatus();
+  else setTimeout(() => nameInput.focus(), 0);
+}
 
 function splitLauncherMode() {
   const path = location.pathname.toLowerCase();
