@@ -32,6 +32,24 @@ function localParts(date = new Date()) {
   return { year:Number(map.year), month:Number(map.month), day:Number(map.day) };
 }
 
+function localDateKey(date = new Date()) {
+  const parts = localParts(date);
+  return `${parts.year}-${String(parts.month).padStart(2,'0')}-${String(parts.day).padStart(2,'0')}`;
+}
+
+function addDays(dateKey, days) {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function sundayFor(dateKey) {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return addDays(dateKey, -date.getUTCDay());
+}
+
 function currentPayPeriod(date = new Date()) {
   const { year, month, day } = localParts(date);
   const startDay = day <= 15 ? 1 : 16;
@@ -174,6 +192,51 @@ async function employeeStatus(employee) {
     payPeriodMinutes += Math.max(0, minutesBetween(row.clock_in, end) - Number(row.break_minutes || 0));
   }
 
+  const historyResult = await pool.query(
+    `SELECT id, clock_in, clock_out, break_minutes, status, needs_review
+     FROM time_entries
+     WHERE employee_id=$1
+       AND (clock_in AT TIME ZONE $2)::date >= ((NOW() AT TIME ZONE $2)::date - INTERVAL '35 days')
+     ORDER BY clock_in`,
+    [employee.id, TIMEZONE]
+  );
+
+  const minutesByDay = new Map();
+  const entriesByDay = new Map();
+  for (const row of historyResult.rows) {
+    const dayKey = localDateKey(new Date(row.clock_in));
+    const end = row.clock_out || new Date();
+    const minutes = Math.max(0, minutesBetween(row.clock_in, end) - Number(row.break_minutes || 0));
+    minutesByDay.set(dayKey, (minutesByDay.get(dayKey) || 0) + minutes);
+    entriesByDay.set(dayKey, (entriesByDay.get(dayKey) || 0) + 1);
+  }
+
+  const todayKey = localDateKey();
+  const recentDays = Array.from({ length: 7 }, (_, index) => {
+    const date = addDays(todayKey, -index);
+    return {
+      date,
+      minutes: minutesByDay.get(date) || 0,
+      entryCount: entriesByDay.get(date) || 0
+    };
+  });
+
+  const thisSunday = sundayFor(todayKey);
+  const weeklySummaries = Array.from({ length: 4 }, (_, index) => {
+    const start = addDays(thisSunday, -(index * 7));
+    const end = addDays(start, 6);
+    let minutes = 0;
+    for (let offset = 0; offset < 7; offset++) {
+      minutes += minutesByDay.get(addDays(start, offset)) || 0;
+    }
+    return {
+      start,
+      end,
+      minutes,
+      current: index === 0
+    };
+  });
+
   return {
     employee:{ id:employee.id, name:employee.name },
     clockedIn:Boolean(open),
@@ -182,6 +245,8 @@ async function employeeStatus(employee) {
     todayMinutes,
     payPeriodMinutes,
     payPeriod:period,
+    recentDays,
+    weeklySummaries,
     timezone:TIMEZONE
   };
 }
