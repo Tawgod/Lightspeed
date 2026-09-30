@@ -74,29 +74,87 @@ function formatMinutes(totalMinutes) {
   return hours + 'h ' + remainder + 'm';
 }
 
-function ensureTimeclockButton() {
-  if (document.getElementById('hct-timeclock-launcher')) return;
+function findVisibleHeaderHelp() {
+  const candidates = [...document.querySelectorAll('button,a,[role="button"],span,div')];
+  return candidates.find(el => {
+    const text = String(el.textContent || '').trim().toLowerCase();
+    if (text !== 'help' && text !== '?') return false;
+    const rect = el.getBoundingClientRect();
+    const style = getComputedStyle(el);
+    return (
+      rect.width > 0 &&
+      rect.height > 0 &&
+      rect.top >= 0 &&
+      rect.top < 120 &&
+      style.display !== 'none' &&
+      style.visibility !== 'hidden'
+    );
+  }) || null;
+}
 
-  const button = document.createElement('button');
-  button.id = 'hct-timeclock-launcher';
-  button.textContent = '🕒 Timeclock';
+function positionTimeclockButton(button) {
+  const help = findVisibleHeaderHelp();
+  if (help?.parentElement) {
+    Object.assign(button.style, {
+      position:'relative',
+      left:'auto',
+      right:'auto',
+      top:'auto',
+      bottom:'auto',
+      zIndex:'20',
+      margin:'0 8px 0 0',
+      padding:'7px 11px',
+      boxShadow:'none'
+    });
+
+    if (button.parentElement !== help.parentElement || button.nextSibling !== help) {
+      help.parentElement.insertBefore(button, help);
+    }
+    return;
+  }
+
+  // Fallback for Lightspeed screens that do not expose a usable Help anchor.
+  // This keeps the button near the upper-left account/user area instead of
+  // floating at the bottom of the register.
+  if (button.parentElement !== document.body) {
+    document.body.appendChild(button);
+  }
   Object.assign(button.style, {
     position:'fixed',
-    left:'20px',
-    bottom:'20px',
+    left:'18px',
+    right:'auto',
+    top:'72px',
+    bottom:'auto',
     zIndex:'2147483645',
-    padding:'11px 16px',
-    borderRadius:'7px',
-    border:'2px solid #0f172a',
-    background:'#0f766e',
-    color:'#fff',
-    fontWeight:'800',
-    fontSize:'14px',
-    cursor:'pointer',
-    boxShadow:'0 4px 14px rgba(0,0,0,.35)'
+    margin:'0',
+    padding:'9px 13px',
+    boxShadow:'0 3px 10px rgba(0,0,0,.25)'
   });
-  button.addEventListener('click', openTimeclockOverlay);
-  document.body.appendChild(button);
+}
+
+function ensureTimeclockButton() {
+  let button = document.getElementById('hct-timeclock-launcher');
+
+  if (!button) {
+    button = document.createElement('button');
+    button.id = 'hct-timeclock-launcher';
+    button.type = 'button';
+    button.textContent = '🕒 Timeclock';
+    Object.assign(button.style, {
+      borderRadius:'7px',
+      border:'1px solid #0f172a',
+      background:'#0f766e',
+      color:'#fff',
+      fontWeight:'800',
+      fontSize:'13px',
+      lineHeight:'1.2',
+      cursor:'pointer',
+      whiteSpace:'nowrap'
+    });
+    button.addEventListener('click', openTimeclockOverlay);
+  }
+
+  positionTimeclockButton(button);
 }
 
 function closeTimeclockOverlay() {
