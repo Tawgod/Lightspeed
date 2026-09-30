@@ -201,6 +201,11 @@ async function assignEmployeePin({ discordUserId, pin }) {
     err.status = 400;
     throw err;
   }
+  if (!/^\d{4}$/.test(cleanPin)) {
+    const err = new Error('PIN must be exactly 4 digits.');
+    err.status = 400;
+    throw err;
+  }
 
   const hash = pinHash(cleanPin);
   const client = await pool.connect();
@@ -293,12 +298,14 @@ async function linkEmployeeDiscord({
   discordUserId,
   discordUsername,
   discordDisplayName,
+  pin,
   actor
 }) {
   const id = Number(employeeId);
   const cleanDiscordId = String(discordUserId || '').trim();
   const username = String(discordUsername || '').trim();
   const displayName = String(discordDisplayName || '').trim();
+  const cleanPin = String(pin || '').trim();
   const cleanActor = String(actor || 'DISCORD_ADMIN').trim() || 'DISCORD_ADMIN';
 
   if (!Number.isInteger(id) || id <= 0) {
@@ -336,16 +343,28 @@ async function linkEmployeeDiscord({
       throw err;
     }
 
+    const hash = pinHash(cleanPin);
+    const duplicatePin = await client.query(
+      'SELECT id, name FROM employees WHERE pin_hash=$1 AND id<>$2 LIMIT 1',
+      [hash, id]
+    );
+    if (duplicatePin.rows.length) {
+      const err = new Error(`That PIN is already assigned to employee #${duplicatePin.rows[0].id} (${duplicatePin.rows[0].name}).`);
+      err.status = 409;
+      throw err;
+    }
+
     const before = existing.rows[0];
     const updated = await client.query(
       `UPDATE employees
        SET discord_user_id=$2,
            discord_username=NULLIF($3,''),
            discord_display_name=NULLIF($4,''),
+           pin_hash=$5,
            active=TRUE
        WHERE id=$1
        RETURNING *`,
-      [id, cleanDiscordId, username, displayName]
+      [id, cleanDiscordId, username, displayName, hash]
     );
 
     await client.query(
@@ -567,6 +586,7 @@ app.post('/api/timeclock/admin/link-discord', async (req,res) => {
       discordUserId:req.body?.discordUserId,
       discordUsername:req.body?.discordUsername,
       discordDisplayName:req.body?.discordDisplayName,
+      pin:req.body?.pin,
       actor:req.body?.actor
     });
 
