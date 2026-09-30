@@ -509,6 +509,107 @@ app.get('/api/timeclock/admin/review', async (req,res) => {
   }
 });
 
+app.post('/api/timeclock/admin/entries/:entryId/adjust', async (req,res) => {
+  const client = await pool.connect();
+  try {
+    if (!ADMIN_SECRET || req.get('x-timeclock-admin-secret') !== ADMIN_SECRET) {
+      return res.status(403).json({ error:'Forbidden.' });
+    }
+
+    const entryId = Number(req.params.entryId);
+    const reason = String(req.body?.reason || '').trim();
+    const actor = String(req.body?.actor || 'DISCORD_MANAGER').trim() || 'DISCORD_MANAGER';
+    const clockIn = req.body?.clockIn ? new Date(req.body.clockIn) : null;
+    const clockOut = req.body?.clockOut ? new Date(req.body.clockOut) : null;
+
+    if (!Number.isInteger(entryId) || entryId <= 0) return res.status(400).json({ error:'Valid entryId is required.' });
+    if (!reason) return res.status(400).json({ error:'A correction reason is required.' });
+    if (!clockIn || Number.isNaN(clockIn.getTime())) return res.status(400).json({ error:'Valid clockIn is required.' });
+    if (!clockOut || Number.isNaN(clockOut.getTime())) return res.status(400).json({ error:'Valid clockOut is required.' });
+    if (clockOut <= clockIn) return res.status(400).json({ error:'clockOut must be after clockIn.' });
+
+    await client.query('BEGIN');
+
+    const existing = await client.query(
+      `SELECT te.*, e.name AS employee_name
+       FROM time_entries te
+       JOIN employees e ON e.id = te.employee_id
+       WHERE te.id=$1
+       FOR UPDATE`,
+      [entryId]
+    );
+
+    if (!existing.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error:'Time entry not found.' });
+    }
+
+    const before = existing.rows[0];
+
+    const overlap = await client.query(
+      `SELECT id FROM time_entries
+       WHERE employee_id=$1
+         AND id<>$2
+         AND clock_in < $4
+         AND COALESCE(clock_out, NOW()) > $3
+       LIMIT 1`,
+      [before.employee_id, entryId, clockIn, clockOut]
+    );
+
+    if (overlap.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error:'Correction would overlap another time entry for this employee.',
+        overlappingEntryId:overlap.rows[0].id
+      });
+    }
+
+    const updated = await client.query(
+      `UPDATE time_entries
+       SET clock_in=$2,
+           clock_out=$3,
+           status='CLOSED',
+           needs_review=FALSE,
+           updated_at=NOW()
+       WHERE id=$1
+       RETURNING *`,
+      [entryId, clockIn, clockOut]
+    );
+
+    await client.query(
+      `INSERT INTO time_adjustments(
+         time_entry_id, requested_by, approved_by,
+         old_clock_in, old_clock_out, new_clock_in, new_clock_out, reason
+       )
+       VALUES ($1,$2,$2,$3,$4,$5,$6,$7)`,
+      [entryId, actor, before.clock_in, before.clock_out, clockIn, clockOut, reason]
+    );
+
+    await client.query(
+      `INSERT INTO audit_log(actor, action, object_type, object_id, before_json, after_json)
+       VALUES ($1, 'TIME_ENTRY_CORRECTION', 'time_entry', $2, $3::jsonb, $4::jsonb)`,
+      [
+        actor,
+        String(entryId),
+        JSON.stringify(before),
+        JSON.stringify({ ...updated.rows[0], reason })
+      ]
+    );
+
+    await client.query('COMMIT');
+    res.json({
+      corrected:true,
+      entry:{ ...updated.rows[0], employeeName:before.employee_name },
+      reason
+    });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    res.status(error.status || 500).json({ error:error.message });
+  } finally {
+    client.release();
+  }
+});
+
 app.post('/api/timeclock/clock-in', async (req,res) => {
   const client = await pool.connect();
   try {
