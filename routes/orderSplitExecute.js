@@ -167,9 +167,21 @@ export function createOrderSplitExecuteRouter({ domain, token }) {
           ...moving.map(newLine)
         ]));
       } else {
+        const fulfillmentAttribute = originalAttributes.includes('pickup')
+          ? 'pickup'
+          : (originalAttributes.includes('delivery') ? 'delivery' : null);
+        const inheritedAttributes = Array.from(new Set(originalAttributes));
+
         createdSale = unwrap(await client.createSale({
           source: { author_id: authorId, ...(registerId ? {register_id: registerId} : {}), type: 'HobbyCornerOrderSplit' },
-          state: 'parked',
+          state: fulfillmentAttribute ? 'pending' : 'parked',
+          ...(inheritedAttributes.length ? { attributes: inheritedAttributes } : {}),
+          ...(fulfillmentAttribute ? {
+            fulfillment_details: [{
+              type: fulfillmentAttribute === 'pickup' ? 'PICKUP' : 'DISPATCH',
+              note: `Split from sale ${original.invoice_number || saleId}.`
+            }]
+          } : {}),
           customer_id: original.customer_id,
           note: `Split from sale ${original.invoice_number || saleId}.`,
           line_items: moving.map(newLine)
@@ -274,10 +286,6 @@ export function createOrderSplitExecuteRouter({ domain, token }) {
       const fulfillments = unwrap(await client.getFulfillmentsForSale(saleId)) || [];
       const hasPickup = (Array.isArray(fulfillments) ? fulfillments : []).some(f => f.type === 'PICKUP');
 
-      if (!hasPickup) {
-        return res.status(409).json({ repaired: false, error: 'No PICKUP fulfillment exists for this sale.' });
-      }
-
       const source = original.source || {};
       const authorId = source.author?.id || source.author_id || original.user_id || original.salesperson_id;
       const registerId = source.register_id || original.register_id;
@@ -309,22 +317,34 @@ export function createOrderSplitExecuteRouter({ domain, token }) {
           ...(source.id ? {id: source.id} : {}),
           ...(source.type ? {type: source.type} : {})
         },
-        state: original.state || 'pending',
+        state: 'pending',
         ...(original.date ? {date: original.date} : {}),
         ...(original.invoice_number ? {invoice_number: original.invoice_number} : {}),
         ...(original.short_code ? {short_code: original.short_code} : {}),
         attributes,
+        ...(!hasPickup ? {
+          fulfillment_details: [{
+            type: 'PICKUP',
+            note: 'Pickup fulfillment restored by Hobby Corner order split repair.'
+          }]
+        } : {}),
         customer_id: original.customer_id || null,
         note: original.note || null,
         line_items: lines,
         payments: original.payments || []
       }));
 
+      const afterFulfillments = unwrap(await client.getFulfillmentsForSale(saleId)) || [];
+      const pickupFulfillmentCount = (Array.isArray(afterFulfillments) ? afterFulfillments : [])
+        .filter(f => f.type === 'PICKUP').length;
+
       res.json({
         repaired: true,
         saleId,
         invoiceNumber: updated?.invoice_number || original.invoice_number || null,
         attributes: updated?.attributes || attributes,
+        createdPickupFulfillment: !hasPickup,
+        pickupFulfillmentCount,
         lineItemCount: (updated?.line_items || original.line_items || []).length
       });
     } catch (e) {
