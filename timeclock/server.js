@@ -276,6 +276,58 @@ async function assignEmployeePin({ discordUserId, pin }) {
   }
 }
 
+async function listTimeEntries({ date, employeeId, period }) {
+  const params = [TIMEZONE];
+  const where = [];
+  let startDate = null;
+  let endDate = null;
+
+  if (period === 'current') {
+    const current = currentPayPeriod();
+    startDate = current.start;
+    endDate = current.end;
+    params.push(startDate, endDate);
+    where.push(`(te.clock_in AT TIME ZONE $1)::date BETWEEN $2::date AND $3::date`);
+  } else if (date) {
+    params.push(date);
+    where.push(`(te.clock_in AT TIME ZONE $1)::date = $2::date`);
+  }
+
+  if (employeeId) {
+    params.push(Number(employeeId));
+    where.push(`te.employee_id = ${params.length}`);
+  }
+
+  const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const result = await pool.query(
+    `SELECT
+       te.id,
+       te.employee_id,
+       e.name AS employee_name,
+       e.lightspeed_user_id,
+       e.discord_user_id,
+       te.clock_in,
+       te.clock_out,
+       te.break_minutes,
+       te.status,
+       te.needs_review,
+       te.created_at,
+       te.updated_at
+     FROM time_entries te
+     JOIN employees e ON e.id = te.employee_id
+     ${clause}
+     ORDER BY te.clock_in DESC
+     LIMIT 200`,
+    params
+  );
+
+  return {
+    entries: result.rows,
+    startDate,
+    endDate
+  };
+}
+
 async function listEmployees() {
   const result = await pool.query(
     `SELECT
@@ -683,6 +735,42 @@ app.get('/api/timeclock/status', async (req,res) => {
   try {
     const employee = await resolveEmployee(req.query.identifier || req.query.employeeName);
     res.json(await employeeStatus(employee));
+  } catch (error) {
+    res.status(error.status || 500).json({ error:error.message });
+  }
+});
+
+app.get('/api/timeclock/admin/entries', async (req,res) => {
+  try {
+    if (!ADMIN_SECRET || req.get('x-timeclock-admin-secret') !== ADMIN_SECRET) {
+      return res.status(403).json({ error:'Forbidden.' });
+    }
+
+    const date = String(req.query.date || '').trim();
+    const period = String(req.query.period || '').trim();
+    const employeeId = String(req.query.employeeId || '').trim();
+
+    if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ error:'date must be YYYY-MM-DD.' });
+    }
+    if (period && period !== 'current') {
+      return res.status(400).json({ error:'period must be current when provided.' });
+    }
+    if (employeeId && (!/^\d+$/.test(employeeId) || Number(employeeId) <= 0)) {
+      return res.status(400).json({ error:'employeeId must be a positive integer.' });
+    }
+
+    const result = await listTimeEntries({ date, employeeId, period });
+    res.json({
+      count:result.entries.length,
+      entries:result.entries,
+      period: period === 'current' ? {
+        start:result.startDate,
+        end:result.endDate
+      } : null,
+      date: date || null,
+      employeeId: employeeId || null
+    });
   } catch (error) {
     res.status(error.status || 500).json({ error:error.message });
   }
