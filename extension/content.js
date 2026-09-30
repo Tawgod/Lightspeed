@@ -446,6 +446,17 @@ function openSplitOverlay(saleRef) {
 
 window.addEventListener('message', (event) => {
   if (event.origin !== new URL(HCT_BACKEND).origin) return;
+
+  if (event.data?.type === 'HCT_PICKUP_TO_REGISTER') {
+    const saleId = String(event.data?.saleId || '').trim();
+    if (!saleId) return;
+    closeSplitOverlay();
+    location.assign(
+      location.origin + '/redirect/1.0/sales/' + encodeURIComponent(saleId) + '?platform=web'
+    );
+    return;
+  }
+
   if (event.data?.type === 'HCT_SPLIT_COMPLETE') {
     closeSplitOverlay();
   }
