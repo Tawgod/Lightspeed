@@ -276,7 +276,8 @@ export function createOrderSplitRouter({ domain, token }) {
 <thead><tr><th>Select</th><th>Product</th><th>SKU</th><th>Qty</th><th>Split Qty</th><th>Price</th><th>Action</th></tr></thead>
 <tbody>${rows}</tbody>
 </table>
-<button id="split-selected-btn" onclick="splitSelected()" style="margin-top:16px;padding:10px 16px;font-weight:bold;">Split selected items</button>
+<button id="pickup-selected-btn" onclick="splitSelected(true)" style="margin-top:16px;padding:11px 18px;font-weight:800;background:#16a34a;color:#fff;border:2px solid #14532d;border-radius:6px;">Pick Up Selected → Register</button>
+<button id="split-selected-btn" onclick="splitSelected(false)" style="margin-top:16px;margin-left:8px;padding:10px 16px;font-weight:bold;">Split Selected Only</button>
 <button onclick="repairPickup()" style="margin-top:16px;margin-left:8px;padding:10px 16px;">Repair pickup metadata</button>
 <button id="convert-deposit-btn" onclick="convertDeposit()" style="margin-top:16px;margin-left:8px;padding:10px 16px;">Convert deposit to store credit</button>
 <pre id="result" style="margin-top:20px;background:#f5f5f5;padding:15px;white-space:pre-wrap;"></pre>
@@ -349,7 +350,7 @@ async function loadDestinations() {
   }
 }
 
-async function splitSelected() {
+async function splitSelected(loadRegister = false) {
   const selected = [...document.querySelectorAll('.split-select:checked')];
   if (!selected.length) {
     alert('Select at least one item to split.');
@@ -362,13 +363,17 @@ async function splitSelected() {
   });
   const destinationSaleRef = document.getElementById('split-destination')?.value || '';
   const destinationMessage = destinationSaleRef
-    ? 'Add the selected items to existing order ' + destinationSaleRef + ' and remove them from this order?'
-    : 'Create a new parked sale for the selected items and remove them from the original sale?';
+    ? (loadRegister
+        ? 'Move the selected items to existing order ' + destinationSaleRef + ' and load that order into the register?'
+        : 'Add the selected items to existing order ' + destinationSaleRef + ' and remove them from this order?')
+    : (loadRegister
+        ? 'Create a pickup order for the selected items, remove them from the original order, and load the pickup order into the register?'
+        : 'Create a new split order for the selected items and remove them from the original sale?');
   if (!confirm(destinationMessage)) return;
   const out = document.getElementById('result');
-  const btn = document.getElementById('split-selected-btn');
+  const btn = document.getElementById(loadRegister ? 'pickup-selected-btn' : 'split-selected-btn');
   btn.disabled = true;
-  out.textContent = 'Running combined split...';
+  out.textContent = loadRegister ? 'Preparing selected pickup...' : 'Running combined split...';
   try {
     const response = await fetch('/api/order-split/sales/${encodeURIComponent(saleRef)}/split', {
       method: 'POST',
@@ -378,13 +383,19 @@ async function splitSelected() {
     const data = await response.json();
     out.textContent = JSON.stringify(data, null, 2);
     if (response.ok && data.splitCompleted) {
+      const destinationSaleId = data.destinationSale?.id || data.newSale?.id || null;
       setTimeout(() => {
-        window.parent.postMessage({
+        window.parent.postMessage(loadRegister ? {
+          type: 'HCT_PICKUP_TO_REGISTER',
+          saleId: destinationSaleId,
+          originalInvoiceNumber: data.originalSale?.invoiceNumber || null,
+          destinationInvoiceNumber: data.destinationSale?.invoiceNumber || data.newSale?.invoiceNumber || null
+        } : {
           type: 'HCT_SPLIT_COMPLETE',
           originalInvoiceNumber: data.originalSale?.invoiceNumber || null,
           destinationInvoiceNumber: data.destinationSale?.invoiceNumber || data.newSale?.invoiceNumber || null
         }, '*');
-      }, 900);
+      }, loadRegister ? 300 : 900);
     }
   } catch (error) {
     out.textContent = String(error);
