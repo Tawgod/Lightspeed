@@ -179,7 +179,9 @@ function openTimeclockOverlay() {
 
   const card = document.createElement('div');
   Object.assign(card.style, {
-    width:'min(460px, 94vw)',
+    width:'min(520px, 94vw)',
+    maxHeight:'88vh',
+    overflowY:'auto',
     background:'#fff',
     borderRadius:'12px',
     padding:'20px',
@@ -249,6 +251,13 @@ function openTimeclockOverlay() {
   });
   status.textContent = 'Enter your name to load your timeclock.';
 
+  const history = document.createElement('div');
+  Object.assign(history.style, {
+    marginTop:'12px',
+    display:'none',
+    color:'#0f172a'
+  });
+
   const action = document.createElement('button');
   action.textContent = 'Load Timeclock';
   Object.assign(action.style, {
@@ -289,6 +298,35 @@ function openTimeclockOverlay() {
       '<div style="font-size:12px;color:#64748b;margin-top:5px;">' +
       data.payPeriod.start + ' through ' + data.payPeriod.end +
       '</div>';
+
+    const dayFormatter = new Intl.DateTimeFormat('en-US', {
+      weekday:'short',
+      month:'short',
+      day:'numeric',
+      timeZone:'UTC'
+    });
+
+    const prettyDate = (dateKey) => dayFormatter.format(new Date(dateKey + 'T12:00:00Z'));
+    const recentRows = (data.recentDays || []).map(day =>
+      '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #e2e8f0;">' +
+        '<span>' + prettyDate(day.date) + '</span>' +
+        '<strong>' + formatMinutes(day.minutes) + '</strong>' +
+      '</div>'
+    ).join('');
+
+    const weekRows = (data.weeklySummaries || []).map(week =>
+      '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #e2e8f0;">' +
+        '<span>' + (week.current ? 'This week' : prettyDate(week.start) + ' – ' + prettyDate(week.end)) + '</span>' +
+        '<strong>' + formatMinutes(week.minutes) + '</strong>' +
+      '</div>'
+    ).join('');
+
+    history.innerHTML =
+      '<div style="font-weight:800;margin:4px 0 6px;">Recent 7 days</div>' +
+      '<div style="font-size:13px;">' + recentRows + '</div>' +
+      '<div style="font-weight:800;margin:14px 0 6px;">Sunday–Saturday totals</div>' +
+      '<div style="font-size:13px;">' + weekRows + '</div>';
+    history.style.display = 'block';
 
     action.textContent = data.clockedIn ? 'Clock Out' : 'Clock In';
     action.style.background = data.clockedIn ? '#b91c1c' : '#16a34a';
@@ -357,7 +395,7 @@ function openTimeclockOverlay() {
     if (event.key === 'Enter') loadStatus();
   });
 
-  card.append(header, label, nameInput, status, action, error);
+  card.append(header, label, nameInput, status, history, action, error);
   overlay.appendChild(card);
   overlay.addEventListener('click', (event) => {
     if (event.target === overlay) closeTimeclockOverlay();
