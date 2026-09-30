@@ -271,7 +271,7 @@ function openTimeclockOverlay() {
   header.append(title, close);
 
   const label = document.createElement('label');
-  label.textContent = 'Employee name';
+  label.textContent = 'Employee name or 4-digit PIN';
   Object.assign(label.style, {
     display:'block',
     fontSize:'12px',
@@ -282,7 +282,7 @@ function openTimeclockOverlay() {
 
   const nameInput = document.createElement('input');
   nameInput.type = 'text';
-  nameInput.placeholder = 'Your name';
+  nameInput.placeholder = 'Your name or PIN';
   const detectedLightspeedUser = detectLightspeedUserName();
   nameInput.value = detectedLightspeedUser || localStorage.getItem('hct_timeclock_employee_name') || '';
   Object.assign(nameInput.style, {
@@ -340,7 +340,7 @@ function openTimeclockOverlay() {
 
   let currentStatus = null;
 
-  const employeeName = () => nameInput.value.trim();
+  const employeeIdentifier = () => nameInput.value.trim();
 
   const render = (data) => {
     currentStatus = data;
@@ -390,21 +390,21 @@ function openTimeclockOverlay() {
   };
 
   const loadStatus = async () => {
-    const name = employeeName();
-    if (!name) {
+    const identifier = employeeIdentifier();
+    if (!identifier) {
       error.textContent = 'Enter your name first.';
       nameInput.focus();
       return;
     }
 
-    localStorage.setItem('hct_timeclock_employee_name', name);
+    if (!/^\\d{4}$/.test(identifier)) localStorage.setItem('hct_timeclock_employee_name', identifier);
     error.textContent = '';
     action.disabled = true;
     status.textContent = 'Loading...';
 
     try {
       const response = await fetch(
-        HCT_TIMECLOCK_BACKEND + '/api/timeclock/status?employeeName=' + encodeURIComponent(name)
+        HCT_TIMECLOCK_BACKEND + '/api/timeclock/status?identifier=' + encodeURIComponent(identifier)
       );
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Could not load timeclock.');
@@ -423,8 +423,8 @@ function openTimeclockOverlay() {
       return;
     }
 
-    const name = employeeName();
-    if (!name) return;
+    const identifier = employeeIdentifier();
+    if (!identifier) return;
 
     error.textContent = '';
     action.disabled = true;
@@ -435,7 +435,7 @@ function openTimeclockOverlay() {
       const response = await fetch(HCT_TIMECLOCK_BACKEND + '/api/timeclock/' + endpoint, {
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ employeeName:name })
+        body:JSON.stringify({ identifier })
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Timeclock action failed.');
@@ -459,7 +459,7 @@ function openTimeclockOverlay() {
   });
   document.body.appendChild(overlay);
 
-  if (employeeName()) loadStatus();
+  if (employeeIdentifier()) loadStatus();
   else setTimeout(() => nameInput.focus(), 0);
 }
 
