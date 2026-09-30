@@ -64,7 +64,7 @@
       </tbody>
     </table>
 
-    <button class="btn" id="generateBtn">Generate PDF Labels</button>
+    <button class="btn" id="generateBtn">Open PDF Labels</button>
   </div>
 
   <script>
@@ -185,18 +185,22 @@
         if (!res.ok) throw new Error('PDF Generation failed');
 
         const blob = await res.blob();
-        const downloadUrl = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = downloadUrl;
-        a.download = `PO_${poId}_Labels.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
+        const pdfUrl = window.URL.createObjectURL(blob);
+        const pdfWindow = window.open(pdfUrl, '_blank', 'noopener');
+
+        if (!pdfWindow) {
+          alert('The PDF was generated, but the browser blocked the new tab. Please allow pop-ups for this site and try again.');
+          window.URL.revokeObjectURL(pdfUrl);
+          return;
+        }
+
+        // Keep the object URL alive long enough for the browser PDF viewer to load it.
+        setTimeout(() => window.URL.revokeObjectURL(pdfUrl), 60000);
       } catch (err) {
         alert(`Error: ${err.message}`);
       } finally {
         generateBtn.disabled = false;
-        generateBtn.textContent = 'Generate PDF Labels';
+        generateBtn.textContent = 'Open PDF Labels';
       }
     };
   </script>
