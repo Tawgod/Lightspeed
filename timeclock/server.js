@@ -143,6 +143,50 @@ async function ensureSchema() {
       locked_by TEXT,
       UNIQUE(start_date, end_date)
     );
+
+    CREATE TABLE IF NOT EXISTS time_off_requests (
+      id BIGSERIAL PRIMARY KEY,
+      employee_id BIGINT NOT NULL REFERENCES employees(id),
+      start_date DATE NOT NULL,
+      end_date DATE NOT NULL,
+      use_pto BOOLEAN NOT NULL DEFAULT FALSE,
+      pto_hours NUMERIC(6,2),
+      reason TEXT,
+      status TEXT NOT NULL DEFAULT 'PENDING'
+        CHECK (status IN ('PENDING','APPROVED','DENIED','CANCELLED')),
+      requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      reviewed_at TIMESTAMPTZ,
+      reviewed_by TEXT,
+      manager_note TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS store_hours (
+      day_of_week INTEGER PRIMARY KEY CHECK (day_of_week BETWEEN 0 AND 6),
+      is_closed BOOLEAN NOT NULL DEFAULT FALSE,
+      open_time TIME,
+      close_time TIME,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_by TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS shifts (
+      id BIGSERIAL PRIMARY KEY,
+      employee_id BIGINT REFERENCES employees(id),
+      shift_date DATE NOT NULL,
+      start_time TIME NOT NULL,
+      end_time TIME NOT NULL,
+      status TEXT NOT NULL DEFAULT 'SCHEDULED'
+        CHECK (status IN ('SCHEDULED','OPEN','CLAIMED','CANCELLED')),
+      claimed_by_employee_id BIGINT REFERENCES employees(id),
+      source_time_off_request_id BIGINT REFERENCES time_off_requests(id),
+      note TEXT,
+      created_by TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS shifts_date_idx ON shifts(shift_date);
+    CREATE INDEX IF NOT EXISTS time_off_status_idx ON time_off_requests(status, start_date);
   `);
 }
 
@@ -195,11 +239,6 @@ async function assignEmployeePin({ discordUserId, pin }) {
 
   if (!cleanDiscordId) {
     const err = new Error('discordUserId is required.');
-    err.status = 400;
-    throw err;
-  }
-  if (!/^\d{4}$/.test(cleanPin)) {
-    const err = new Error('PIN must be exactly 4 digits.');
     err.status = 400;
     throw err;
   }
@@ -268,6 +307,118 @@ async function assignEmployeePin({ discordUserId, pin }) {
       discordUserId: row.discord_user_id,
       pinAssigned: true
     };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function employeeByDiscordId(discordUserId) {
+  const clean = String(discordUserId || '').trim();
+  if (!clean) {
+    const err = new Error('Discord user is required.');
+    err.status = 400;
+    throw err;
+  }
+
+  const result = await pool.query(
+    'SELECT * FROM employees WHERE discord_user_id=$1 AND active=TRUE LIMIT 1',
+    [clean]
+  );
+  if (!result.rows.length) {
+    const err = new Error('Discord user is not linked to a timeclock employee.');
+    err.status = 404;
+    throw err;
+  }
+  return result.rows[0];
+}
+
+async function createManualTimeEntry({ employeeId, clockIn, clockOut, reason, actor }) {
+  const id = Number(employeeId);
+  const start = new Date(clockIn);
+  const end = new Date(clockOut);
+  const cleanReason = String(reason || '').trim();
+  const cleanActor = String(actor || 'DISCORD_ADMIN').trim() || 'DISCORD_ADMIN';
+
+  if (!Number.isInteger(id) || id <= 0) {
+    const err = new Error('Valid employeeId is required.');
+    err.status = 400;
+    throw err;
+  }
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    const err = new Error('Valid clock-in and clock-out timestamps are required.');
+    err.status = 400;
+    throw err;
+  }
+  if (end <= start) {
+    const err = new Error('Clock-out must be after clock-in.');
+    err.status = 400;
+    throw err;
+  }
+  if (!cleanReason) {
+    const err = new Error('A reason is required for a manual time entry.');
+    err.status = 400;
+    throw err;
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const employee = await client.query(
+      'SELECT id, name FROM employees WHERE id=$1 AND active=TRUE LIMIT 1 FOR UPDATE',
+      [id]
+    );
+    if (!employee.rows.length) {
+      const err = new Error('Employee not found.');
+      err.status = 404;
+      throw err;
+    }
+
+    const overlap = await client.query(
+      `SELECT id FROM time_entries
+       WHERE employee_id=$1
+         AND clock_in < $3
+         AND COALESCE(clock_out, NOW()) > $2
+       LIMIT 1`,
+      [id, start, end]
+    );
+    if (overlap.rows.length) {
+      const err = new Error(`Manual entry overlaps time entry #${overlap.rows[0].id}.`);
+      err.status = 409;
+      throw err;
+    }
+
+    const inserted = await client.query(
+      `INSERT INTO time_entries(employee_id, clock_in, clock_out, status, needs_review)
+       VALUES ($1,$2,$3,'CLOSED',FALSE)
+       RETURNING *`,
+      [id, start, end]
+    );
+
+    await client.query(
+      `INSERT INTO time_adjustments(
+         time_entry_id, requested_by, approved_by,
+         new_clock_in, new_clock_out, reason
+       )
+       VALUES ($1,$2,$2,$3,$4,$5)`,
+      [inserted.rows[0].id, cleanActor, start, end, cleanReason]
+    );
+
+    await client.query(
+      `INSERT INTO audit_log(actor, action, object_type, object_id, after_json)
+       VALUES ($1,'MANUAL_TIME_ENTRY','time_entry',$2,$3::jsonb)`,
+      [
+        cleanActor,
+        String(inserted.rows[0].id),
+        JSON.stringify({ ...inserted.rows[0], reason: cleanReason })
+      ]
+    );
+
+    await client.query('COMMIT');
+    return { ...inserted.rows[0], employeeName: employee.rows[0].name };
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     throw error;
@@ -737,6 +888,358 @@ app.get('/api/timeclock/status', async (req,res) => {
     res.json(await employeeStatus(employee));
   } catch (error) {
     res.status(error.status || 500).json({ error:error.message });
+  }
+});
+
+app.post('/api/timeclock/admin/entries', async (req,res) => {
+  try {
+    if (!ADMIN_SECRET || req.get('x-timeclock-admin-secret') !== ADMIN_SECRET) {
+      return res.status(403).json({ error:'Forbidden.' });
+    }
+
+    const entry = await createManualTimeEntry({
+      employeeId:req.body?.employeeId,
+      clockIn:req.body?.clockIn,
+      clockOut:req.body?.clockOut,
+      reason:req.body?.reason,
+      actor:req.body?.actor
+    });
+
+    res.status(201).json({ created:true, entry });
+  } catch (error) {
+    res.status(error.status || 500).json({ error:error.message });
+  }
+});
+
+app.post('/api/timeclock/time-off/request', async (req,res) => {
+  try {
+    if (!ADMIN_SECRET || req.get('x-timeclock-admin-secret') !== ADMIN_SECRET) {
+      return res.status(403).json({ error:'Forbidden.' });
+    }
+
+    const employee = await employeeByDiscordId(req.body?.discordUserId);
+    const startDate = String(req.body?.startDate || '').trim();
+    const endDate = String(req.body?.endDate || '').trim();
+    const usePto = Boolean(req.body?.usePto);
+    const ptoHours = req.body?.ptoHours === '' || req.body?.ptoHours == null
+      ? null
+      : Number(req.body.ptoHours);
+    const reason = String(req.body?.reason || '').trim();
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+      return res.status(400).json({ error:'startDate and endDate must be YYYY-MM-DD.' });
+    }
+    if (endDate < startDate) {
+      return res.status(400).json({ error:'endDate cannot be before startDate.' });
+    }
+    if (ptoHours != null && (!Number.isFinite(ptoHours) || ptoHours <= 0)) {
+      return res.status(400).json({ error:'ptoHours must be a positive number when provided.' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO time_off_requests(
+         employee_id,start_date,end_date,use_pto,pto_hours,reason,status
+       )
+       VALUES ($1,$2,$3,$4,$5,$6,'PENDING')
+       RETURNING *`,
+      [employee.id, startDate, endDate, usePto, ptoHours, reason || null]
+    );
+
+    await pool.query(
+      `INSERT INTO audit_log(actor,action,object_type,object_id,after_json)
+       VALUES ($1,'TIME_OFF_REQUEST','time_off_request',$2,$3::jsonb)`,
+      [employee.name, String(result.rows[0].id), JSON.stringify(result.rows[0])]
+    );
+
+    res.status(201).json({
+      requested:true,
+      request:{ ...result.rows[0], employeeName:employee.name }
+    });
+  } catch (error) {
+    res.status(error.status || 500).json({ error:error.message });
+  }
+});
+
+app.get('/api/timeclock/time-off', async (req,res) => {
+  try {
+    if (!ADMIN_SECRET || req.get('x-timeclock-admin-secret') !== ADMIN_SECRET) {
+      return res.status(403).json({ error:'Forbidden.' });
+    }
+    const employee = await employeeByDiscordId(req.query.discordUserId);
+    const result = await pool.query(
+      `SELECT * FROM time_off_requests
+       WHERE employee_id=$1
+       ORDER BY start_date DESC, requested_at DESC
+       LIMIT 50`,
+      [employee.id]
+    );
+    res.json({ count:result.rows.length, requests:result.rows });
+  } catch (error) {
+    res.status(error.status || 500).json({ error:error.message });
+  }
+});
+
+app.get('/api/timeclock/admin/time-off', async (req,res) => {
+  try {
+    if (!ADMIN_SECRET || req.get('x-timeclock-admin-secret') !== ADMIN_SECRET) {
+      return res.status(403).json({ error:'Forbidden.' });
+    }
+    const status = String(req.query.status || '').trim().toUpperCase();
+    const params = [];
+    let where = '';
+    if (status) {
+      params.push(status);
+      where = 'WHERE tor.status=$1';
+    }
+    const result = await pool.query(
+      `SELECT tor.*, e.name AS employee_name, e.discord_user_id
+       FROM time_off_requests tor
+       JOIN employees e ON e.id=tor.employee_id
+       ${where}
+       ORDER BY tor.start_date ASC, tor.requested_at ASC
+       LIMIT 200`,
+      params
+    );
+    res.json({ count:result.rows.length, requests:result.rows });
+  } catch (error) {
+    res.status(500).json({ error:error.message });
+  }
+});
+
+app.post('/api/timeclock/admin/time-off/:requestId/review', async (req,res) => {
+  const client = await pool.connect();
+  try {
+    if (!ADMIN_SECRET || req.get('x-timeclock-admin-secret') !== ADMIN_SECRET) {
+      return res.status(403).json({ error:'Forbidden.' });
+    }
+
+    const requestId = Number(req.params.requestId);
+    const decision = String(req.body?.status || '').trim().toUpperCase();
+    const actor = String(req.body?.actor || 'DISCORD_ADMIN').trim() || 'DISCORD_ADMIN';
+    const managerNote = String(req.body?.managerNote || '').trim();
+    const postOpenShift = Boolean(req.body?.postOpenShift);
+    const shiftDate = String(req.body?.shiftDate || '').trim();
+    const startTime = String(req.body?.startTime || '').trim();
+    const endTime = String(req.body?.endTime || '').trim();
+
+    if (!Number.isInteger(requestId) || requestId <= 0) return res.status(400).json({ error:'Valid request ID is required.' });
+    if (!['APPROVED','DENIED'].includes(decision)) return res.status(400).json({ error:'status must be APPROVED or DENIED.' });
+
+    await client.query('BEGIN');
+    const existing = await client.query(
+      `SELECT tor.*, e.name AS employee_name
+       FROM time_off_requests tor
+       JOIN employees e ON e.id=tor.employee_id
+       WHERE tor.id=$1 FOR UPDATE`,
+      [requestId]
+    );
+    if (!existing.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error:'Time-off request not found.' });
+    }
+
+    const updated = await client.query(
+      `UPDATE time_off_requests
+       SET status=$2, reviewed_at=NOW(), reviewed_by=$3, manager_note=NULLIF($4,'')
+       WHERE id=$1 RETURNING *`,
+      [requestId, decision, actor, managerNote]
+    );
+
+    let openShift = null;
+    if (decision === 'APPROVED' && postOpenShift) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(shiftDate) ||
+          !/^\d{2}:\d{2}$/.test(startTime) ||
+          !/^\d{2}:\d{2}$/.test(endTime)) {
+        const err = new Error('shiftDate, startTime, and endTime are required to post an open shift.');
+        err.status = 400;
+        throw err;
+      }
+      const insertedShift = await client.query(
+        `INSERT INTO shifts(
+           shift_date,start_time,end_time,status,source_time_off_request_id,note,created_by
+         )
+         VALUES ($1,$2,$3,'OPEN',$4,$5,$6)
+         RETURNING *`,
+        [shiftDate, startTime, endTime, requestId, `Coverage for ${existing.rows[0].employee_name} time off`, actor]
+      );
+      openShift = insertedShift.rows[0];
+    }
+
+    await client.query(
+      `INSERT INTO audit_log(actor,action,object_type,object_id,before_json,after_json)
+       VALUES ($1,'TIME_OFF_REVIEW','time_off_request',$2,$3::jsonb,$4::jsonb)`,
+      [actor, String(requestId), JSON.stringify(existing.rows[0]), JSON.stringify({ ...updated.rows[0], openShift })]
+    );
+
+    await client.query('COMMIT');
+    res.json({ reviewed:true, request:updated.rows[0], openShift });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    res.status(error.status || 500).json({ error:error.message });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/timeclock/store-hours', async (req,res) => {
+  try {
+    if (!ADMIN_SECRET || req.get('x-timeclock-admin-secret') !== ADMIN_SECRET) {
+      return res.status(403).json({ error:'Forbidden.' });
+    }
+    const result = await pool.query(
+      'SELECT * FROM store_hours ORDER BY day_of_week ASC'
+    );
+    res.json({ hours:result.rows });
+  } catch (error) {
+    res.status(500).json({ error:error.message });
+  }
+});
+
+app.put('/api/timeclock/admin/store-hours/:day', async (req,res) => {
+  try {
+    if (!ADMIN_SECRET || req.get('x-timeclock-admin-secret') !== ADMIN_SECRET) {
+      return res.status(403).json({ error:'Forbidden.' });
+    }
+    const day = Number(req.params.day);
+    const isClosed = Boolean(req.body?.isClosed);
+    const openTime = String(req.body?.openTime || '').trim();
+    const closeTime = String(req.body?.closeTime || '').trim();
+    const actor = String(req.body?.actor || 'DISCORD_ADMIN').trim() || 'DISCORD_ADMIN';
+
+    if (!Number.isInteger(day) || day < 0 || day > 6) return res.status(400).json({ error:'day must be 0-6, Sunday-Saturday.' });
+    if (!isClosed && (!/^\d{2}:\d{2}$/.test(openTime) || !/^\d{2}:\d{2}$/.test(closeTime))) {
+      return res.status(400).json({ error:'openTime and closeTime must be HH:MM when the store is open.' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO store_hours(day_of_week,is_closed,open_time,close_time,updated_by)
+       VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT(day_of_week) DO UPDATE SET
+         is_closed=EXCLUDED.is_closed,
+         open_time=EXCLUDED.open_time,
+         close_time=EXCLUDED.close_time,
+         updated_at=NOW(),
+         updated_by=EXCLUDED.updated_by
+       RETURNING *`,
+      [day, isClosed, isClosed ? null : openTime, isClosed ? null : closeTime, actor]
+    );
+    res.json({ saved:true, hours:result.rows[0] });
+  } catch (error) {
+    res.status(error.status || 500).json({ error:error.message });
+  }
+});
+
+app.get('/api/timeclock/shifts', async (req,res) => {
+  try {
+    if (!ADMIN_SECRET || req.get('x-timeclock-admin-secret') !== ADMIN_SECRET) {
+      return res.status(403).json({ error:'Forbidden.' });
+    }
+
+    const from = String(req.query.from || localDateKey()).trim();
+    const to = String(req.query.to || addDays(from, 14)).trim();
+    const openOnly = String(req.query.openOnly || '') === 'true';
+
+    const params = [from, to];
+    const openClause = openOnly ? "AND s.status='OPEN'" : '';
+    const result = await pool.query(
+      `SELECT s.*,
+              e.name AS employee_name,
+              ce.name AS claimed_by_name
+       FROM shifts s
+       LEFT JOIN employees e ON e.id=s.employee_id
+       LEFT JOIN employees ce ON ce.id=s.claimed_by_employee_id
+       WHERE s.shift_date BETWEEN $1::date AND $2::date
+       ${openClause}
+       ORDER BY s.shift_date, s.start_time
+       LIMIT 300`,
+      params
+    );
+    res.json({ count:result.rows.length, shifts:result.rows, from, to });
+  } catch (error) {
+    res.status(500).json({ error:error.message });
+  }
+});
+
+app.post('/api/timeclock/admin/shifts', async (req,res) => {
+  try {
+    if (!ADMIN_SECRET || req.get('x-timeclock-admin-secret') !== ADMIN_SECRET) {
+      return res.status(403).json({ error:'Forbidden.' });
+    }
+
+    const employeeId = req.body?.employeeId ? Number(req.body.employeeId) : null;
+    const shiftDate = String(req.body?.shiftDate || '').trim();
+    const startTime = String(req.body?.startTime || '').trim();
+    const endTime = String(req.body?.endTime || '').trim();
+    const open = Boolean(req.body?.open);
+    const note = String(req.body?.note || '').trim();
+    const actor = String(req.body?.actor || 'DISCORD_ADMIN').trim() || 'DISCORD_ADMIN';
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(shiftDate) ||
+        !/^\d{2}:\d{2}$/.test(startTime) ||
+        !/^\d{2}:\d{2}$/.test(endTime)) {
+      return res.status(400).json({ error:'shiftDate must be YYYY-MM-DD and times HH:MM.' });
+    }
+    if (!open && (!Number.isInteger(employeeId) || employeeId <= 0)) {
+      return res.status(400).json({ error:'employeeId is required for an assigned shift.' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO shifts(employee_id,shift_date,start_time,end_time,status,note,created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       RETURNING *`,
+      [open ? null : employeeId, shiftDate, startTime, endTime, open ? 'OPEN' : 'SCHEDULED', note || null, actor]
+    );
+    res.status(201).json({ created:true, shift:result.rows[0] });
+  } catch (error) {
+    res.status(error.status || 500).json({ error:error.message });
+  }
+});
+
+app.post('/api/timeclock/shifts/:shiftId/claim', async (req,res) => {
+  const client = await pool.connect();
+  try {
+    if (!ADMIN_SECRET || req.get('x-timeclock-admin-secret') !== ADMIN_SECRET) {
+      return res.status(403).json({ error:'Forbidden.' });
+    }
+
+    const shiftId = Number(req.params.shiftId);
+    const employee = await employeeByDiscordId(req.body?.discordUserId);
+    if (!Number.isInteger(shiftId) || shiftId <= 0) return res.status(400).json({ error:'Valid shift ID is required.' });
+
+    await client.query('BEGIN');
+    const shift = await client.query(
+      'SELECT * FROM shifts WHERE id=$1 FOR UPDATE',
+      [shiftId]
+    );
+    if (!shift.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error:'Shift not found.' });
+    }
+    if (shift.rows[0].status !== 'OPEN') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error:'Shift is no longer open.' });
+    }
+
+    const updated = await client.query(
+      `UPDATE shifts
+       SET status='CLAIMED', claimed_by_employee_id=$2, employee_id=$2, updated_at=NOW()
+       WHERE id=$1 RETURNING *`,
+      [shiftId, employee.id]
+    );
+
+    await client.query(
+      `INSERT INTO audit_log(actor,action,object_type,object_id,after_json)
+       VALUES ($1,'CLAIM_SHIFT','shift',$2,$3::jsonb)`,
+      [employee.name, String(shiftId), JSON.stringify(updated.rows[0])]
+    );
+
+    await client.query('COMMIT');
+    res.json({ claimed:true, shift:updated.rows[0], employeeName:employee.name });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    res.status(error.status || 500).json({ error:error.message });
+  } finally {
+    client.release();
   }
 });
 
