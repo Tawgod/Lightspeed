@@ -351,16 +351,28 @@ function openSplitOverlay(saleRef) {
       }
 
       for (const order of filtered) {
-        const row = document.createElement('button');
-        row.type = 'button';
+        const row = document.createElement('div');
         Object.assign(row.style, {
-          display:'block',
+          display:'flex',
+          alignItems:'center',
+          gap:'10px',
           width:'100%',
-          textAlign:'left',
+          boxSizing:'border-box',
           padding:'12px 14px',
-          border:'0',
           borderBottom:'1px solid #e2e8f0',
           background:'#fff',
+          color:'#0f172a'
+        });
+
+        const details = document.createElement('button');
+        details.type = 'button';
+        Object.assign(details.style, {
+          flex:'1',
+          minWidth:'0',
+          textAlign:'left',
+          padding:'0',
+          border:'0',
+          background:'transparent',
           cursor:'pointer',
           color:'#0f172a'
         });
@@ -379,14 +391,98 @@ function openSplitOverlay(saleRef) {
           (attrs || order.state || 'open') +
           ' · ' + String(order.lineCount || 0) + ' lines' +
           ' · Qty ' + String(order.quantityTotal || 0) +
-          ' · Payment $' + Number(order.paymentTotal || 0).toFixed(2);
+          ' · Payment 
+      }
+    };
+
+    fetch(HCT_BACKEND + '/api/work-orders/eligible')
+      .then(async response => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Could not load eligible orders.');
+        orders = Array.isArray(data.orders) ? data.orders : [];
+        renderOrders();
+      })
+      .catch(error => {
+        list.innerHTML = '';
+        const failed = document.createElement('div');
+        failed.textContent = 'Could not load order list: ' + error.message;
+        Object.assign(failed.style, {
+          padding:'16px',
+          color:'#b91c1c',
+          fontSize:'13px'
+        });
+        list.appendChild(failed);
+      });
+
+    input.addEventListener('input', renderOrders);
+
+    const submitManual = () => {
+      const ref = manualInput.value.trim();
+      if (!ref) {
+        manualInput.focus();
+        return;
+      }
+      loadOrder(ref);
+    };
+
+    open.addEventListener('click', submitManual);
+    manualInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') submitManual();
+    });
+
+    manualRow.append(manualInput, open);
+    card.append(heading, help, input, list, manualRow);
+    lookup.appendChild(card);
+    panel.appendChild(lookup);
+    setTimeout(() => input.focus(), 0);
+  }
+
+  overlay.appendChild(panel);
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) closeSplitOverlay();
+  });
+  document.body.appendChild(overlay);
+}
+
+window.addEventListener('message', (event) => {
+  if (event.origin !== new URL(HCT_BACKEND).origin) return;
+  if (event.data?.type === 'HCT_SPLIT_COMPLETE') {
+    closeSplitOverlay();
+  }
+});
+ + Number(order.paymentTotal || 0).toFixed(2);
         Object.assign(meta.style, {
           fontSize:'12px',
           color:'#64748b'
         });
 
-        row.append(titleLine, meta);
-        row.addEventListener('click', () => loadOrder(order.invoiceNumber || order.id));
+        const retrieve = document.createElement('button');
+        retrieve.type = 'button';
+        retrieve.textContent = 'Retrieve to Register';
+        Object.assign(retrieve.style, {
+          flex:'0 0 auto',
+          padding:'8px 10px',
+          border:'1px solid #0f172a',
+          borderRadius:'6px',
+          background:'#16a34a',
+          color:'#fff',
+          fontWeight:'800',
+          fontSize:'12px',
+          cursor:'pointer'
+        });
+
+        details.append(titleLine, meta);
+        details.addEventListener('click', () => loadOrder(order.invoiceNumber || order.id));
+        retrieve.addEventListener('click', () => {
+          const saleId = String(order.id || '').trim();
+          if (!saleId) return;
+          closeSplitOverlay();
+          location.assign(
+            location.origin + '/redirect/1.0/sales/' + encodeURIComponent(saleId) + '?platform=web'
+          );
+        });
+
+        row.append(details, retrieve);
         list.appendChild(row);
       }
     };
