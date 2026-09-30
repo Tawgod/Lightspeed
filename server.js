@@ -132,7 +132,7 @@ async function generatePoPdf(req, res) {
 
     // 3. Configure response headers
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="PO_${poId}_Avery_5960.pdf"`);
+    res.setHeader('Content-Disposition', `inline; filename="PO_${poId}_Avery_5960.pdf"`);
     doc.pipe(res);
 
     let Count = 0;
@@ -548,7 +548,7 @@ app.post('/api/labels/generate', async (req, res) => {
     });
 
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="PO_${poId}_Labels.pdf"`);
+    res.setHeader('Content-Disposition', `inline; filename="PO_${poId}_Labels.pdf"`);
     doc.pipe(res);
 
     const startOffset = Math.max(0, ((startRow - 1) * 3) + (startCol - 1));
