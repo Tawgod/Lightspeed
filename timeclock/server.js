@@ -487,6 +487,28 @@ app.post('/api/timeclock/admin/assign-pin', async (req,res) => {
   }
 });
 
+app.get('/api/timeclock/admin/review', async (req,res) => {
+  try {
+    if (!ADMIN_SECRET || req.get('x-timeclock-admin-secret') !== ADMIN_SECRET) {
+      return res.status(403).json({ error:'Forbidden.' });
+    }
+
+    const result = await pool.query(
+      `SELECT te.id, te.clock_in, te.clock_out, te.status, te.needs_review,
+              e.name AS employee_name, e.discord_user_id
+       FROM time_entries te
+       JOIN employees e ON e.id = te.employee_id
+       WHERE te.needs_review = TRUE
+       ORDER BY te.clock_in DESC
+       LIMIT 100`
+    );
+
+    res.json({ count:result.rows.length, entries:result.rows });
+  } catch (error) {
+    res.status(500).json({ error:error.message });
+  }
+});
+
 app.post('/api/timeclock/clock-in', async (req,res) => {
   const client = await pool.connect();
   try {
