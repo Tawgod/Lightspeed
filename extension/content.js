@@ -1,4 +1,4 @@
-const HCT_BACKEND = 'https://lightspeed-production.up.railway.app';
+const HCT_BACKEND = 'https://lightspeed-api-production-c087.up.railway.app';
 
 function extractPurchaseOrderId() {
   const match = location.pathname.match(/\/inventory\/purchase-order\/([^/?#]+)/i);
