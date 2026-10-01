@@ -182,10 +182,13 @@ async function ensureSchema() {
       claimed_by_employee_id BIGINT REFERENCES employees(id),
       source_time_off_request_id BIGINT REFERENCES time_off_requests(id),
       note TEXT,
+      notification_role_id TEXT,
       created_by TEXT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+
+    ALTER TABLE shifts ADD COLUMN IF NOT EXISTS notification_role_id TEXT;
 
     CREATE INDEX IF NOT EXISTS shifts_date_idx ON shifts(shift_date);
     CREATE INDEX IF NOT EXISTS time_off_status_idx ON time_off_requests(status, start_date);
@@ -1182,6 +1185,7 @@ app.post('/api/timeclock/admin/shifts', async (req,res) => {
     const endTime = String(req.body?.endTime || '').trim();
     const open = Boolean(req.body?.open);
     const note = String(req.body?.note || '').trim();
+    const notificationRoleId = String(req.body?.notificationRoleId || '').trim();
     const actor = String(req.body?.actor || 'DISCORD_ADMIN').trim() || 'DISCORD_ADMIN';
 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(shiftDate) ||
@@ -1194,10 +1198,10 @@ app.post('/api/timeclock/admin/shifts', async (req,res) => {
     }
 
     const result = await pool.query(
-      `INSERT INTO shifts(employee_id,shift_date,start_time,end_time,status,note,created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
+      `INSERT INTO shifts(employee_id,shift_date,start_time,end_time,status,note,notification_role_id,created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,NULLIF($7,''),$8)
        RETURNING *`,
-      [open ? null : employeeId, shiftDate, startTime, endTime, open ? 'OPEN' : 'SCHEDULED', note || null, actor]
+      [open ? null : employeeId, shiftDate, startTime, endTime, open ? 'OPEN' : 'SCHEDULED', note || null, notificationRoleId, actor]
     );
     res.status(201).json({ created:true, shift:result.rows[0] });
   } catch (error) {
