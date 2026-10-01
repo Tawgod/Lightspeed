@@ -924,6 +924,9 @@ app.post('/api/timeclock/time-off/request', async (req,res) => {
     const startDate = String(req.body?.startDate || '').trim();
     const endDate = String(req.body?.endDate || '').trim();
     const usePto = Boolean(req.body?.usePto);
+    const ptoHours = req.body?.ptoHours === '' || req.body?.ptoHours == null
+      ? null
+      : Number(req.body.ptoHours);
     const reason = String(req.body?.reason || '').trim();
 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
@@ -937,6 +940,11 @@ app.post('/api/timeclock/time-off/request', async (req,res) => {
         error:'This employee is not marked PTO eligible. Submit the request as unpaid time off instead.'
       });
     }
+    if (usePto && (!Number.isFinite(ptoHours) || ptoHours <= 0)) {
+      return res.status(400).json({
+        error:'Enter the number of PTO hours you want to use.'
+      });
+    }
 
     const result = await pool.query(
       `INSERT INTO time_off_requests(
@@ -944,7 +952,7 @@ app.post('/api/timeclock/time-off/request', async (req,res) => {
        )
        VALUES ($1,$2,$3,$4,$5,$6,'PENDING')
        RETURNING *`,
-      [employee.id, startDate, endDate, usePto, null, reason || null]
+      [employee.id, startDate, endDate, usePto, usePto ? ptoHours : null, reason || null]
     );
 
     await pool.query(
