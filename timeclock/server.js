@@ -77,12 +77,14 @@ async function ensureSchema() {
       name TEXT NOT NULL,
       name_key TEXT NOT NULL UNIQUE,
       active BOOLEAN NOT NULL DEFAULT TRUE,
+      pto_eligible BOOLEAN NOT NULL DEFAULT FALSE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
     ALTER TABLE employees ADD COLUMN IF NOT EXISTS pin_hash TEXT UNIQUE;
     ALTER TABLE employees ADD COLUMN IF NOT EXISTS discord_username TEXT;
     ALTER TABLE employees ADD COLUMN IF NOT EXISTS discord_display_name TEXT;
+    ALTER TABLE employees ADD COLUMN IF NOT EXISTS pto_eligible BOOLEAN NOT NULL DEFAULT FALSE;
 
     CREATE TABLE IF NOT EXISTS clock_events (
       id BIGSERIAL PRIMARY KEY,
@@ -489,6 +491,7 @@ async function listEmployees() {
        discord_username,
        discord_display_name,
        active,
+       pto_eligible,
        (pin_hash IS NOT NULL) AS has_pin,
        created_at
      FROM employees
@@ -921,9 +924,6 @@ app.post('/api/timeclock/time-off/request', async (req,res) => {
     const startDate = String(req.body?.startDate || '').trim();
     const endDate = String(req.body?.endDate || '').trim();
     const usePto = Boolean(req.body?.usePto);
-    const ptoHours = req.body?.ptoHours === '' || req.body?.ptoHours == null
-      ? null
-      : Number(req.body.ptoHours);
     const reason = String(req.body?.reason || '').trim();
 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
@@ -932,8 +932,10 @@ app.post('/api/timeclock/time-off/request', async (req,res) => {
     if (endDate < startDate) {
       return res.status(400).json({ error:'endDate cannot be before startDate.' });
     }
-    if (ptoHours != null && (!Number.isFinite(ptoHours) || ptoHours <= 0)) {
-      return res.status(400).json({ error:'ptoHours must be a positive number when provided.' });
+    if (usePto && !employee.pto_eligible) {
+      return res.status(403).json({
+        error:'This employee is not marked PTO eligible. Submit the request as unpaid time off instead.'
+      });
     }
 
     const result = await pool.query(
@@ -942,7 +944,7 @@ app.post('/api/timeclock/time-off/request', async (req,res) => {
        )
        VALUES ($1,$2,$3,$4,$5,$6,'PENDING')
        RETURNING *`,
-      [employee.id, startDate, endDate, usePto, ptoHours, reason || null]
+      [employee.id, startDate, endDate, usePto, null, reason || null]
     );
 
     await pool.query(
@@ -1303,6 +1305,55 @@ app.get('/api/timeclock/admin/employees', async (req,res) => {
     });
   } catch (error) {
     res.status(500).json({ error:error.message });
+  }
+});
+
+app.post('/api/timeclock/admin/employees/:employeeId/pto-eligibility', async (req,res) => {
+  try {
+    if (!ADMIN_SECRET || req.get('x-timeclock-admin-secret') !== ADMIN_SECRET) {
+      return res.status(403).json({ error:'Forbidden.' });
+    }
+
+    const employeeId = Number(req.params.employeeId);
+    const eligible = Boolean(req.body?.eligible);
+    const actor = String(req.body?.actor || 'DISCORD_ADMIN').trim() || 'DISCORD_ADMIN';
+
+    if (!Number.isInteger(employeeId) || employeeId <= 0) {
+      return res.status(400).json({ error:'Valid employee ID is required.' });
+    }
+
+    const existing = await pool.query(
+      'SELECT * FROM employees WHERE id=$1 LIMIT 1',
+      [employeeId]
+    );
+    if (!existing.rows.length) {
+      return res.status(404).json({ error:'Employee not found.' });
+    }
+
+    const updated = await pool.query(
+      'UPDATE employees SET pto_eligible=$2 WHERE id=$1 RETURNING *',
+      [employeeId, eligible]
+    );
+
+    await pool.query(
+      `INSERT INTO audit_log(actor,action,object_type,object_id,before_json,after_json)
+       VALUES ($1,'SET_PTO_ELIGIBILITY','employee',$2,$3::jsonb,$4::jsonb)`,
+      [
+        actor,
+        String(employeeId),
+        JSON.stringify(existing.rows[0]),
+        JSON.stringify(updated.rows[0])
+      ]
+    );
+
+    res.json({
+      updated:true,
+      employeeId,
+      employeeName:updated.rows[0].name,
+      ptoEligible:updated.rows[0].pto_eligible
+    });
+  } catch (error) {
+    res.status(error.status || 500).json({ error:error.message });
   }
 });
 
