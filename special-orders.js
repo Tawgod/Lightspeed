@@ -28,6 +28,8 @@ export async function initializeSpecialOrdersDb() {
 
   const schema = await fs.readFile(path.join(__dirname, 'db', 'special_orders_schema.sql'), 'utf8');
   await pool.query(schema);
+  const supplierSeed = await fs.readFile(path.join(__dirname, 'db', 'suppliers_seed.sql'), 'utf8');
+  await pool.query(supplierSeed);
   console.log('[special-orders] database schema ready');
   return true;
 }
@@ -200,7 +202,10 @@ export function createSpecialOrdersRouter({ lightspeedDomain, lightspeedToken })
     try {
       await client.query('BEGIN');
       const oldResult = await client.query('SELECT * FROM special_order_items WHERE id=$1 FOR UPDATE', [req.params.id]);
-      if (!oldResult.rows[0]) return res.status(404).json({ error: 'Order item not found.' });
+      if (!oldResult.rows[0]) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Order item not found.' });
+      }
       const old = oldResult.rows[0];
       const stamps = {
         ORDERED: 'ordered_at = COALESCE(ordered_at, now())',
