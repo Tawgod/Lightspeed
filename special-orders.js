@@ -417,7 +417,7 @@ export function createSpecialOrdersRouter({ lightspeedDomain, lightspeedToken, a
            OR lower(name) LIKE lower($2) OR lower(coalesce(description,'')) LIKE lower($2)
         ORDER BY rank, name LIMIT 25
       `, [q, `%${q}%`]);
-      local = localResult.rows.map(p => ({ ...p, source: 'local' }));
+      local = localResult.rows.map(p => ({ ...p, local_id: p.id, source: 'local' }));
     }
 
     const seen = new Set(local.map(p => p.lightspeed_product_id).filter(Boolean));
@@ -432,9 +432,9 @@ export function createSpecialOrdersRouter({ lightspeedDomain, lightspeedToken, a
         for (const product of (result.value?.data || [])) {
           if (!seen.has(product.id)) {
             seen.add(product.id);
-            remote.push({ ...product, source: 'lightspeed' });
+            const localProduct = await upsertLocalProduct(product);
+            remote.push({ ...product, local_id: localProduct?.id || null, source: 'lightspeed' });
           }
-          await upsertLocalProduct(product);
         }
       }
     } catch (error) {
