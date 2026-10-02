@@ -54,3 +54,82 @@ ON CONFLICT (name) DO UPDATE SET
   supplier_type=EXCLUDED.supplier_type,
   order_frequency=EXCLUDED.order_frequency,
   updated_at=now();
+
+
+INSERT INTO sourcing_departments (name) VALUES
+('Games'),
+('Trading Cards'),
+('Models & Miniatures'),
+('RC'),
+('Puzzles'),
+('Toys'),
+('Hobby Supplies'),
+('Trains'),
+('Books & Magazines'),
+('Gifts & Novelty'),
+('Kites'),
+('Coin Supplies')
+ON CONFLICT (name) DO NOTHING;
+
+WITH m(supplier_name, department_name, priority) AS (
+  VALUES
+  ('ACD Distribution','Games',1),
+  ('ACD Distribution','Trading Cards',1),
+  ('Alliance Game Distributors','Games',1),
+  ('Alliance Game Distributors','Trading Cards',1),
+  ('GTS Distribution','Games',1),
+  ('GTS Distribution','Trading Cards',1),
+  ('Southern Hobby Supply','Games',2),
+  ('Southern Hobby Supply','Trading Cards',1),
+  ('Games Workshop','Games',2),
+  ('Games Workshop','Models & Miniatures',1),
+  ('Bluefin','Models & Miniatures',1),
+  ('Stevens International','Models & Miniatures',1),
+  ('Stevens International','Hobby Supplies',2),
+  ('Horizon Hobby, Inc.','Models & Miniatures',1),
+  ('Horizon Hobby, Inc.','RC',1),
+  ('Horizon Hobby, Inc.','Hobby Supplies',1),
+  ('Horizon Hobby Rockets','Hobby Supplies',1),
+  ('Walthers','Trains',1),
+  ('Walthers','Models & Miniatures',2),
+  ('Carrera','Toys',2),
+  ('Carrera','Models & Miniatures',2),
+  ('Common Sense RC','RC',1),
+  ('JR Americas','RC',1),
+  ('Traxxas','RC',1),
+  ('Atlas Brush Co.','Hobby Supplies',1),
+  ('Bob Smith','Hobby Supplies',1),
+  ('EuroGraphics Puzzles','Puzzles',1),
+  ('IMEX Model Co.','Puzzles',2),
+  ('Leanin'' Tree Puzzles','Puzzles',1),
+  ('Outset Media','Puzzles',1),
+  ('Outset Media','Games',2),
+  ('Ravensburger','Puzzles',1),
+  ('Ravensburger','Games',2),
+  ('Springbock','Puzzles',1),
+  ('SunsOut, Inc.','Puzzles',1),
+  ('Professor Puzzle','Puzzles',1),
+  ('Professor Puzzle','Games',2),
+  ('Toysmith','Toys',1),
+  ('Melissa & Doug','Toys',1),
+  ('Safari Ltd.','Toys',1),
+  ('WOWTOYZ','Toys',1),
+  ('GiantMicrobes, Inc.','Toys',1),
+  ('Aero Motion, Inc.','Toys',1),
+  ('Fantasma Toys','Toys',1),
+  ('Fantasma Toys','Gifts & Novelty',2),
+  ('Quarto Group','Books & Magazines',1),
+  ('Kalmbach Media','Books & Magazines',1),
+  ('Premier Kites & Designs','Kites',1),
+  ('Tonka Hobby Supply','Coin Supplies',1),
+  ('Leanin'' Tree','Gifts & Novelty',1),
+  ('Pitkin Stearns (Sand Art)','Gifts & Novelty',1),
+  ('Zen Magnets LLC.','Gifts & Novelty',1),
+  ('Creative Products','Gifts & Novelty',2)
+)
+INSERT INTO supplier_sourcing_departments (supplier_id,sourcing_department_id,priority)
+SELECT s.id,d.id,m.priority
+FROM m
+JOIN suppliers s ON s.name=m.supplier_name
+JOIN sourcing_departments d ON d.name=m.department_name
+ON CONFLICT (supplier_id,sourcing_department_id) DO UPDATE SET priority=EXCLUDED.priority;
