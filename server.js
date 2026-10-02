@@ -10,6 +10,7 @@ import { createOrderSplitRouter } from './routes/orderSplit.js';
 import { createOrderSplitExecuteRouter } from './routes/orderSplitExecute.js';
 import { createDepositConversionRouter } from './routes/depositConversion.js';
 import { createWorkOrderCombineRouter } from './routes/workOrderCombine.js';
+import { createSpecialOrdersRouter, initializeSpecialOrdersDb } from './special-orders.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -41,6 +42,16 @@ app.use('/api/order-split', createDepositConversionRouter({
 app.use('/api/work-orders', createWorkOrderCombineRouter({
   domain: LIGHTSPEED_DOMAIN,
   token: LIGHTSPEED_TOKEN
+}));
+
+app.get('/special-orders', (req, res) => {
+  res.sendFile(path.join(__dirname, 'special-orders.html'));
+});
+
+app.use('/api/special-orders', createSpecialOrdersRouter({
+  lightspeedDomain: LIGHTSPEED_DOMAIN,
+  lightspeedToken: LIGHTSPEED_TOKEN,
+  adminKey: process.env.SPECIAL_ORDERS_ADMIN_KEY
 }));
 
 

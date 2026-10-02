@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hobby Corner Special Orders</title>
+<style>
+:root{font-family:Inter,system-ui,sans-serif;color:#1f2937;background:#f3f4f6}body{margin:0}.wrap{max-width:1250px;margin:auto;padding:24px}
+h1{margin:0 0 4px}.sub{color:#6b7280;margin-bottom:24px}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:22px}
+.card,.panel{background:white;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 1px 2px #0000000d}.card{padding:16px}.value{font-size:30px;font-weight:750}.label{font-size:13px;color:#6b7280}
+.panel{padding:18px;margin-bottom:18px}.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}input,select,button{font:inherit;padding:9px 10px;border-radius:7px;border:1px solid #d1d5db}
+button{cursor:pointer;background:#111827;color:white}.danger{color:#b91c1c;font-weight:650}.pill{display:inline-block;padding:3px 8px;border-radius:999px;background:#eef2ff;font-size:12px}
+table{width:100%;border-collapse:collapse}th,td{padding:10px 8px;border-bottom:1px solid #eee;text-align:left;font-size:13px}th{color:#6b7280}
+.notice{padding:12px;border-radius:8px;background:#fff7ed;color:#9a3412;margin-bottom:16px;display:none}
+@media(max-width:760px){table{display:block;overflow-x:auto}.wrap{padding:14px}}
+</style>
+</head>
+<body><div class="wrap">
+<h1>Special Orders</h1><div class="sub">Hobby Corner order, supplier, and fulfillment control center</div>
+<div id="notice" class="notice"></div>
+<div class="panel">
+  <div class="toolbar">
+    <input id="accessKey" type="password" placeholder="Internal access key" size="24">
+    <button onclick="saveKey()">Unlock</button>
+    <input id="legacyWorkbook" type="file" accept=".xlsx" style="max-width:260px">
+    <button onclick="importWorkbook()">Import legacy workbook</button>
+  </div>
+  <div style="font-size:12px;color:#6b7280">The workbook is uploaded directly to the private database importer; customer data is not stored in GitHub.</div>
+</div>
+<div class="cards">
+  <div class="card"><div class="value" id="open">—</div><div class="label">Open items</div></div>
+  <div class="card"><div class="value" id="needs_ordering">—</div><div class="label">Needs ordering</div></div>
+  <div class="card"><div class="value" id="ordered_over_7_days">—</div><div class="label">Ordered &gt; 7 days</div></div>
+  <div class="card"><div class="value" id="backordered">—</div><div class="label">Backordered</div></div>
+  <div class="card"><div class="value" id="preorder">—</div><div class="label">Preorders</div></div>
+  <div class="card"><div class="value" id="ready_or_held">—</div><div class="label">Received / held</div></div>
+</div>
+<div class="panel">
+  <h2>New Special Order</h2>
+  <div class="toolbar">
+    <input id="customerSearch" placeholder="Customer name, phone, or email" size="30">
+    <button onclick="searchCustomers()">Find customer</button>
+    <span id="selectedCustomer" class="pill">No customer selected</span>
+  </div>
+  <div id="customerResults"></div>
+  <div class="toolbar">
+    <input id="newProductSearch" placeholder="SKU, UPC, or description/name" size="36">
+    <button onclick="searchOrderProducts()">Find item</button>
+    <span id="selectedProduct" class="pill">No product selected</span>
+  </div>
+  <div id="newProductResults"></div>
+  <div class="toolbar">
+    <input id="manualItemName" placeholder="Item name if not in Lightspeed" size="32">
+    <input id="manualSku" placeholder="SKU / supplier item #">
+    <input id="orderQty" type="number" value="1" min="1" style="width:70px">
+    <select id="newStatus">
+      <option value="OOS">OOS — needs ordering</option>
+      <option value="PREORDER">Preorder</option>
+      <option value="READY_TO_ORDER">Ready to order</option>
+      <option value="ORDERED">Ordered</option>
+      <option value="BACKORDERED">Backordered</option>
+    </select>
+    <select id="newDepartment"><option value="">Sourcing department…</option></select>
+    <select id="newSupplier"><option value="">Preferred supplier (optional)…</option></select>
+  </div>
+  <div class="toolbar">
+    <input id="newNotes" placeholder="Notes" size="55">
+    <button onclick="createOrder()">Save special order</button>
+  </div>
+</div>
+<div class="panel">
+  <div class="toolbar">
+    <input id="productSearch" placeholder="Search Lightspeed by SKU or exact name…" size="38">
+    <button onclick="searchProducts()">Search products</button>
+    <select id="supplierSelect" onchange="loadSupplier()"><option value="">Order a supplier…</option></select>
+    <select id="departmentSelect" onchange="loadDepartment()"><option value="">Source by department…</option></select>
+  </div>
+  <div id="productResults"></div><div id="supplierResults"></div><div id="departmentResults"></div>
+</div>
+<div class="panel">
+  <h2>Preorder Allocations</h2>
+  <div class="toolbar">
+    <select id="preorderCampaign" onchange="loadPreorderCampaign()"><option value="">Select preorder campaign…</option></select>
+  </div>
+  <div id="preorderProducts"></div>
+</div>
+<div class="panel">
+  <div class="toolbar">
+    <select id="statusFilter" onchange="loadOrders()">
+      <option value="">All open/recent items</option><option>PREORDER</option><option>OOS</option>
+      <option>READY_TO_ORDER</option><option>ORDERED</option><option>BACKORDERED</option>
+      <option>RECEIVED</option><option>HELD</option><option>CUSTOMER_NOTIFIED</option>
+    </select>
+    <label><input type="checkbox" id="attention" onchange="loadOrders()"> ordered &gt; 7 days only</label>
+  </div>
+  <table><thead><tr><th>Customer</th><th>Item</th><th>SKU</th><th>Qty</th><th>Status</th><th>Supplier</th><th>Age</th><th>Notes</th></tr></thead>
+  <tbody id="orders"></tbody></table>
+</div>
+</div>
+<script>
+const api='/api/special-orders';
+let selectedCustomer=null, selectedOrderProduct=null;
+function showNotice(t){const n=document.getElementById('notice');n.textContent=t;n.style.display='block'}
+function accessKey(){return sessionStorage.getItem('hcSpecialOrdersKey')||''}
+function saveKey(){const v=document.getElementById('accessKey').value.trim();if(v){sessionStorage.setItem('hcSpecialOrdersKey',v);loadAll()}}
+async function getJson(url,opts={}){
+  const headers={...(opts.headers||{}),'x-hobby-corner-key':accessKey()};
+  const r=await fetch(url,{...opts,headers});let d={};try{d=await r.json()}catch{}
+  if(!r.ok)throw new Error(d.error||r.statusText);return d
+}
+async function importWorkbook(){
+  const f=document.getElementById('legacyWorkbook').files[0];if(!f)return showNotice('Choose the HC Special Orders workbook first.');
+  const fd=new FormData();fd.append('workbook',f);
+  try{
+    const r=await fetch(api+'/import/workbook',{method:'POST',headers:{'x-hobby-corner-key':accessKey()},body:fd});
+    const d=await r.json();if(!r.ok)throw new Error(d.error||r.statusText);
+    showNotice(d.alreadyImported?'That exact workbook has already been imported.':`Imported ${d.imported} rows. Skipped ${d.skipped} duplicates.`);
+    await loadStats();await loadOrders();
+  }catch(e){showNotice(e.message)}
+}
+async function loadStats(){try{const s=await getJson(api+'/stats');for(const k of Object.keys(s))if(document.getElementById(k))document.getElementById(k).textContent=s[k]}catch(e){showNotice(e.message)}}
+async function loadOrders(){try{const p=new URLSearchParams();const st=document.getElementById('statusFilter').value;if(st)p.set('status',st);if(document.getElementById('attention').checked)p.set('attention','1');const rows=await getJson(api+'/orders?'+p);document.getElementById('orders').innerHTML=rows.map(x=>`<tr><td>${x.customer_name||'—'}</td><td>${x.product_name||x.requested_name}</td><td>${x.sku||x.requested_sku||'—'}</td><td>${x.quantity}</td><td><span class="pill">${x.status}</span></td><td>${x.preferred_supplier_name||'—'}</td><td class="${x.days_ordered>=7?'danger':''}">${x.days_ordered==null?'—':x.days_ordered+'d'}</td><td>${x.notes||''}</td></tr>`).join('')}catch(e){showNotice(e.message)}}
+async function loadSuppliers(){try{const s=await getJson(api+'/suppliers');document.getElementById('supplierSelect').innerHTML='<option value="">Order a supplier…</option>'+s.map(x=>`<option value="${x.id}">${x.name}</option>`).join('');document.getElementById('newSupplier').innerHTML='<option value="">Preferred supplier (optional)…</option>'+s.map(x=>`<option value="${x.id}">${x.name}</option>`).join('')}catch(e){}}
+async function loadDepartments(){try{const d=await getJson(api+'/departments');document.getElementById('departmentSelect').innerHTML='<option value="">Source by department…</option>'+d.map(x=>`<option value="${x.id}">${x.name} (${x.supplier_count})</option>`).join('');document.getElementById('newDepartment').innerHTML='<option value="">Sourcing department…</option>'+d.map(x=>`<option value="${x.id}">${x.name}</option>`).join('')}catch(e){}}
+async function loadDepartment(){const id=document.getElementById('departmentSelect').value;if(!id){document.getElementById('departmentResults').innerHTML='';return}try{const r=await getJson(api+'/departments/'+id+'/suppliers');document.getElementById('departmentResults').innerHTML='<h3>Possible suppliers for this department</h3><p style="color:#6b7280">These are sourcing possibilities even when the product is not currently linked to that supplier in Lightspeed.</p>'+(!r.length?'<p>No suppliers are tagged for this department yet.</p>':'<table><tr><th>Supplier</th><th>Typical cadence</th><th>Known product link?</th><th>Supplier SKU</th><th>Cost</th></tr>'+r.map(x=>`<tr><td>${x.name}</td><td>${x.order_frequency||'—'}</td><td>${x.exact_product_mapping?'Yes':'Possible source'}</td><td>${x.supplier_sku||'—'}</td><td>${x.supply_price||'—'}</td></tr>`).join('')+'</table>')}catch(e){showNotice(e.message)}}
+async function loadSupplier(){const id=document.getElementById('supplierSelect').value;if(!id){document.getElementById('supplierResults').innerHTML='';return}try{const r=await getJson(api+'/suppliers/'+id+'/orderable');document.getElementById('supplierResults').innerHTML='<h3>Items ready for this supplier</h3>'+(!r.length?'<p>Nothing currently waiting.</p>':'<table><tr><th>Item</th><th>Supplier SKU</th><th>Needed</th><th>Customers</th><th>Cost</th></tr>'+r.map(x=>`<tr><td>${x.name}</td><td>${x.supplier_sku||'—'}</td><td>${x.qty_needed}</td><td>${x.waiting_orders}</td><td>${x.supply_price||'—'}</td></tr>`).join('')+'</table>')}catch(e){showNotice(e.message)}}
+async function searchCustomers(){const q=document.getElementById('customerSearch').value.trim();if(!q)return;try{const r=await getJson(api+'/customers/search?q='+encodeURIComponent(q));document.getElementById('customerResults').innerHTML=!r.length?'<p>No Lightspeed customer found.</p>':'<table><tr><th>Name</th><th>Phone</th><th>Email</th><th></th></tr>'+r.map((x,i)=>`<tr><td>${[x.first_name,x.last_name].filter(Boolean).join(' ')||x.company_name||'Unnamed'}</td><td>${x.mobile||x.phone||'—'}</td><td>${x.email||'—'}</td><td><button onclick="chooseCustomer(${i})">Use</button></td></tr>`).join('')+'</table>';window._customerResults=r}catch(e){showNotice(e.message)}}
+function chooseCustomer(i){selectedCustomer=window._customerResults[i];const name=[selectedCustomer.first_name,selectedCustomer.last_name].filter(Boolean).join(' ')||selectedCustomer.company_name||'Unnamed';document.getElementById('selectedCustomer').textContent=name}
+async function searchOrderProducts(){const q=document.getElementById('newProductSearch').value.trim();if(!q)return;try{const r=await getJson(api+'/products/search?q='+encodeURIComponent(q));window._orderProductResults=r;document.getElementById('newProductResults').innerHTML=!r.length?'<p>No existing product match. Enter the item name/SKU manually below.</p>':'<table><tr><th>Name</th><th>SKU</th><th>UPC</th><th>Source</th><th>Inventory</th><th></th></tr>'+r.map((x,i)=>`<tr><td>${x.name}</td><td>${x.sku||'—'}</td><td>${x.upc||'—'}</td><td>${x.source}</td><td id="inv-${i}">—</td><td><button onclick="chooseOrderProduct(${i})">Use</button></td></tr>`).join('')+'</table>';r.forEach((x,i)=>{const lsId=x.lightspeed_product_id||(x.source==='lightspeed'?x.id:null);if(lsId)loadInventory(lsId,i)})}catch(e){showNotice(e.message)}}
+async function loadInventory(id,i){try{const d=await getJson(api+'/products/'+encodeURIComponent(id)+'/inventory');const rows=d.data||[];const levels=rows.map(x=>Number(x.inventory_level??x.quantity??x.current_amount??0)).filter(Number.isFinite);document.getElementById('inv-'+i).textContent=levels.length?levels.reduce((a,b)=>a+b,0):'See detail'}catch{}}
+function chooseOrderProduct(i){selectedOrderProduct=window._orderProductResults[i];document.getElementById('selectedProduct').textContent=(selectedOrderProduct.name||'Product')+(selectedOrderProduct.sku?' — '+selectedOrderProduct.sku:'');document.getElementById('manualItemName').value=selectedOrderProduct.name||'';document.getElementById('manualSku').value=selectedOrderProduct.sku||''}
+async function createOrder(){
+  if(!selectedCustomer)return showNotice('Select a Lightspeed customer first.');
+  const itemName=document.getElementById('manualItemName').value.trim()||(selectedOrderProduct&&selectedOrderProduct.name);
+  if(!itemName)return showNotice('Enter or select an item.');
+  const customerName=[selectedCustomer.first_name,selectedCustomer.last_name].filter(Boolean).join(' ')||selectedCustomer.company_name||'Unnamed';
+  const payload={customer:{lightspeed_customer_id:selectedCustomer.id,name:customerName,phone:selectedCustomer.mobile||selectedCustomer.phone||null,email:selectedCustomer.email||null},items:[{
+    product_id:selectedOrderProduct?.local_id||null,
+    requested_name:itemName,requested_sku:document.getElementById('manualSku').value.trim()||selectedOrderProduct?.sku||null,
+    quantity:Number(document.getElementById('orderQty').value||1),status:document.getElementById('newStatus').value,
+    sourcing_department_id:document.getElementById('newDepartment').value||null,
+    preferred_supplier_id:document.getElementById('newSupplier').value||null,
+    notes:document.getElementById('newNotes').value.trim()||null
+  }]};
+  try{await getJson(api+'/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});showNotice('Special order saved.');selectedOrderProduct=null;document.getElementById('selectedProduct').textContent='No product selected';document.getElementById('manualItemName').value='';document.getElementById('manualSku').value='';document.getElementById('newNotes').value='';await loadStats();await loadOrders()}catch(e){showNotice(e.message)}
+}
+async function searchProducts(){const q=document.getElementById('productSearch').value.trim();if(!q)return;try{const r=await getJson(api+'/products/search?q='+encodeURIComponent(q));document.getElementById('productResults').innerHTML='<h3>Product matches</h3>'+(!r.length?'<p>No match found. Product creation will be the next form added here.</p>':'<table><tr><th>Name</th><th>SKU</th><th>UPC</th><th>Source</th></tr>'+r.map(x=>`<tr><td>${x.name}</td><td>${x.sku||'—'}</td><td>${x.upc||'—'}</td><td>${x.source}</td></tr>`).join('')+'</table>')}catch(e){showNotice(e.message)}}
+async function loadPreorders(){try{const c=await getJson(api+'/preorders/campaigns');document.getElementById('preorderCampaign').innerHTML='<option value="">Select preorder campaign…</option>'+c.map(x=>`<option value="${x.id}">${x.name} — ${x.request_count} requests</option>`).join('')}catch(e){}}
+async function loadPreorderCampaign(){const id=document.getElementById('preorderCampaign').value;if(!id){document.getElementById('preorderProducts').innerHTML='';return}try{const d=await getJson(api+'/preorders/campaigns/'+id);document.getElementById('preorderProducts').innerHTML='<table><tr><th>Product</th><th>Ordered</th><th>Received</th><th>Requested</th><th>Allocated</th><th>Available</th><th></th></tr>'+d.products.map(x=>{const available=Math.max(0,Number(x.received_quantity||0)-Number(x.reserved_floor_quantity||0)-Number(x.allocated_total||0));return `<tr><td>${x.item_description}</td><td>${x.ordered_quantity}</td><td>${x.received_quantity}</td><td>${x.requested_total}</td><td>${x.allocated_total}</td><td>${available}</td><td><button onclick="allocatePreorder(${x.id},'FAIR_SHARE')">Fair share</button> <button onclick="allocatePreorder(${x.id},'QUEUE')">Queue</button></td></tr>`}).join('')+'</table>'}catch(e){showNotice(e.message)}}
+async function allocatePreorder(id,method){if(!confirm('Allocate currently available preorder inventory using '+method+'?'))return;try{const d=await getJson(api+'/preorders/products/'+id+'/allocate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({method})});showNotice(`Allocated ${d.newlyAllocated}; ${d.remaining} still available.`);await loadPreorderCampaign()}catch(e){showNotice(e.message)}}
+async function loadAll(){await Promise.allSettled([loadStats(),loadOrders(),loadSuppliers(),loadDepartments(),loadPreorders()])}
+document.getElementById('accessKey').value=accessKey();
+if(accessKey())loadAll();else showNotice('Enter the internal access key to load special-order data.');
+</script></body></html>
