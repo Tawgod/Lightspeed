@@ -196,3 +196,79 @@ CREATE TABLE IF NOT EXISTS special_order_import_runs (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_one_ready_pending
 ON notifications (special_order_item_id, channel)
 WHERE status IN ('PENDING','QUEUED') AND channel='DISCORD_READY';
+
+CREATE TABLE IF NOT EXISTS preorder_campaigns (
+  id BIGSERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  game TEXT,
+  supplier_id BIGINT REFERENCES suppliers(id),
+  order_due_at TIMESTAMPTZ,
+  release_date DATE,
+  status TEXT NOT NULL DEFAULT 'OPEN',
+  allocation_method TEXT NOT NULL DEFAULT 'QUEUE',
+  pickup_window_days INTEGER NOT NULL DEFAULT 7,
+  notes TEXT,
+  source_sheet TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS preorder_products (
+  id BIGSERIAL PRIMARY KEY,
+  preorder_campaign_id BIGINT NOT NULL REFERENCES preorder_campaigns(id) ON DELETE CASCADE,
+  product_id BIGINT REFERENCES products(id),
+  sku TEXT,
+  upc TEXT,
+  item_description TEXT NOT NULL,
+  msrp NUMERIC(12,2),
+  order_limit INTEGER,
+  ordered_quantity INTEGER NOT NULL DEFAULT 0,
+  received_quantity INTEGER NOT NULL DEFAULT 0,
+  reserved_floor_quantity INTEGER NOT NULL DEFAULT 0,
+  release_date DATE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (preorder_campaign_id, sku)
+);
+
+CREATE TABLE IF NOT EXISTS preorder_requests (
+  id BIGSERIAL PRIMARY KEY,
+  preorder_product_id BIGINT NOT NULL REFERENCES preorder_products(id) ON DELETE CASCADE,
+  customer_id BIGINT NOT NULL REFERENCES customers(id),
+  requested_quantity INTEGER NOT NULL DEFAULT 1 CHECK (requested_quantity > 0),
+  queue_position INTEGER,
+  requested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  status TEXT NOT NULL DEFAULT 'REQUESTED',
+  notes TEXT,
+  source_key TEXT UNIQUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_preorder_requests_product_queue
+ON preorder_requests (preorder_product_id, queue_position, requested_at);
+
+CREATE TABLE IF NOT EXISTS preorder_allocations (
+  id BIGSERIAL PRIMARY KEY,
+  preorder_request_id BIGINT NOT NULL REFERENCES preorder_requests(id) ON DELETE CASCADE,
+  quantity INTEGER NOT NULL CHECK (quantity > 0),
+  status TEXT NOT NULL DEFAULT 'ALLOCATED',
+  allocated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  ready_at TIMESTAMPTZ,
+  pickup_deadline_at TIMESTAMPTZ,
+  picked_up_at TIMESTAMPTZ,
+  released_at TIMESTAMPTZ,
+  release_reason TEXT,
+  notification_id BIGINT REFERENCES notifications(id),
+  UNIQUE (preorder_request_id)
+);
+
+CREATE TABLE IF NOT EXISTS customer_pickup_events (
+  id BIGSERIAL PRIMARY KEY,
+  customer_id BIGINT NOT NULL REFERENCES customers(id),
+  preorder_request_id BIGINT REFERENCES preorder_requests(id) ON DELETE SET NULL,
+  special_order_item_id BIGINT REFERENCES special_order_items(id) ON DELETE SET NULL,
+  event_type TEXT NOT NULL,
+  occurred_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  notes TEXT,
+  created_by TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_customer_pickup_events_customer
+ON customer_pickup_events (customer_id, occurred_at DESC);
