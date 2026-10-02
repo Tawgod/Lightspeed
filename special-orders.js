@@ -110,6 +110,238 @@ export function createSpecialOrdersRouter({ lightspeedDomain, lightspeedToken, a
     }
   });
 
+  router.get('/customers/:id/pickup-history', requireDb, async (req, res) => {
+    const { rows } = await pool.query(`
+      SELECT e.*,
+             pr.requested_quantity,
+             pp.item_description,
+             pc.name AS campaign_name
+      FROM customer_pickup_events e
+      LEFT JOIN preorder_requests pr ON pr.id=e.preorder_request_id
+      LEFT JOIN preorder_products pp ON pp.id=pr.preorder_product_id
+      LEFT JOIN preorder_campaigns pc ON pc.id=pp.preorder_campaign_id
+      WHERE e.customer_id=$1
+      ORDER BY e.occurred_at DESC
+      LIMIT 100
+    `, [req.params.id]);
+    const summary = await pool.query(`
+      SELECT
+        count(*) FILTER (WHERE event_type='PICKED_UP')::int AS picked_up,
+        count(*) FILTER (WHERE event_type='LATE_PICKUP')::int AS late_pickups,
+        count(*) FILTER (WHERE event_type='NO_PICKUP')::int AS no_pickups,
+        max(occurred_at) FILTER (WHERE event_type='NO_PICKUP') AS last_no_pickup
+      FROM customer_pickup_events
+      WHERE customer_id=$1
+    `, [req.params.id]);
+    res.json({ summary: summary.rows[0], events: rows });
+  });
+
+  router.get('/preorders/campaigns', requireDb, async (req, res) => {
+    const { rows } = await pool.query(`
+      SELECT pc.*,
+             count(DISTINCT pp.id)::int AS product_count,
+             count(DISTINCT pr.id)::int AS request_count
+      FROM preorder_campaigns pc
+      LEFT JOIN preorder_products pp ON pp.preorder_campaign_id=pc.id
+      LEFT JOIN preorder_requests pr ON pr.preorder_product_id=pp.id
+      GROUP BY pc.id
+      ORDER BY COALESCE(pc.release_date, DATE '9999-12-31'), pc.created_at DESC
+    `);
+    res.json(rows);
+  });
+
+  router.get('/preorders/campaigns/:id', requireDb, async (req, res) => {
+    const campaign = await pool.query('SELECT * FROM preorder_campaigns WHERE id=$1', [req.params.id]);
+    if (!campaign.rows[0]) return res.status(404).json({ error:'Preorder campaign not found.' });
+    const products = await pool.query(`
+      SELECT pp.*,
+             COALESCE(sum(pr.requested_quantity),0)::int AS requested_total,
+             COALESCE(sum(pa.quantity) FILTER (WHERE pa.status IN ('ALLOCATED','READY','PICKED_UP')),0)::int AS allocated_total
+      FROM preorder_products pp
+      LEFT JOIN preorder_requests pr ON pr.preorder_product_id=pp.id
+      LEFT JOIN preorder_allocations pa ON pa.preorder_request_id=pr.id
+      WHERE pp.preorder_campaign_id=$1
+      GROUP BY pp.id
+      ORDER BY pp.release_date, pp.item_description
+    `, [req.params.id]);
+    res.json({ campaign:campaign.rows[0], products:products.rows });
+  });
+
+  router.get('/preorders/products/:id/requests', requireDb, async (req, res) => {
+    const { rows } = await pool.query(`
+      SELECT pr.*, c.name AS customer_name, c.phone, c.discord_handle,
+             pa.quantity AS allocated_quantity, pa.status AS allocation_status,
+             pa.pickup_deadline_at, pa.picked_up_at,
+             hist.no_pickups, hist.late_pickups
+      FROM preorder_requests pr
+      JOIN customers c ON c.id=pr.customer_id
+      LEFT JOIN preorder_allocations pa ON pa.preorder_request_id=pr.id
+      LEFT JOIN LATERAL (
+        SELECT
+          count(*) FILTER (WHERE e.event_type='NO_PICKUP')::int AS no_pickups,
+          count(*) FILTER (WHERE e.event_type='LATE_PICKUP')::int AS late_pickups
+        FROM customer_pickup_events e WHERE e.customer_id=pr.customer_id
+      ) hist ON true
+      WHERE pr.preorder_product_id=$1
+      ORDER BY COALESCE(pr.queue_position,2147483647), pr.requested_at
+    `, [req.params.id]);
+    res.json(rows);
+  });
+
+  router.post('/preorders/products/:id/allocate', requireDb, async (req, res) => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const productResult = await client.query(`
+        SELECT pp.*, pc.allocation_method, pc.pickup_window_days
+        FROM preorder_products pp
+        JOIN preorder_campaigns pc ON pc.id=pp.preorder_campaign_id
+        WHERE pp.id=$1 FOR UPDATE
+      `, [req.params.id]);
+      const product = productResult.rows[0];
+      if (!product) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error:'Preorder product not found.' });
+      }
+
+      const available = Math.max(0, Number(req.body?.available_quantity ?? product.received_quantity) - Number(product.reserved_floor_quantity || 0));
+      const method = String(req.body?.method || product.allocation_method || 'QUEUE').toUpperCase();
+      if (!['QUEUE','FAIR_SHARE','MANUAL'].includes(method)) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error:'Allocation method must be QUEUE, FAIR_SHARE, or MANUAL.' });
+      }
+
+      const existingAlloc = await client.query(`
+        SELECT COALESCE(sum(quantity),0)::int AS qty
+        FROM preorder_allocations pa
+        JOIN preorder_requests pr ON pr.id=pa.preorder_request_id
+        WHERE pr.preorder_product_id=$1 AND pa.status IN ('ALLOCATED','READY','PICKED_UP')
+      `, [req.params.id]);
+      let remaining = Math.max(0, available - Number(existingAlloc.rows[0].qty || 0));
+
+      const requests = await client.query(`
+        SELECT pr.*, c.name AS customer_name
+        FROM preorder_requests pr
+        JOIN customers c ON c.id=pr.customer_id
+        LEFT JOIN preorder_allocations pa ON pa.preorder_request_id=pr.id
+        WHERE pr.preorder_product_id=$1
+          AND pr.status='REQUESTED'
+          AND pa.id IS NULL
+        ORDER BY COALESCE(pr.queue_position,2147483647), pr.requested_at
+        FOR UPDATE OF pr
+      `, [req.params.id]);
+
+      const created = [];
+      if (method === 'MANUAL') {
+        const manual = Array.isArray(req.body?.allocations) ? req.body.allocations : [];
+        for (const a of manual) {
+          const request = requests.rows.find(r => String(r.id) === String(a.request_id));
+          const qty = Math.min(Number(a.quantity || 0), Number(request?.requested_quantity || 0), remaining);
+          if (!request || qty <= 0) continue;
+          const r = await client.query(
+            'INSERT INTO preorder_allocations (preorder_request_id,quantity) VALUES ($1,$2) RETURNING *',
+            [request.id, qty]
+          );
+          await client.query('UPDATE preorder_requests SET status=$1 WHERE id=$2', ['ALLOCATED',request.id]);
+          created.push(r.rows[0]); remaining -= qty;
+        }
+      } else if (method === 'FAIR_SHARE') {
+        // One each in queue order, then another pass, until stock is exhausted.
+        const need = requests.rows.map(r => ({...r, left:Number(r.requested_quantity)}));
+        while (remaining > 0 && need.some(r => r.left > 0)) {
+          for (const r of need) {
+            if (remaining <= 0) break;
+            if (r.left <= 0) continue;
+            r.left--; remaining--;
+            const found = created.find(x => String(x.preorder_request_id)===String(r.id));
+            if (found) {
+              found.quantity++;
+              await client.query('UPDATE preorder_allocations SET quantity=quantity+1 WHERE id=$1',[found.id]);
+            } else {
+              const ins = await client.query(
+                'INSERT INTO preorder_allocations (preorder_request_id,quantity) VALUES ($1,1) RETURNING *',[r.id]
+              );
+              created.push(ins.rows[0]);
+              await client.query('UPDATE preorder_requests SET status=$1 WHERE id=$2',['ALLOCATED',r.id]);
+            }
+          }
+        }
+      } else {
+        for (const r of requests.rows) {
+          if (remaining <= 0) break;
+          const qty = Math.min(Number(r.requested_quantity), remaining);
+          const ins = await client.query(
+            'INSERT INTO preorder_allocations (preorder_request_id,quantity) VALUES ($1,$2) RETURNING *',[r.id,qty]
+          );
+          created.push(ins.rows[0]);
+          await client.query('UPDATE preorder_requests SET status=$1 WHERE id=$2',['ALLOCATED',r.id]);
+          remaining -= qty;
+        }
+      }
+
+      await client.query('COMMIT');
+      res.json({ method, available, newlyAllocated:created.reduce((s,x)=>s+Number(x.quantity),0), remaining, allocations:created });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      res.status(400).json({ error:error.message });
+    } finally { client.release(); }
+  });
+
+  router.patch('/preorders/allocations/:id', requireDb, async (req, res) => {
+    const action=String(req.body?.action||'').toUpperCase();
+    const client=await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const q=await client.query(`
+        SELECT pa.*, pr.customer_id, pp.item_description, pc.pickup_window_days
+        FROM preorder_allocations pa
+        JOIN preorder_requests pr ON pr.id=pa.preorder_request_id
+        JOIN preorder_products pp ON pp.id=pr.preorder_product_id
+        JOIN preorder_campaigns pc ON pc.id=pp.preorder_campaign_id
+        WHERE pa.id=$1 FOR UPDATE
+      `,[req.params.id]);
+      const a=q.rows[0];
+      if(!a){await client.query('ROLLBACK');return res.status(404).json({error:'Allocation not found.'})}
+
+      if(action==='READY'){
+        const r=await client.query(`
+          UPDATE preorder_allocations SET status='READY',ready_at=now(),
+            pickup_deadline_at=now()+make_interval(days => $2)
+          WHERE id=$1 RETURNING *
+        `,[a.id,Number(a.pickup_window_days||7)]);
+        await client.query('COMMIT');return res.json(r.rows[0]);
+      }
+      if(action==='PICKED_UP'){
+        const late=a.pickup_deadline_at && new Date(a.pickup_deadline_at)<new Date();
+        const r=await client.query(`
+          UPDATE preorder_allocations SET status='PICKED_UP',picked_up_at=now() WHERE id=$1 RETURNING *
+        `,[a.id]);
+        await client.query(`
+          INSERT INTO customer_pickup_events (customer_id,preorder_request_id,event_type,notes,created_by)
+          VALUES ($1,$2,$3,$4,$5)
+        `,[a.customer_id,a.preorder_request_id,late?'LATE_PICKUP':'PICKED_UP',req.body?.note||null,req.body?.changed_by||null]);
+        await client.query('COMMIT');return res.json(r.rows[0]);
+      }
+      if(action==='NO_PICKUP'){
+        const r=await client.query(`
+          UPDATE preorder_allocations SET status='RELEASED',released_at=now(),
+            release_reason='NO_PICKUP'
+          WHERE id=$1 RETURNING *
+        `,[a.id]);
+        await client.query('UPDATE preorder_requests SET status=$1 WHERE id=$2',['NO_PICKUP',a.preorder_request_id]);
+        await client.query(`
+          INSERT INTO customer_pickup_events (customer_id,preorder_request_id,event_type,notes,created_by)
+          VALUES ($1,$2,'NO_PICKUP',$3,$4)
+        `,[a.customer_id,a.preorder_request_id,req.body?.note||null,req.body?.changed_by||null]);
+        await client.query('COMMIT');return res.json(r.rows[0]);
+      }
+      await client.query('ROLLBACK');
+      return res.status(400).json({error:'action must be READY, PICKED_UP, or NO_PICKUP'});
+    } catch(error){
+      await client.query('ROLLBACK');res.status(400).json({error:error.message});
+    } finally {client.release()}
+  });
+
   router.get('/stats', requireDb, async (req, res) => {
     const { rows } = await pool.query(`
       SELECT
