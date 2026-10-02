@@ -175,6 +175,8 @@ CREATE TABLE IF NOT EXISTS notifications (
   status TEXT NOT NULL DEFAULT 'PENDING',
   message TEXT,
   error TEXT,
+  suppression_reason TEXT,
+  suppressed_at TIMESTAMPTZ,
   sent_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -190,3 +192,7 @@ CREATE TABLE IF NOT EXISTS special_order_import_runs (
   details JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_one_ready_pending
+ON notifications (special_order_item_id, channel)
+WHERE status IN ('PENDING','QUEUED') AND channel='DISCORD_READY';
