@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hobby Corner Special Orders</title>
+<style>
+:root{font-family:Inter,system-ui,sans-serif;color:#1f2937;background:#f3f4f6}body{margin:0}.wrap{max-width:1250px;margin:auto;padding:24px}
+h1{margin:0 0 4px}.sub{color:#6b7280;margin-bottom:24px}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:22px}
+.card,.panel{background:white;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 1px 2px #0000000d}.card{padding:16px}.value{font-size:30px;font-weight:750}.label{font-size:13px;color:#6b7280}
+.panel{padding:18px;margin-bottom:18px}.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}input,select,button{font:inherit;padding:9px 10px;border-radius:7px;border:1px solid #d1d5db}
+button{cursor:pointer;background:#111827;color:white}.danger{color:#b91c1c;font-weight:650}.pill{display:inline-block;padding:3px 8px;border-radius:999px;background:#eef2ff;font-size:12px}
+table{width:100%;border-collapse:collapse}th,td{padding:10px 8px;border-bottom:1px solid #eee;text-align:left;font-size:13px}th{color:#6b7280}
+.notice{padding:12px;border-radius:8px;background:#fff7ed;color:#9a3412;margin-bottom:16px;display:none}
+@media(max-width:760px){table{display:block;overflow-x:auto}.wrap{padding:14px}}
+</style>
+</head>
+<body><div class="wrap">
+<h1>Special Orders</h1><div class="sub">Hobby Corner order, supplier, and fulfillment control center</div>
+<div id="notice" class="notice"></div>
+<div class="cards">
+  <div class="card"><div class="value" id="open">—</div><div class="label">Open items</div></div>
+  <div class="card"><div class="value" id="needs_ordering">—</div><div class="label">Needs ordering</div></div>
+  <div class="card"><div class="value" id="ordered_over_7_days">—</div><div class="label">Ordered &gt; 7 days</div></div>
+  <div class="card"><div class="value" id="backordered">—</div><div class="label">Backordered</div></div>
+  <div class="card"><div class="value" id="preorder">—</div><div class="label">Preorders</div></div>
+  <div class="card"><div class="value" id="ready_or_held">—</div><div class="label">Received / held</div></div>
+</div>
+<div class="panel">
+  <div class="toolbar">
+    <input id="productSearch" placeholder="Search Lightspeed by SKU or exact name…" size="38">
+    <button onclick="searchProducts()">Search products</button>
+    <select id="supplierSelect" onchange="loadSupplier()"><option value="">Order a supplier…</option></select>
+  </div>
+  <div id="productResults"></div><div id="supplierResults"></div>
+</div>
+<div class="panel">
+  <div class="toolbar">
+    <select id="statusFilter" onchange="loadOrders()">
+      <option value="">All open/recent items</option><option>PREORDER</option><option>OOS</option>
+      <option>READY_TO_ORDER</option><option>ORDERED</option><option>BACKORDERED</option>
+      <option>RECEIVED</option><option>HELD</option><option>CUSTOMER_NOTIFIED</option>
+    </select>
+    <label><input type="checkbox" id="attention" onchange="loadOrders()"> ordered &gt; 7 days only</label>
+  </div>
+  <table><thead><tr><th>Customer</th><th>Item</th><th>SKU</th><th>Qty</th><th>Status</th><th>Supplier</th><th>Age</th><th>Notes</th></tr></thead>
+  <tbody id="orders"></tbody></table>
+</div>
+</div>
+<script>
+const api='/api/special-orders';
+function showNotice(t){const n=document.getElementById('notice');n.textContent=t;n.style.display='block'}
+async function getJson(url,opts){const r=await fetch(url,opts);const d=await r.json();if(!r.ok)throw new Error(d.error||r.statusText);return d}
+async function loadStats(){try{const s=await getJson(api+'/stats');for(const k of Object.keys(s))if(document.getElementById(k))document.getElementById(k).textContent=s[k]}catch(e){showNotice(e.message)}}
+async function loadOrders(){try{const p=new URLSearchParams();const st=document.getElementById('statusFilter').value;if(st)p.set('status',st);if(document.getElementById('attention').checked)p.set('attention','1');const rows=await getJson(api+'/orders?'+p);document.getElementById('orders').innerHTML=rows.map(x=>`<tr><td>${x.customer_name||'—'}</td><td>${x.product_name||x.requested_name}</td><td>${x.sku||x.requested_sku||'—'}</td><td>${x.quantity}</td><td><span class="pill">${x.status}</span></td><td>${x.preferred_supplier_name||'—'}</td><td class="${x.days_ordered>=7?'danger':''}">${x.days_ordered==null?'—':x.days_ordered+'d'}</td><td>${x.notes||''}</td></tr>`).join('')}catch(e){showNotice(e.message)}}
+async function loadSuppliers(){try{const s=await getJson(api+'/suppliers');document.getElementById('supplierSelect').innerHTML='<option value="">Order a supplier…</option>'+s.map(x=>`<option value="${x.id}">${x.name}</option>`).join('')}catch(e){}}
+async function loadSupplier(){const id=document.getElementById('supplierSelect').value;if(!id){document.getElementById('supplierResults').innerHTML='';return}try{const r=await getJson(api+'/suppliers/'+id+'/orderable');document.getElementById('supplierResults').innerHTML='<h3>Items ready for this supplier</h3>'+(!r.length?'<p>Nothing currently waiting.</p>':'<table><tr><th>Item</th><th>Supplier SKU</th><th>Needed</th><th>Customers</th><th>Cost</th></tr>'+r.map(x=>`<tr><td>${x.name}</td><td>${x.supplier_sku||'—'}</td><td>${x.qty_needed}</td><td>${x.waiting_orders}</td><td>${x.supply_price||'—'}</td></tr>`).join('')+'</table>')}catch(e){showNotice(e.message)}}
+async function searchProducts(){const q=document.getElementById('productSearch').value.trim();if(!q)return;try{const r=await getJson(api+'/products/search?q='+encodeURIComponent(q));document.getElementById('productResults').innerHTML='<h3>Product matches</h3>'+(!r.length?'<p>No match found. Product creation will be the next form added here.</p>':'<table><tr><th>Name</th><th>SKU</th><th>UPC</th><th>Source</th></tr>'+r.map(x=>`<tr><td>${x.name}</td><td>${x.sku||'—'}</td><td>${x.upc||'—'}</td><td>${x.source}</td></tr>`).join('')+'</table>')}catch(e){showNotice(e.message)}}
+loadStats();loadOrders();loadSuppliers();
+</script></body></html>
