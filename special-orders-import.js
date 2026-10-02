@@ -189,20 +189,11 @@ export async function importLegacyWorkbook(pool, buffer, fileName='HC Special or
       });
     }
 
-    // TCG preorder sheet.
-    const tcg = rowsFromSheet(workbook, 'TCG Preorders');
-    for (let i=1; i<tcg.length; i++) {
-      const r = tcg[i];
-      const [date,name,phone,discordHandle,supplier,game,itemName,itemNo,qty,statusDate,status,notes] = r;
-      if (!clean(name) || !clean(itemName)) continue;
-      await push({
-        source:'tcg_preorder', legacySource:`TCG Preorders row ${i+1}`, importKey:`tcg:${i+1}`,
-        createdAt:excelDate(date), statusDate:excelDate(statusDate),
-        customer:{name,phone,discordHandle}, supplier,
-        itemName, sku:itemNo, qty:qty || 1, status:status || 'preorder',
-        notes:[game ? `Game: ${game}` : null, notes].filter(Boolean).join(' | ') || null
-      });
-    }
+    // The old TCG Preorders tab is retained only as legacy reference.
+    // Active Pokemon/TCG preorders now live in the separate HC Preorders system and are not imported here.
+    const legacyTcgRows = rowsFromSheet(workbook, 'TCG Preorders').slice(1)
+      .filter(r => clean(r[1]) && clean(r[6])).length;
+    bySource.legacy_tcg_reference_ignored = legacyTcgRows;
 
     const run = await client.query(
       'INSERT INTO special_order_import_runs (file_name,source_hash,imported_rows,skipped_rows,details) VALUES ($1,$2,$3,$4,$5) RETURNING *',
