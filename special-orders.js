@@ -215,6 +215,83 @@ export function createSpecialOrdersRouter({ lightspeedDomain, lightspeedToken, a
     }
   });
 
+  router.post('/items/:id/notifications/ready', requireDb, async (req, res) => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const itemResult = await client.query(`
+        SELECT i.*, o.customer_id, c.discord_user_id, c.discord_handle, c.name AS customer_name
+        FROM special_order_items i
+        JOIN special_orders o ON o.id=i.special_order_id
+        LEFT JOIN customers c ON c.id=o.customer_id
+        WHERE i.id=$1
+        FOR UPDATE OF i
+      `, [req.params.id]);
+      const item = itemResult.rows[0];
+      if (!item) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Order item not found.' });
+      }
+
+      // Hard safeguard: pickup/completion/cancellation always wins over readiness.
+      if (['COMPLETED','CANCELLED'].includes(item.status) || item.completed_at || item.cancelled_at) {
+        await client.query(`
+          UPDATE notifications
+          SET status='SUPPRESSED', suppression_reason='Item already picked up/completed before ready notification',
+              suppressed_at=now()
+          WHERE special_order_item_id=$1 AND status IN ('PENDING','QUEUED')
+        `, [req.params.id]);
+        await client.query('COMMIT');
+        return res.status(409).json({
+          error: 'Ready notification suppressed because this item is already picked up/completed.',
+          suppressed: true
+        });
+      }
+
+      if (!['RECEIVED','HELD','CUSTOMER_NOTIFIED'].includes(item.status)) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'Item is not in a notification-eligible received/held state.' });
+      }
+
+      if (!item.discord_user_id && !item.discord_handle) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'Customer has no linked Discord account.' });
+      }
+
+      const existing = await client.query(`
+        SELECT * FROM notifications
+        WHERE special_order_item_id=$1 AND channel='DISCORD_READY'
+          AND status IN ('PENDING','QUEUED','SENT')
+        ORDER BY created_at DESC LIMIT 1
+      `, [req.params.id]);
+
+      if (existing.rows[0]) {
+        await client.query('COMMIT');
+        return res.json({ alreadyExists: true, notification: existing.rows[0] });
+      }
+
+      const created = await client.query(`
+        INSERT INTO notifications
+          (special_order_item_id,customer_id,channel,recipient,status,message)
+        VALUES ($1,$2,'DISCORD_READY',$3,'PENDING',$4)
+        RETURNING *
+      `, [
+        req.params.id,
+        item.customer_id,
+        item.discord_user_id || item.discord_handle,
+        req.body?.message || `Your special order "${item.requested_name}" is ready for pickup at Hobby Corner.`
+      ]);
+
+      await client.query('COMMIT');
+      res.status(201).json({ notification: created.rows[0] });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      res.status(400).json({ error: error.message });
+    } finally {
+      client.release();
+    }
+  });
+
   router.patch('/items/:id/status', requireDb, async (req, res) => {
     const newStatus = String(req.body?.status || '').toUpperCase();
     if (!VALID_STATUSES.has(newStatus)) return res.status(400).json({ error: 'Invalid status.' });
@@ -243,6 +320,21 @@ export function createSpecialOrdersRouter({ lightspeedDomain, lightspeedToken, a
         'INSERT INTO order_status_history (special_order_item_id,old_status,new_status,note,changed_by) VALUES ($1,$2,$3,$4,$5)',
         [req.params.id, old.status, newStatus, req.body?.note || null, req.body?.changed_by || null]
       );
+
+      if (['COMPLETED','CANCELLED'].includes(newStatus)) {
+        await client.query(`
+          UPDATE notifications
+          SET status='SUPPRESSED',
+              suppression_reason=CASE
+                WHEN $2='COMPLETED' THEN 'Item picked up/completed before notification was sent'
+                ELSE 'Order cancelled before notification was sent'
+              END,
+              suppressed_at=now()
+          WHERE special_order_item_id=$1
+            AND status IN ('PENDING','QUEUED')
+        `, [req.params.id, newStatus]);
+      }
+
       await client.query('COMMIT');
       res.json(updated.rows[0]);
     } catch (error) {
