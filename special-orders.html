@@ -77,6 +77,13 @@ table{width:100%;border-collapse:collapse}th,td{padding:10px 8px;border-bottom:1
   <div id="productResults"></div><div id="supplierResults"></div><div id="departmentResults"></div>
 </div>
 <div class="panel">
+  <h2>Preorder Allocations</h2>
+  <div class="toolbar">
+    <select id="preorderCampaign" onchange="loadPreorderCampaign()"><option value="">Select preorder campaign…</option></select>
+  </div>
+  <div id="preorderProducts"></div>
+</div>
+<div class="panel">
   <div class="toolbar">
     <select id="statusFilter" onchange="loadOrders()">
       <option value="">All open/recent items</option><option>PREORDER</option><option>OOS</option>
@@ -137,7 +144,10 @@ async function createOrder(){
   try{await getJson(api+'/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});showNotice('Special order saved.');selectedOrderProduct=null;document.getElementById('selectedProduct').textContent='No product selected';document.getElementById('manualItemName').value='';document.getElementById('manualSku').value='';document.getElementById('newNotes').value='';await loadStats();await loadOrders()}catch(e){showNotice(e.message)}
 }
 async function searchProducts(){const q=document.getElementById('productSearch').value.trim();if(!q)return;try{const r=await getJson(api+'/products/search?q='+encodeURIComponent(q));document.getElementById('productResults').innerHTML='<h3>Product matches</h3>'+(!r.length?'<p>No match found. Product creation will be the next form added here.</p>':'<table><tr><th>Name</th><th>SKU</th><th>UPC</th><th>Source</th></tr>'+r.map(x=>`<tr><td>${x.name}</td><td>${x.sku||'—'}</td><td>${x.upc||'—'}</td><td>${x.source}</td></tr>`).join('')+'</table>')}catch(e){showNotice(e.message)}}
-async function loadAll(){await Promise.allSettled([loadStats(),loadOrders(),loadSuppliers(),loadDepartments()])}
+async function loadPreorders(){try{const c=await getJson(api+'/preorders/campaigns');document.getElementById('preorderCampaign').innerHTML='<option value="">Select preorder campaign…</option>'+c.map(x=>`<option value="${x.id}">${x.name} — ${x.request_count} requests</option>`).join('')}catch(e){}}
+async function loadPreorderCampaign(){const id=document.getElementById('preorderCampaign').value;if(!id){document.getElementById('preorderProducts').innerHTML='';return}try{const d=await getJson(api+'/preorders/campaigns/'+id);document.getElementById('preorderProducts').innerHTML='<table><tr><th>Product</th><th>Ordered</th><th>Received</th><th>Requested</th><th>Allocated</th><th>Available</th><th></th></tr>'+d.products.map(x=>{const available=Math.max(0,Number(x.received_quantity||0)-Number(x.reserved_floor_quantity||0)-Number(x.allocated_total||0));return `<tr><td>${x.item_description}</td><td>${x.ordered_quantity}</td><td>${x.received_quantity}</td><td>${x.requested_total}</td><td>${x.allocated_total}</td><td>${available}</td><td><button onclick="allocatePreorder(${x.id},'FAIR_SHARE')">Fair share</button> <button onclick="allocatePreorder(${x.id},'QUEUE')">Queue</button></td></tr>`}).join('')+'</table>'}catch(e){showNotice(e.message)}}
+async function allocatePreorder(id,method){if(!confirm('Allocate currently available preorder inventory using '+method+'?'))return;try{const d=await getJson(api+'/preorders/products/'+id+'/allocate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({method})});showNotice(`Allocated ${d.newlyAllocated}; ${d.remaining} still available.`);await loadPreorderCampaign()}catch(e){showNotice(e.message)}}
+async function loadAll(){await Promise.allSettled([loadStats(),loadOrders(),loadSuppliers(),loadDepartments(),loadPreorders()])}
 document.getElementById('accessKey').value=accessKey();
 if(accessKey())loadAll();else showNotice('Enter the internal access key to load special-order data.');
 </script></body></html>
