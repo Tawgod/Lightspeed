@@ -41,6 +41,29 @@ CREATE TABLE IF NOT EXISTS suppliers (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS sourcing_departments (
+  id BIGSERIAL PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  description TEXT,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS supplier_sourcing_departments (
+  supplier_id BIGINT NOT NULL REFERENCES suppliers(id) ON DELETE CASCADE,
+  sourcing_department_id BIGINT NOT NULL REFERENCES sourcing_departments(id) ON DELETE CASCADE,
+  priority INTEGER NOT NULL DEFAULT 1,
+  notes TEXT,
+  PRIMARY KEY (supplier_id, sourcing_department_id)
+);
+
+CREATE TABLE IF NOT EXISTS product_sourcing_departments (
+  product_id BIGINT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  sourcing_department_id BIGINT NOT NULL REFERENCES sourcing_departments(id) ON DELETE CASCADE,
+  source TEXT NOT NULL DEFAULT 'manual',
+  PRIMARY KEY (product_id, sourcing_department_id)
+);
+
 CREATE TABLE IF NOT EXISTS supplier_products (
   id BIGSERIAL PRIMARY KEY,
   supplier_id BIGINT NOT NULL REFERENCES suppliers(id) ON DELETE CASCADE,
@@ -77,6 +100,7 @@ CREATE TABLE IF NOT EXISTS special_order_items (
   quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
   status TEXT NOT NULL DEFAULT 'OOS',
   preferred_supplier_id BIGINT REFERENCES suppliers(id),
+  sourcing_department_id BIGINT REFERENCES sourcing_departments(id),
   release_date DATE,
   ordered_at TIMESTAMPTZ,
   received_at TIMESTAMPTZ,
