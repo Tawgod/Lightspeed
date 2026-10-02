@@ -50,7 +50,8 @@ app.get('/special-orders', (req, res) => {
 
 app.use('/api/special-orders', createSpecialOrdersRouter({
   lightspeedDomain: LIGHTSPEED_DOMAIN,
-  lightspeedToken: LIGHTSPEED_TOKEN
+  lightspeedToken: LIGHTSPEED_TOKEN,
+  adminKey: process.env.SPECIAL_ORDERS_ADMIN_KEY
 }));
 
 
