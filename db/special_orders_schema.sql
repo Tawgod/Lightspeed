@@ -110,6 +110,7 @@ CREATE TABLE IF NOT EXISTS special_order_items (
   lightspeed_sale_id TEXT,
   notes TEXT,
   legacy_status TEXT,
+  import_key TEXT UNIQUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -178,3 +179,14 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_notifications_pending ON notifications (status, channel);
+
+CREATE TABLE IF NOT EXISTS special_order_import_runs (
+  id BIGSERIAL PRIMARY KEY,
+  file_name TEXT,
+  source_hash TEXT UNIQUE,
+  imported_by TEXT,
+  imported_rows INTEGER NOT NULL DEFAULT 0,
+  skipped_rows INTEGER NOT NULL DEFAULT 0,
+  details JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
