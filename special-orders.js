@@ -171,13 +171,13 @@ export function createSpecialOrdersRouter({ lightspeedDomain, lightspeedToken })
         const itemResult = await client.query(`
           INSERT INTO special_order_items
             (special_order_id,product_id,requested_name,requested_sku,requested_upc,quantity,status,
-             preferred_supplier_id,release_date,ordered_at,notes)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *
+             preferred_supplier_id,sourcing_department_id,release_date,ordered_at,notes)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *
         `, [
           orderResult.rows[0].id, item.product_id || null, item.requested_name || item.name,
           item.requested_sku || item.sku || null, item.requested_upc || item.upc || null,
-          Number(item.quantity || 1), status, item.preferred_supplier_id || null, item.release_date || null,
-          status === 'ORDERED' ? new Date() : null, item.notes || null
+          Number(item.quantity || 1), status, item.preferred_supplier_id || null, item.sourcing_department_id || null,
+          item.release_date || null, status === 'ORDERED' ? new Date() : null, item.notes || null
         ]);
         await client.query(
           'INSERT INTO order_status_history (special_order_item_id,new_status,note,changed_by) VALUES ($1,$2,$3,$4)',
@@ -231,6 +231,64 @@ export function createSpecialOrdersRouter({ lightspeedDomain, lightspeedToken })
     } finally {
       client.release();
     }
+  });
+
+  router.get('/departments', requireDb, async (req, res) => {
+    const { rows } = await pool.query(`
+      SELECT d.*, count(sd.supplier_id)::int AS supplier_count
+      FROM sourcing_departments d
+      LEFT JOIN supplier_sourcing_departments sd ON sd.sourcing_department_id=d.id
+      WHERE d.is_active=true
+      GROUP BY d.id
+      ORDER BY d.name
+    `);
+    res.json(rows);
+  });
+
+  router.get('/departments/:id/suppliers', requireDb, async (req, res) => {
+    const productId = req.query.product_id || null;
+    const { rows } = await pool.query(`
+      SELECT s.id AS supplier_id, s.name, s.supplier_type, s.order_frequency,
+             sd.priority AS department_priority,
+             sp.id AS supplier_product_id, sp.supplier_sku, sp.supply_price,
+             sp.is_orderable, sp.availability_status,
+             CASE WHEN sp.id IS NULL THEN false ELSE true END AS exact_product_mapping
+      FROM supplier_sourcing_departments sd
+      JOIN suppliers s ON s.id=sd.supplier_id AND s.is_active=true
+      LEFT JOIN supplier_products sp
+        ON sp.supplier_id=s.id
+       AND ($2::bigint IS NOT NULL AND sp.product_id=$2::bigint)
+      WHERE sd.sourcing_department_id=$1
+      ORDER BY
+        CASE WHEN sp.id IS NOT NULL THEN 0 ELSE 1 END,
+        sd.priority, s.name
+    `, [req.params.id, productId]);
+    res.json(rows);
+  });
+
+  router.post('/departments', requireDb, async (req, res) => {
+    const { name, description } = req.body || {};
+    if (!name) return res.status(400).json({ error: 'name is required.' });
+    const { rows } = await pool.query(`
+      INSERT INTO sourcing_departments (name,description)
+      VALUES ($1,$2)
+      ON CONFLICT (name) DO UPDATE SET description=COALESCE(EXCLUDED.description,sourcing_departments.description)
+      RETURNING *
+    `, [name, description || null]);
+    res.status(201).json(rows[0]);
+  });
+
+  router.post('/supplier-departments', requireDb, async (req, res) => {
+    const { supplier_id, sourcing_department_id, priority = 1, notes } = req.body || {};
+    if (!supplier_id || !sourcing_department_id) return res.status(400).json({ error: 'supplier_id and sourcing_department_id are required.' });
+    const { rows } = await pool.query(`
+      INSERT INTO supplier_sourcing_departments (supplier_id,sourcing_department_id,priority,notes)
+      VALUES ($1,$2,$3,$4)
+      ON CONFLICT (supplier_id,sourcing_department_id) DO UPDATE SET
+        priority=EXCLUDED.priority, notes=COALESCE(EXCLUDED.notes,supplier_sourcing_departments.notes)
+      RETURNING *
+    `, [supplier_id, sourcing_department_id, priority, notes || null]);
+    res.status(201).json(rows[0]);
   });
 
   router.get('/suppliers', requireDb, async (req, res) => {
