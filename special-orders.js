@@ -3,6 +3,8 @@ import pg from 'pg';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import multer from 'multer';
+import { importLegacyWorkbook } from './special-orders-import.js';
 
 const { Pool } = pg;
 const __filename = fileURLToPath(import.meta.url);
@@ -83,11 +85,29 @@ async function upsertLocalProduct(product) {
   return result.rows[0];
 }
 
-export function createSpecialOrdersRouter({ lightspeedDomain, lightspeedToken }) {
+export function createSpecialOrdersRouter({ lightspeedDomain, lightspeedToken, adminKey }) {
   const router = express.Router();
+  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
 
   router.get('/health', async (req, res) => {
-    res.json({ ok: true, database: Boolean(pool), lightspeed: Boolean(lightspeedDomain && lightspeedToken) });
+    res.json({ ok: true, database: Boolean(pool), lightspeed: Boolean(lightspeedDomain && lightspeedToken), secured: Boolean(adminKey) });
+  });
+
+  router.use((req, res, next) => {
+    if (!adminKey) return res.status(503).json({ error: 'SPECIAL_ORDERS_ADMIN_KEY is not configured.' });
+    if (req.get('x-hobby-corner-key') !== adminKey) return res.status(401).json({ error: 'Special-orders access key required.' });
+    next();
+  });
+
+  router.post('/import/workbook', requireDb, upload.single('workbook'), async (req, res) => {
+    if (!req.file?.buffer) return res.status(400).json({ error: 'Upload an .xlsx workbook in the workbook field.' });
+    try {
+      const result = await importLegacyWorkbook(pool, req.file.buffer, req.file.originalname);
+      res.json(result);
+    } catch (error) {
+      console.error('[special-orders] workbook import failed:', error);
+      res.status(400).json({ error: error.message });
+    }
   });
 
   router.get('/stats', requireDb, async (req, res) => {
@@ -339,6 +359,46 @@ export function createSpecialOrdersRouter({ lightspeedDomain, lightspeedToken })
       ORDER BY sp.priority, p.name
     `, [req.params.id]);
     res.json(rows);
+  });
+
+  router.get('/customers/search', async (req, res) => {
+    const q = String(req.query.q || '').trim();
+    if (!q) return res.json([]);
+    const candidates = [];
+    const params = new URLSearchParams({ type: 'customers', page_size: '20' });
+    if (q.includes('@')) params.set('email', q);
+    else if (/^[+()\d\s.-]{7,}$/.test(q)) params.set('phone', q);
+    else {
+      const bits = q.split(/\s+/).filter(Boolean);
+      params.set('first_name', bits[0]);
+      if (bits.length > 1) params.set('last_name', bits.slice(1).join(' '));
+    }
+    try {
+      const response = await fetch(`https://${lightspeedDomain}.retail.lightspeed.app/api/2026-04/search?${params.toString()}`, {
+        headers: lightspeedHeaders(lightspeedToken)
+      });
+      const text = await response.text();
+      const body = text ? JSON.parse(text) : {};
+      if (!response.ok) throw new Error(`Lightspeed ${response.status}: ${text}`);
+      for (const c of (body.data || [])) candidates.push(c);
+      res.json(candidates);
+    } catch (error) {
+      res.status(502).json({ error: error.message });
+    }
+  });
+
+  router.get('/products/:id/inventory', async (req, res) => {
+    try {
+      const response = await fetch(`https://${lightspeedDomain}.retail.lightspeed.app/api/2026-04/inventory/${encodeURIComponent(req.params.id)}`, {
+        headers: lightspeedHeaders(lightspeedToken)
+      });
+      const text = await response.text();
+      const body = text ? JSON.parse(text) : {};
+      if (!response.ok) throw new Error(`Lightspeed ${response.status}: ${text}`);
+      res.json(body);
+    } catch (error) {
+      res.status(502).json({ error: error.message });
+    }
   });
 
   router.get('/products/search', async (req, res) => {
