@@ -1339,6 +1339,33 @@ export function createSpecialOrdersRouter({
     } finally { client.release(); }
   });
 
+  router.get('/product-categories', async (req, res) => {
+    try {
+      const result = await lightspeedVersionedFetch(
+        lightspeedDomain,
+        lightspeedToken,
+        '/product_categories?page_size=1000&include=family',
+        {},
+        '2026-07'
+      );
+      const rows = Array.isArray(result?.data) ? result.data : (Array.isArray(result) ? result : []);
+      const flatten = [];
+      const walk = (nodes, path = []) => {
+        for (const node of (nodes || [])) {
+          const name = node.name || node.label || 'Unnamed category';
+          const nextPath = [...path, name];
+          flatten.push({ id: node.id, name, path: nextPath.join(' › '), parent_id: node.parent_id || null });
+          if (Array.isArray(node.children)) walk(node.children, nextPath);
+        }
+      };
+      walk(rows);
+      const unique = new Map(flatten.filter(x => x.id).map(x => [x.id, x]));
+      res.json([...unique.values()].sort((a,b) => a.path.localeCompare(b.path)));
+    } catch (error) {
+      res.status(error.status || 502).json({ error:error.message });
+    }
+  });
+
   router.get('/products/potential-matches', requireDb, async (req, res) => {
     const q = String(req.query.q || '').trim();
     const supplierId = req.query.supplier_id || null;
@@ -1481,6 +1508,41 @@ export function createSpecialOrdersRouter({
       });
       const product = result?.data || result;
       const localProduct = await upsertLocalProduct(product);
+
+      const extraIdentifiers = [];
+      if (body.isbn) extraIdentifiers.push({ type:'ISBN', value:body.isbn, source:'special-order-create' });
+      for (const value of (Array.isArray(body.other_codes) ? body.other_codes : [])) {
+        if (value) extraIdentifiers.push({ type:'OTHER', value, source:'special-order-create' });
+      }
+      if (extraIdentifiers.length) await upsertProductIdentifiers(pool, localProduct.id, extraIdentifiers, 'special-order-create');
+
+      const localSupplierIds = Array.from(new Set(
+        (Array.isArray(body.local_supplier_ids) ? body.local_supplier_ids : [])
+          .concat(body.local_supplier_id ? [body.local_supplier_id] : [])
+          .filter(Boolean)
+      ));
+      let localPriority = 1;
+      for (const supplierId of localSupplierIds) {
+        await pool.query(`
+          INSERT INTO supplier_products
+            (supplier_id,product_id,supplier_sku,supplier_description,manufacturer_text,
+             order_channel,order_url,supply_price,priority,is_orderable,notes)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,$10)
+          ON CONFLICT (supplier_id,product_id) DO UPDATE SET
+            supplier_sku=COALESCE(EXCLUDED.supplier_sku,supplier_products.supplier_sku),
+            supplier_description=COALESCE(EXCLUDED.supplier_description,supplier_products.supplier_description),
+            manufacturer_text=COALESCE(EXCLUDED.manufacturer_text,supplier_products.manufacturer_text),
+            order_channel=EXCLUDED.order_channel,
+            order_url=COALESCE(EXCLUDED.order_url,supplier_products.order_url),
+            supply_price=COALESCE(EXCLUDED.supply_price,supplier_products.supply_price),
+            priority=LEAST(supplier_products.priority,EXCLUDED.priority)
+        `, [
+          supplierId,localProduct.id,body.supplier_sku||null,body.supplier_description||body.description||null,
+          body.manufacturer_text||null,String(body.order_channel||'TRADE').toUpperCase(),
+          body.source_url||null,body.supply_price??null,localPriority++,body.supplier_notes||null
+        ]);
+      }
+
       let image = null;
       let imageWarning = null;
       if (body.image_url) {
@@ -1495,7 +1557,9 @@ export function createSpecialOrdersRouter({
         local: localProduct,
         tag: 'Added by SO',
         image,
-        image_warning: imageWarning
+        image_warning: imageWarning,
+        identifiers: extraIdentifiers,
+        local_supplier_ids: localSupplierIds
       });
     } catch (error) {
       res.status(error.status || 502).json({ error: error.message });
