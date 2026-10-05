@@ -37,74 +37,111 @@ table{width:100%;border-collapse:collapse}th,td{padding:10px 8px;border-bottom:1
 </div>
 <div class="panel">
   <h2>New Special Order</h2>
+
+  <h3>1. Customer</h3>
   <div class="toolbar">
     <input id="customerSearch" placeholder="Customer name, phone, or email" size="30">
     <button onclick="searchCustomers()">Find customer</button>
     <span id="selectedCustomer" class="pill">No customer selected</span>
   </div>
   <div id="customerResults"></div>
-  <div class="toolbar">
-    <input id="newProductSearch" placeholder="SKU, UPC, or description/name" size="36">
-    <button onclick="searchOrderProducts()">Find item</button>
-    <span id="selectedProduct" class="pill">No product selected</span>
+
+  <div id="customerProfile" style="display:none;border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin:12px 0">
+    <div class="toolbar">
+      <input id="customerPhone" placeholder="Phone number" size="20">
+      <input id="customerDiscord" placeholder="Discord handle" size="22">
+      <label><input id="syncPhoneLightspeed" type="checkbox" checked> Update phone in Lightspeed</label>
+      <button type="button" onclick="updateCustomerProfile()">Update customer</button>
+    </div>
+    <div class="toolbar">
+      <input id="customerNotes" placeholder="Customer note (optional)" size="48">
+      <input id="orderNotes" placeholder="Pickup note / alternate pickup person for this order" size="52">
+    </div>
   </div>
-  <div id="newProductResults"></div>
+
+  <h3>2. Items</h3>
   <div class="toolbar">
-    <input id="manualItemName" placeholder="Item name if not in Lightspeed" size="32">
-    <input id="manualSku" placeholder="SKU / supplier item #">
-    <input id="orderQty" type="number" value="1" min="1" style="width:70px">
-    <select id="newStatus">
-      <option value="OOS">OOS — needs ordering</option>
-      <option value="PREORDER">Preorder</option>
-      <option value="READY_TO_ORDER">Ready to order</option>
-      <option value="ORDERED">Ordered</option>
-      <option value="BACKORDERED">Backordered</option>
-    </select>
-    <select id="newDepartment"><option value="">Sourcing department…</option></select>
-    <select id="newSupplier"><option value="">Preferred supplier (optional)…</option></select>
-    <select id="newSuppliers" multiple size="4" title="Other possible suppliers"></select>
-    <label><input id="supplierNeeded" type="checkbox"> Supplier unknown / needs sourcing</label>
+    <button type="button" onclick="showItemEditor()">Add item</button>
+    <button type="button" onclick="showCreateProduct()">New item</button>
   </div>
+
+  <div id="itemEditor" style="display:none;border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin:12px 0">
+    <div class="toolbar">
+      <input id="newProductSearch" placeholder="SKU, UPC, or description/name" size="36">
+      <button onclick="searchOrderProducts()">Find item</button>
+      <span id="selectedProduct" class="pill">No product selected</span>
+    </div>
+    <div id="newProductResults"></div>
+    <div class="toolbar">
+      <input id="manualItemName" placeholder="Item name" size="32">
+      <input id="manualSku" placeholder="SKU / supplier item #">
+      <input id="orderQty" type="number" value="1" min="1" style="width:70px">
+      <select id="newStatus">
+        <option value="OOS">OOS — needs ordering</option>
+        <option value="PREORDER">Preorder</option>
+        <option value="READY_TO_ORDER">Ready to order</option>
+        <option value="ORDERED">Ordered</option>
+        <option value="BACKORDERED">Backordered</option>
+      </select>
+      <select id="newDepartment"><option value="">Sourcing department…</option></select>
+      <select id="newSupplier"><option value="">Preferred supplier (optional)…</option></select>
+      <select id="newSuppliers" multiple size="4" title="Other possible suppliers"></select>
+      <label><input id="supplierNeeded" type="checkbox"> Supplier unknown / needs sourcing</label>
+    </div>
+    <div class="toolbar">
+      <input id="newNotes" placeholder="Item notes" size="38">
+      <input id="crowdfundingNote" placeholder="Crowdfunded / future availability note" size="32">
+      <input id="sourceUrl" placeholder="Supplier / product page URL" size="32">
+      <button type="button" onclick="addCurrentItem()">Add item to order</button>
+      <button type="button" onclick="clearCurrentItem()">Cancel item</button>
+    </div>
+  </div>
+
+  <div id="createProductPanel" style="display:none;border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin:12px 0">
+    <h3>Create New Lightspeed Item <span class="pill">Test write enabled</span></h3>
+    <p style="color:#6b7280">Only use this when the correct item does not already exist. It will be tagged <b>Added by SO</b>.</p>
+    <div class="toolbar">
+      <input id="cpName" placeholder="Product name *" size="36">
+      <input id="cpSku" placeholder="SKU *" size="18">
+      <input id="cpUpc" placeholder="UPC / EAN" size="18">
+      <input id="cpIsbn" placeholder="ISBN" size="18">
+    </div>
+    <div class="toolbar">
+      <input id="cpCost" type="number" step="0.01" min="0" placeholder="Cost *" style="width:110px">
+      <input id="cpRetail" type="number" step="0.01" min="0" placeholder="Retail *" style="width:110px">
+      <select id="cpCategory"><option value="">Lightspeed category *</option></select>
+      <select id="cpSupplier"><option value="">Primary supplier (optional)</option></select>
+      <input id="cpSupplierSku" placeholder="Supplier item #" size="18">
+    </div>
+    <div class="toolbar">
+      <textarea id="cpDescription" placeholder="Full item description" rows="3" style="min-width:420px;flex:1"></textarea>
+    </div>
+    <div class="toolbar">
+      <input id="cpSourceUrl" placeholder="Distributor / manufacturer item URL" size="40">
+      <input id="cpImageUrl" placeholder="Image URL" size="40">
+      <select id="cpOrderChannel">
+        <option value="TRADE">Trade / normal supplier order</option>
+        <option value="WEB_ONLY">Web only</option>
+        <option value="DIRECT">Direct</option>
+        <option value="CROWDFUNDING">Crowdfunding</option>
+      </select>
+      <button onclick="createLightspeedProduct()">Create item & use it</button>
+      <button type="button" onclick="hideCreateProduct()">Cancel new item</button>
+    </div>
+    <div id="createProductResult"></div>
+  </div>
+
+  <h3>3. Items added to this order</h3>
+  <div id="stagedItems"><p style="color:#6b7280">No items added yet.</p></div>
+  <div class="toolbar" style="margin-top:12px">
+    <button type="button" onclick="showItemEditor()">Add additional item</button>
+  </div>
+
+  <h3>4. Save</h3>
   <div class="toolbar">
-    <input id="newNotes" placeholder="Notes" size="44">
-    <input id="crowdfundingNote" placeholder="Crowdfunded / future availability note" size="34">
-    <input id="sourceUrl" placeholder="Supplier / product page URL" size="34">
     <button onclick="createOrder()">Save special order</button>
-    <button type="button" onclick="clearOrderForm()">Clear form</button>
+    <button type="button" onclick="clearOrderForm()">Clear entire order</button>
   </div>
-</div>
-<div class="panel">
-  <h2>Create Product in Lightspeed <span class="pill">Test write enabled</span></h2>
-  <p style="color:#6b7280">Use this when no correct Lightspeed item exists. Products created here are automatically tagged <b>Added by SO</b> and registered in the Railway UUID/identifier index.</p>
-  <div class="toolbar">
-    <input id="cpName" placeholder="Product name *" size="36">
-    <input id="cpSku" placeholder="SKU *" size="18">
-    <input id="cpUpc" placeholder="UPC / EAN" size="18">
-    <input id="cpIsbn" placeholder="ISBN" size="18">
-  </div>
-  <div class="toolbar">
-    <input id="cpCost" type="number" step="0.01" min="0" placeholder="Cost *" style="width:110px">
-    <input id="cpRetail" type="number" step="0.01" min="0" placeholder="Retail *" style="width:110px">
-    <select id="cpCategory"><option value="">Lightspeed category *</option></select>
-    <select id="cpSupplier"><option value="">Primary supplier (optional)</option></select>
-    <input id="cpSupplierSku" placeholder="Supplier item #" size="18">
-  </div>
-  <div class="toolbar">
-    <textarea id="cpDescription" placeholder="Full item description" rows="3" style="min-width:420px;flex:1"></textarea>
-  </div>
-  <div class="toolbar">
-    <input id="cpSourceUrl" placeholder="Distributor / manufacturer item URL" size="40">
-    <input id="cpImageUrl" placeholder="Image URL" size="40">
-    <select id="cpOrderChannel">
-      <option value="TRADE">Trade / normal supplier order</option>
-      <option value="WEB_ONLY">Web only</option>
-      <option value="DIRECT">Direct</option>
-      <option value="CROWDFUNDING">Crowdfunding</option>
-    </select>
-    <button onclick="createLightspeedProduct()">Create test product</button>
-    <button type="button" onclick="clearProductForm()">Clear form</button>
-  </div>
-  <div id="createProductResult"></div>
 </div>
 <div class="panel">
   <div class="toolbar">
@@ -137,12 +174,14 @@ table{width:100%;border-collapse:collapse}th,td{padding:10px 8px;border-bottom:1
 </div>
 <script>
 const api='/api/special-orders';
-let selectedCustomer=null, selectedOrderProduct=null;
-const ORDER_DRAFT_KEY='hcSpecialOrderDraftV1';
+let selectedCustomer=null, selectedOrderProduct=null, stagedItems=[];
+let autoRefreshTimer=null;
+const ORDER_DRAFT_KEY='hcSpecialOrderDraftV2';
 const PRODUCT_DRAFT_KEY='hcCreateProductDraftV1';
 
 const orderDraftIds=[
-  'customerSearch','newProductSearch','manualItemName','manualSku','orderQty','newStatus',
+  'customerSearch','customerPhone','customerDiscord','customerNotes','orderNotes','syncPhoneLightspeed',
+  'newProductSearch','manualItemName','manualSku','orderQty','newStatus',
   'newDepartment','newSupplier','supplierNeeded','newNotes','crowdfundingNote','sourceUrl'
 ];
 const productDraftIds=[
@@ -171,6 +210,7 @@ function saveDrafts(){
   order.newSuppliers=readField('newSuppliers');
   order.selectedCustomer=selectedCustomer;
   order.selectedOrderProduct=selectedOrderProduct;
+  order.stagedItems=stagedItems;
   localStorage.setItem(ORDER_DRAFT_KEY,JSON.stringify(order));
 
   const product={};
@@ -185,27 +225,43 @@ function restoreDrafts(){
       writeField('newSuppliers',order.newSuppliers);
       selectedCustomer=order.selectedCustomer||null;
       selectedOrderProduct=order.selectedOrderProduct||null;
+      stagedItems=Array.isArray(order.stagedItems)?order.stagedItems:[];
       if(selectedCustomer){
-        const name=[selectedCustomer.first_name,selectedCustomer.last_name].filter(Boolean).join(' ')||selectedCustomer.company_name||selectedCustomer.name||'Selected customer';
-        document.getElementById('selectedCustomer').textContent=name;
+        showSelectedCustomer();
+        document.getElementById('customerProfile').style.display='block';
       }
       if(selectedOrderProduct){
         document.getElementById('selectedProduct').textContent=(selectedOrderProduct.name||'Product')+(selectedOrderProduct.sku?' — '+selectedOrderProduct.sku:'');
       }
+      renderStagedItems();
     }
     const product=JSON.parse(localStorage.getItem(PRODUCT_DRAFT_KEY)||'null');
     if(product)productDraftIds.forEach(id=>writeField(id,product[id]));
   }catch(e){console.warn('Could not restore saved form drafts',e)}
 }
-function clearOrderForm(){
-  selectedCustomer=null; selectedOrderProduct=null;
-  ['customerSearch','newProductSearch','manualItemName','manualSku','newNotes','crowdfundingNote','sourceUrl'].forEach(id=>writeField(id,''));
-  writeField('orderQty','1'); writeField('newStatus','OOS'); writeField('newDepartment',''); writeField('newSupplier','');
-  writeField('newSuppliers',[]); writeField('supplierNeeded',false);
-  document.getElementById('selectedCustomer').textContent='No customer selected';
+function showSelectedCustomer(){
+  if(!selectedCustomer)return;
+  const name=[selectedCustomer.first_name,selectedCustomer.last_name].filter(Boolean).join(' ')||selectedCustomer.company_name||selectedCustomer.name||'Selected customer';
+  document.getElementById('selectedCustomer').textContent=name;
+}
+function clearCurrentItem(){
+  selectedOrderProduct=null;
+  ['newProductSearch','manualItemName','manualSku','newNotes','crowdfundingNote','sourceUrl'].forEach(id=>writeField(id,''));
+  writeField('orderQty','1');writeField('newStatus','OOS');writeField('newDepartment','');writeField('newSupplier','');
+  writeField('newSuppliers',[]);writeField('supplierNeeded',false);
   document.getElementById('selectedProduct').textContent='No product selected';
-  document.getElementById('customerResults').innerHTML='';
   document.getElementById('newProductResults').innerHTML='';
+  document.getElementById('itemEditor').style.display='none';
+  saveDrafts();
+}
+function clearOrderForm(){
+  selectedCustomer=null;selectedOrderProduct=null;stagedItems=[];
+  ['customerSearch','customerPhone','customerDiscord','customerNotes','orderNotes'].forEach(id=>writeField(id,''));
+  document.getElementById('selectedCustomer').textContent='No customer selected';
+  document.getElementById('customerProfile').style.display='none';
+  document.getElementById('customerResults').innerHTML='';
+  clearCurrentItem();
+  renderStagedItems();
   localStorage.removeItem(ORDER_DRAFT_KEY);
 }
 function clearProductForm(){
@@ -213,6 +269,64 @@ function clearProductForm(){
   writeField('cpOrderChannel','TRADE');
   document.getElementById('createProductResult').innerHTML='';
   localStorage.removeItem(PRODUCT_DRAFT_KEY);
+}
+function showItemEditor(){
+  if(!selectedCustomer)return showNotice('Select a customer first.');
+  document.getElementById('createProductPanel').style.display='none';
+  document.getElementById('itemEditor').style.display='block';
+}
+function showCreateProduct(){
+  if(!selectedCustomer)return showNotice('Select a customer first.');
+  document.getElementById('itemEditor').style.display='none';
+  document.getElementById('createProductPanel').style.display='block';
+}
+function hideCreateProduct(){
+  document.getElementById('createProductPanel').style.display='none';
+}
+function renderStagedItems(){
+  const el=document.getElementById('stagedItems');
+  if(!stagedItems.length){el.innerHTML='<p style="color:#6b7280">No items added yet.</p>';return}
+  el.innerHTML='<table><tr><th>Item</th><th>SKU</th><th>Qty</th><th>Status</th><th>Supplier</th><th></th></tr>'+
+    stagedItems.map((x,i)=>`<tr><td>${x.requested_name||x.name||'—'}</td><td>${x.requested_sku||'—'}</td><td>${x.quantity}</td><td><span class="pill">${x.status}</span></td><td>${x.preferred_supplier_name||'—'}</td><td><button onclick="removeStagedItem(${i})">Remove</button></td></tr>`).join('')+
+    '</table>';
+}
+function removeStagedItem(i){stagedItems.splice(i,1);renderStagedItems();saveDrafts()}
+function addCurrentItem(){
+  if(!selectedCustomer)return showNotice('Select a customer first.');
+  const itemName=document.getElementById('manualItemName').value.trim()||(selectedOrderProduct&&selectedOrderProduct.name);
+  if(!itemName)return showNotice('Select or enter an item first.');
+  const preferredSupplierId=document.getElementById('newSupplier').value||null;
+  const preferredSupplierName=document.getElementById('newSupplier').selectedOptions[0]?.textContent||null;
+  stagedItems.push({
+    product_id:selectedOrderProduct?.local_id||selectedOrderProduct?.local?.id||null,
+    lightspeed_product_id:selectedOrderProduct?.lightspeed_product_id||selectedOrderProduct?.id||null,
+    requested_name:itemName,
+    requested_sku:document.getElementById('manualSku').value.trim()||selectedOrderProduct?.sku||null,
+    quantity:Number(document.getElementById('orderQty').value||1),
+    status:document.getElementById('newStatus').value,
+    sourcing_department_id:document.getElementById('newDepartment').value||null,
+    preferred_supplier_id:preferredSupplierId,
+    preferred_supplier_name:preferredSupplierId?preferredSupplierName:null,
+    supplier_ids:Array.from(document.getElementById('newSuppliers').selectedOptions).map(o=>o.value),
+    supplier_needed:document.getElementById('supplierNeeded').checked,
+    notes:document.getElementById('newNotes').value.trim()||null,
+    crowdfunding_note:document.getElementById('crowdfundingNote').value.trim()||null,
+    source_url:document.getElementById('sourceUrl').value.trim()||null,
+    placeholder_product:!selectedOrderProduct
+  });
+  renderStagedItems();
+  clearCurrentItem();
+  showNotice('Item added to this order.',1800);
+  saveDrafts();
+}
+async function configureAutoRefresh(){
+  try{
+    const r=await fetch(api+'/health');const h=await r.json();
+    if(autoRefreshTimer){clearInterval(autoRefreshTimer);autoRefreshTimer=null}
+    if(h.liveMode){
+      autoRefreshTimer=setInterval(()=>{if(accessKey()){loadStats();loadOrders();loadSuppliers();}},60000);
+    }
+  }catch{}
 }
 let noticeTimer=null;
 function showNotice(t,autoHideMs=0){
@@ -244,6 +358,7 @@ async function saveKey(){
     await loadAll();
     restoreDrafts();
     showNotice('Special Orders ready.',2500);
+    configureAutoRefresh();
   }catch(e){
     sessionStorage.removeItem('hcSpecialOrdersKey');
     setAuthState(false,e.message==='Access key missing or incorrect.'
@@ -282,30 +397,79 @@ showNotice('Could not load suppliers: '+e.message)}}
 async function loadDepartments(){try{const d=await getJson(api+'/departments');document.getElementById('departmentSelect').innerHTML='<option value="">Source by department…</option>'+d.map(x=>`<option value="${x.id}">${x.name} (${x.supplier_count})</option>`).join('');document.getElementById('newDepartment').innerHTML='<option value="">Sourcing department…</option>'+d.map(x=>`<option value="${x.id}">${x.name}</option>`).join('')}catch(e){}}
 async function loadDepartment(){const id=document.getElementById('departmentSelect').value;if(!id){document.getElementById('departmentResults').innerHTML='';return}try{const r=await getJson(api+'/departments/'+id+'/suppliers');document.getElementById('departmentResults').innerHTML='<h3>Possible suppliers for this department</h3><p style="color:#6b7280">These are sourcing possibilities even when the product is not currently linked to that supplier in Lightspeed.</p>'+(!r.length?'<p>No suppliers are tagged for this department yet.</p>':'<table><tr><th>Supplier</th><th>Typical cadence</th><th>Known product link?</th><th>Supplier SKU</th><th>Cost</th></tr>'+r.map(x=>`<tr><td>${x.name}</td><td>${x.order_frequency||'—'}</td><td>${x.exact_product_mapping?'Yes':'Possible source'}</td><td>${x.supplier_sku||'—'}</td><td>${x.supply_price||'—'}</td></tr>`).join('')+'</table>')}catch(e){showNotice(e.message)}}
 async function loadSupplier(){const id=document.getElementById('supplierSelect').value;if(!id){document.getElementById('supplierResults').innerHTML='';return}try{const r=await getJson(api+'/suppliers/'+id+'/orderable');document.getElementById('supplierResults').innerHTML='<h3>Items ready for this supplier</h3>'+(!r.length?'<p>Nothing currently waiting.</p>':'<table><tr><th>Item</th><th>Supplier SKU</th><th>Needed</th><th>Customers</th><th>Cost</th></tr>'+r.map(x=>`<tr><td>${x.name}</td><td>${x.supplier_sku||'—'}</td><td>${x.qty_needed}</td><td>${x.waiting_orders}</td><td>${x.supply_price||'—'}</td></tr>`).join('')+'</table>')}catch(e){showNotice(e.message)}}
-async function searchCustomers(){const q=document.getElementById('customerSearch').value.trim();if(!q)return;try{const r=await getJson(api+'/customers/search?q='+encodeURIComponent(q));document.getElementById('customerResults').innerHTML=!r.length?'<p>No Lightspeed customer found.</p>':'<table><tr><th>Name</th><th>Phone</th><th>Email</th><th></th></tr>'+r.map((x,i)=>`<tr><td>${[x.first_name,x.last_name].filter(Boolean).join(' ')||x.company_name||'Unnamed'}</td><td>${x.mobile||x.phone||'—'}</td><td>${x.email||'—'}</td><td><button onclick="chooseCustomer(${i})">Use</button></td></tr>`).join('')+'</table>';window._customerResults=r}catch(e){showNotice(e.message)}}
-function chooseCustomer(i){selectedCustomer=window._customerResults[i];const name=[selectedCustomer.first_name,selectedCustomer.last_name].filter(Boolean).join(' ')||selectedCustomer.company_name||'Unnamed';document.getElementById('selectedCustomer').textContent=name;saveDrafts()}
+async function searchCustomers(){const q=document.getElementById('customerSearch').value.trim();if(!q)return;try{const r=await getJson(api+'/customers/search?q='+encodeURIComponent(q));document.getElementById('customerResults').innerHTML=!r.length?'<p>No Lightspeed customer found.</p>':'<table><tr><th>Name</th><th>Phone</th><th>Discord</th><th>Email</th><th></th></tr>'+r.map((x,i)=>`<tr><td>${[x.first_name,x.last_name].filter(Boolean).join(' ')||x.company_name||'Unnamed'}</td><td>${x.special_orders_phone||x.mobile||x.phone||'—'}</td><td>${x.discord_handle||'—'}</td><td>${x.email||'—'}</td><td><button onclick="chooseCustomer(${i})">Use</button></td></tr>`).join('')+'</table>';window._customerResults=r}catch(e){showNotice(e.message)}}
+async function chooseCustomer(i){
+  selectedCustomer=window._customerResults[i];
+  showSelectedCustomer();
+  document.getElementById('customerProfile').style.display='block';
+  document.getElementById('customerPhone').value=selectedCustomer.special_orders_phone||selectedCustomer.mobile||selectedCustomer.phone||'';
+  document.getElementById('customerDiscord').value=selectedCustomer.discord_handle||'';
+  document.getElementById('customerNotes').value=selectedCustomer.special_orders_notes||'';
+  document.getElementById('customerResults').innerHTML='';
+  try{
+    const local=await getJson(api+'/customers/'+encodeURIComponent(selectedCustomer.id)+'/profile');
+    if(local){
+      if(local.phone)document.getElementById('customerPhone').value=local.phone;
+      if(local.discord_handle)document.getElementById('customerDiscord').value=local.discord_handle;
+      if(local.notes)document.getElementById('customerNotes').value=local.notes;
+    }
+  }catch{}
+  saveDrafts();
+}
+async function updateCustomerProfile(){
+  if(!selectedCustomer)return showNotice('Select a customer first.');
+  const name=[selectedCustomer.first_name,selectedCustomer.last_name].filter(Boolean).join(' ')||selectedCustomer.company_name||selectedCustomer.name||'Unnamed';
+  const originalPhone=selectedCustomer.mobile||selectedCustomer.phone||'';
+  const phone=document.getElementById('customerPhone').value.trim();
+  const payload={
+    name,
+    first_name:selectedCustomer.first_name||null,
+    last_name:selectedCustomer.last_name||null,
+    company_name:selectedCustomer.company_name||null,
+    email:selectedCustomer.email||null,
+    phone,
+    phone_field:selectedCustomer.mobile!==undefined?'mobile':'phone',
+    discord_handle:document.getElementById('customerDiscord').value.trim()||null,
+    notes:document.getElementById('customerNotes').value.trim()||null,
+    sync_lightspeed_phone:document.getElementById('syncPhoneLightspeed').checked && phone!==String(originalPhone||'').trim()
+  };
+  try{
+    const r=await getJson(api+'/customers/'+encodeURIComponent(selectedCustomer.id)+'/profile',{
+      method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)
+    });
+    selectedCustomer.special_orders_phone=r.customer?.phone||phone;
+    selectedCustomer.discord_handle=r.customer?.discord_handle||null;
+    selectedCustomer.special_orders_notes=r.customer?.notes||null;
+    if(r.lightspeed_warning)showNotice('Customer saved locally, but Lightspeed phone update warning: '+r.lightspeed_warning);
+    else showNotice('Customer contact details updated.',2000);
+    saveDrafts();
+  }catch(e){showNotice('Customer update failed: '+e.message)}
+}
 async function searchOrderProducts(){const q=document.getElementById('newProductSearch').value.trim();if(!q)return;try{const r=await getJson(api+'/products/search?q='+encodeURIComponent(q));window._orderProductResults=r;document.getElementById('newProductResults').innerHTML=!r.length?'<p>No existing product match. Enter the item name/SKU manually below.</p>':'<table><tr><th>Name</th><th>SKU</th><th>UPC</th><th>Source</th><th>Inventory</th><th></th></tr>'+r.map((x,i)=>`<tr><td>${x.name}</td><td>${x.sku||'—'}</td><td>${x.upc||'—'}</td><td>${x.source}</td><td id="inv-${i}">—</td><td><button onclick="chooseOrderProduct(${i})">Use</button></td></tr>`).join('')+'</table>';r.forEach((x,i)=>{const lsId=x.lightspeed_product_id||(x.source==='lightspeed'?x.id:null);if(lsId)loadInventory(lsId,i)})}catch(e){showNotice(e.message)}}
 async function loadInventory(id,i){try{const d=await getJson(api+'/products/'+encodeURIComponent(id)+'/inventory');const rows=d.data||[];const levels=rows.map(x=>Number(x.inventory_level??x.quantity??x.current_amount??0)).filter(Number.isFinite);document.getElementById('inv-'+i).textContent=levels.length?levels.reduce((a,b)=>a+b,0):'See detail'}catch{}}
 function chooseOrderProduct(i){selectedOrderProduct=window._orderProductResults[i];document.getElementById('selectedProduct').textContent=(selectedOrderProduct.name||'Product')+(selectedOrderProduct.sku?' — '+selectedOrderProduct.sku:'');document.getElementById('manualItemName').value=selectedOrderProduct.name||'';document.getElementById('manualSku').value=selectedOrderProduct.sku||'';saveDrafts()}
 async function createOrder(){
   if(!selectedCustomer)return showNotice('Select a Lightspeed customer first.');
-  const itemName=document.getElementById('manualItemName').value.trim()||(selectedOrderProduct&&selectedOrderProduct.name);
-  if(!itemName)return showNotice('Enter or select an item.');
-  const customerName=[selectedCustomer.first_name,selectedCustomer.last_name].filter(Boolean).join(' ')||selectedCustomer.company_name||'Unnamed';
-  const payload={customer:{lightspeed_customer_id:selectedCustomer.id,name:customerName,phone:selectedCustomer.mobile||selectedCustomer.phone||null,email:selectedCustomer.email||null},items:[{
-    product_id:selectedOrderProduct?.local_id||null,
-    requested_name:itemName,requested_sku:document.getElementById('manualSku').value.trim()||selectedOrderProduct?.sku||null,
-    quantity:Number(document.getElementById('orderQty').value||1),status:document.getElementById('newStatus').value,
-    sourcing_department_id:document.getElementById('newDepartment').value||null,
-    preferred_supplier_id:document.getElementById('newSupplier').value||null,
-    supplier_ids:Array.from(document.getElementById('newSuppliers').selectedOptions).map(o=>o.value),
-    supplier_needed:document.getElementById('supplierNeeded').checked,
-    notes:document.getElementById('newNotes').value.trim()||null,
-    crowdfunding_note:document.getElementById('crowdfundingNote').value.trim()||null,
-    source_url:document.getElementById('sourceUrl').value.trim()||null,
-    placeholder_product:!selectedOrderProduct
-  }]};
-  try{await getJson(api+'/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});showNotice('Special order saved.');clearOrderForm();await loadStats();await loadOrders()}catch(e){showNotice(e.message)}
+  if(!stagedItems.length)return showNotice('Add at least one item to this order first.');
+  const customerName=[selectedCustomer.first_name,selectedCustomer.last_name].filter(Boolean).join(' ')||selectedCustomer.company_name||selectedCustomer.name||'Unnamed';
+  const payload={
+    customer:{
+      lightspeed_customer_id:selectedCustomer.id,
+      name:customerName,
+      phone:document.getElementById('customerPhone').value.trim()||selectedCustomer.mobile||selectedCustomer.phone||null,
+      email:selectedCustomer.email||null,
+      discord_handle:document.getElementById('customerDiscord').value.trim()||null,
+      notes:document.getElementById('customerNotes').value.trim()||null
+    },
+    notes:document.getElementById('orderNotes').value.trim()||null,
+    items:stagedItems
+  };
+  try{
+    await getJson(api+'/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    showNotice('Special order saved with '+stagedItems.length+' item'+(stagedItems.length===1?'':'s')+'.',2500);
+    clearOrderForm();
+    await loadStats();await loadOrders();
+  }catch(e){showNotice(e.message)}
 }
 async function searchProducts(){const q=document.getElementById('productSearch').value.trim();if(!q)return;try{const r=await getJson(api+'/products/search?q='+encodeURIComponent(q));document.getElementById('productResults').innerHTML='<h3>Product matches</h3>'+(!r.length?'<p>No match found. Product creation will be the next form added here.</p>':'<table><tr><th>Name</th><th>SKU</th><th>UPC</th><th>Source</th></tr>'+r.map(x=>`<tr><td>${x.name}</td><td>${x.sku||'—'}</td><td>${x.upc||'—'}</td><td>${x.source}</td></tr>`).join('')+'</table>')}catch(e){showNotice(e.message)}}
 async function loadProductCategories(){try{const c=await getJson(api+'/product-categories');document.getElementById('cpCategory').innerHTML='<option value="">Lightspeed category *</option>'+c.map(x=>`<option value="${x.id}">${x.path}</option>`).join('');if(!c.length)document.getElementById('cpCategory').innerHTML='<option value="">No Lightspeed categories returned</option>'}catch(e){document.getElementById('cpCategory').innerHTML='<option value="">Category load failed</option>';showNotice('Could not load Lightspeed categories: '+e.message)}}
@@ -332,13 +496,28 @@ async function createLightspeedProduct(){
   try{
     const r=await getJson(api+'/products/create-lightspeed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const p=r.lightspeed||{};
+    selectedOrderProduct={
+      id:p.id||null,
+      lightspeed_product_id:p.id||null,
+      local_id:r.local?.id||null,
+      name:p.name||name,
+      sku:p.sku||sku,
+      upc:upc||null,
+      source:'lightspeed'
+    };
+    document.getElementById('manualItemName').value=selectedOrderProduct.name||'';
+    document.getElementById('manualSku').value=selectedOrderProduct.sku||'';
+    document.getElementById('selectedProduct').textContent=(selectedOrderProduct.name||'Product')+(selectedOrderProduct.sku?' — '+selectedOrderProduct.sku:'');
     document.getElementById('createProductResult').innerHTML=`<p><b>Created.</b> Lightspeed UUID: <code>${p.id||'—'}</code> &nbsp; SKU: <b>${p.sku||sku}</b> &nbsp; Tag: <b>${r.tag||'Added by SO'}</b></p>`+
-      (r.image_warning?`<p class="danger">Product created, but image warning: ${r.image_warning}</p>`:'')+
-      `<button onclick="copyCreatedToSearch('${String(p.sku||sku).replace(/'/g,"\\'")}')">Search this item</button>`;
-    showNotice('Test product created in Lightspeed and registered in Railway.');
+      (r.image_warning?`<p class="danger">Product created, but image warning: ${r.image_warning}</p>`:'');
+    hideCreateProduct();
+    document.getElementById('itemEditor').style.display='block';
+    clearProductForm();
+    saveDrafts();
+    showNotice('New Lightspeed item created. Review the quantity/status, then click Add item to order.',3500);
   }catch(e){showNotice('Product creation failed: '+e.message)}
 }
-function copyCreatedToSearch(sku){document.getElementById('productSearch').value=sku;searchProducts()}
+function copyCreatedToSearch(sku){document.getElementById('newProductSearch').value=sku;showItemEditor();searchOrderProducts()}
 async function loadPreorders(){try{const c=await getJson(api+'/preorders/campaigns');document.getElementById('preorderCampaign').innerHTML='<option value="">Select preorder campaign…</option>'+c.map(x=>`<option value="${x.id}">${x.name} — ${x.request_count} requests</option>`).join('')}catch(e){}}
 async function loadPreorderCampaign(){const id=document.getElementById('preorderCampaign').value;if(!id){document.getElementById('preorderProducts').innerHTML='';return}try{const d=await getJson(api+'/preorders/campaigns/'+id);document.getElementById('preorderProducts').innerHTML='<table><tr><th>Product</th><th>Ordered</th><th>Received</th><th>Requested</th><th>Allocated</th><th>Available</th><th></th></tr>'+d.products.map(x=>{const available=Math.max(0,Number(x.received_quantity||0)-Number(x.reserved_floor_quantity||0)-Number(x.allocated_total||0));return `<tr><td>${x.item_description}</td><td>${x.ordered_quantity}</td><td>${x.received_quantity}</td><td>${x.requested_total}</td><td>${x.allocated_total}</td><td>${available}</td><td><button onclick="allocatePreorder(${x.id},'FAIR_SHARE')">Fair share</button> <button onclick="allocatePreorder(${x.id},'QUEUE')">Queue</button></td></tr>`}).join('')+'</table>'}catch(e){showNotice(e.message)}}
 async function allocatePreorder(id,method){if(!confirm('Allocate currently available preorder inventory using '+method+'?'))return;try{const d=await getJson(api+'/preorders/products/'+id+'/allocate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({method})});showNotice(`Allocated ${d.newlyAllocated}; ${d.remaining} still available.`);await loadPreorderCampaign()}catch(e){showNotice(e.message)}}
