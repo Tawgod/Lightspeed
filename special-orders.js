@@ -151,6 +151,83 @@ async function upsertLocalProduct(product) {
   return result.rows[0];
 }
 
+
+function normalizeMatchText(v) {
+  return String(v || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function matchTokens(v) {
+  const stop = new Set(['the','and','for','with','from','set','pack','box','kit','edition','new']);
+  return normalizeMatchText(v).split(' ').filter(t => t.length > 1 && !stop.has(t));
+}
+
+function scorePotentialMatch(query, candidate) {
+  const qRaw = String(query || '').trim();
+  const q = normalizeMatchText(qRaw);
+  const qTokens = matchTokens(qRaw);
+  const sku = normalizeMatchText(candidate.sku);
+  const upc = normalizeMatchText(candidate.upc);
+  const supplierSku = normalizeMatchText(candidate.supplier_sku);
+  const name = normalizeMatchText(candidate.name);
+  const desc = normalizeMatchText(candidate.description);
+  const supplierDesc = normalizeMatchText(candidate.supplier_description);
+  const brand = normalizeMatchText(candidate.brand);
+  const manufacturer = normalizeMatchText(candidate.manufacturer_text);
+
+  let score = 0;
+  const reasons = [];
+
+  if (q && (q === sku || q === upc || q === supplierSku)) {
+    score += 100;
+    reasons.push('exact code');
+  }
+  if (q && q === name) {
+    score += 80;
+    reasons.push('exact name');
+  }
+
+  const haystacks = [
+    ['name', name, 34],
+    ['description', desc, 22],
+    ['supplier description', supplierDesc, 28],
+    ['brand', brand, 18],
+    ['manufacturer', manufacturer, 18]
+  ];
+  for (const [label, textValue, weight] of haystacks) {
+    if (!textValue || qTokens.length === 0) continue;
+    const textTokens = new Set(matchTokens(textValue));
+    const hits = qTokens.filter(t => textTokens.has(t));
+    if (hits.length) {
+      const ratio = hits.length / qTokens.length;
+      score += Math.round(weight * ratio);
+      if (ratio >= 0.5) reasons.push(`${label} keywords`);
+    }
+    if (q.length >= 5 && textValue.includes(q)) {
+      score += 18;
+      reasons.push(`${label} phrase`);
+    }
+  }
+
+  // Partial code match is useful for suppliers that add/remove prefixes or punctuation.
+  const compactQuery = q.replace(/ /g, '');
+  for (const code of [sku, supplierSku, upc]) {
+    const compactCode = code.replace(/ /g, '');
+    if (compactQuery.length >= 4 && compactCode.length >= 4 &&
+        compactQuery !== compactCode &&
+        (compactCode.includes(compactQuery) || compactQuery.includes(compactCode))) {
+      score += 24;
+      reasons.push('partial code');
+      break;
+    }
+  }
+
+  return { score: Math.min(score, 100), reasons: [...new Set(reasons)] };
+}
+
 export function createSpecialOrdersRouter({
   lightspeedDomain,
   lightspeedToken,
@@ -805,16 +882,22 @@ export function createSpecialOrdersRouter({
   });
 
   router.post('/supplier-products', requireDb, async (req, res) => {
-    const { supplier_id, product_id, supplier_sku, supply_price, priority = 1, is_orderable = true, notes } = req.body || {};
+    const { supplier_id, product_id, supplier_sku, supplier_description, manufacturer_text,
+      supply_price, priority = 1, is_orderable = true, notes } = req.body || {};
     if (!supplier_id || !product_id) return res.status(400).json({ error: 'supplier_id and product_id are required.' });
     const { rows } = await pool.query(`
-      INSERT INTO supplier_products (supplier_id,product_id,supplier_sku,supply_price,priority,is_orderable,notes)
-      VALUES ($1,$2,$3,$4,$5,$6,$7)
-      ON CONFLICT (supplier_id,product_id) DO UPDATE SET supplier_sku=EXCLUDED.supplier_sku,
+      INSERT INTO supplier_products
+        (supplier_id,product_id,supplier_sku,supplier_description,manufacturer_text,supply_price,priority,is_orderable,notes)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      ON CONFLICT (supplier_id,product_id) DO UPDATE SET
+        supplier_sku=EXCLUDED.supplier_sku,
+        supplier_description=COALESCE(EXCLUDED.supplier_description,supplier_products.supplier_description),
+        manufacturer_text=COALESCE(EXCLUDED.manufacturer_text,supplier_products.manufacturer_text),
         supply_price=EXCLUDED.supply_price, priority=EXCLUDED.priority, is_orderable=EXCLUDED.is_orderable,
         notes=EXCLUDED.notes
       RETURNING *
-    `, [supplier_id, product_id, supplier_sku || null, supply_price || null, priority, Boolean(is_orderable), notes || null]);
+    `, [supplier_id, product_id, supplier_sku || null, supplier_description || null, manufacturer_text || null,
+        supply_price || null, priority, Boolean(is_orderable), notes || null]);
     res.status(201).json(rows[0]);
   });
 
@@ -1100,6 +1183,53 @@ export function createSpecialOrdersRouter({
     } catch (error) {
       res.status(502).json({ error: error.message });
     }
+  });
+
+  router.get('/products/potential-matches', requireDb, async (req, res) => {
+    const q = String(req.query.q || '').trim();
+    const supplierId = req.query.supplier_id || null;
+    if (!q) return res.json([]);
+
+    // Pull a broad candidate pool, then score in application code. This avoids exact-code dependence.
+    const tokens = matchTokens(q).slice(0, 8);
+    const patterns = tokens.map(t => `%${t}%`);
+    const params = [supplierId, q, `%${q}%`, patterns];
+    const result = await pool.query(`
+      SELECT DISTINCT
+        p.id AS local_id, p.lightspeed_product_id, p.name, p.sku, p.upc, p.description, p.brand,
+        sp.id AS supplier_product_id, sp.supplier_id, sp.supplier_sku,
+        sp.supplier_description, sp.manufacturer_text, sp.supply_price,
+        s.name AS supplier_name
+      FROM products p
+      LEFT JOIN supplier_products sp
+        ON sp.product_id=p.id
+       AND ($1::bigint IS NULL OR sp.supplier_id=$1::bigint)
+      LEFT JOIN suppliers s ON s.id=sp.supplier_id
+      WHERE
+        lower(coalesce(p.sku,''))=lower($2)
+        OR p.upc=$2
+        OR lower(coalesce(sp.supplier_sku,''))=lower($2)
+        OR lower(p.name) LIKE lower($3)
+        OR lower(coalesce(p.description,'')) LIKE lower($3)
+        OR lower(coalesce(sp.supplier_description,'')) LIKE lower($3)
+        OR EXISTS (
+          SELECT 1 FROM unnest($4::text[]) pat
+          WHERE lower(p.name) LIKE pat
+             OR lower(coalesce(p.description,'')) LIKE pat
+             OR lower(coalesce(sp.supplier_description,'')) LIKE pat
+             OR lower(coalesce(p.brand,'')) LIKE pat
+             OR lower(coalesce(sp.manufacturer_text,'')) LIKE pat
+        )
+      LIMIT 150
+    `, params);
+
+    const scored = result.rows
+      .map(row => ({ ...row, ...scorePotentialMatch(q, row) }))
+      .filter(row => row.score >= 18)
+      .sort((a,b) => b.score - a.score || String(a.name).localeCompare(String(b.name)))
+      .slice(0, 25);
+
+    res.json(scored);
   });
 
   router.get('/products/search', async (req, res) => {
