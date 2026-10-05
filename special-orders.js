@@ -603,12 +603,14 @@ export function createSpecialOrdersRouter({
         for (const supplierId of supplierIds) {
           await client.query(`
             INSERT INTO special_order_item_suppliers
-              (special_order_item_id,supplier_id,priority,availability_status)
-            VALUES ($1,$2,$3,$4)
+              (special_order_item_id,supplier_id,priority,availability_status,source_url)
+            VALUES ($1,$2,$3,$4,$5)
             ON CONFLICT (special_order_item_id,supplier_id) DO UPDATE SET
               priority=LEAST(special_order_item_suppliers.priority,EXCLUDED.priority),
-              availability_status=COALESCE(EXCLUDED.availability_status,special_order_item_suppliers.availability_status)
-          `, [itemResult.rows[0].id, supplierId, supplierPriority++, item.supplier_availability?.[supplierId] || null]);
+              availability_status=COALESCE(EXCLUDED.availability_status,special_order_item_suppliers.availability_status),
+              source_url=COALESCE(EXCLUDED.source_url,special_order_item_suppliers.source_url)
+          `, [itemResult.rows[0].id, supplierId, supplierPriority++, item.supplier_availability?.[supplierId] || null,
+              item.supplier_source_urls?.[supplierId] || item.source_url || null]);
         }
         await client.query(
           'INSERT INTO order_status_history (special_order_item_id,new_status,note,changed_by) VALUES ($1,$2,$3,$4)',
@@ -659,12 +661,14 @@ export function createSpecialOrdersRouter({
       for(const supplierId of supplierIds){
         await client.query(`
           INSERT INTO special_order_item_suppliers
-            (special_order_item_id,supplier_id,priority,availability_status)
-          VALUES ($1,$2,$3,$4)
+            (special_order_item_id,supplier_id,priority,availability_status,source_url)
+          VALUES ($1,$2,$3,$4,$5)
           ON CONFLICT (special_order_item_id,supplier_id) DO UPDATE SET
             priority=EXCLUDED.priority,
-            availability_status=COALESCE(EXCLUDED.availability_status,special_order_item_suppliers.availability_status)
-        `,[created.rows[0].id,supplierId,priority++,item.supplier_availability?.[supplierId]||null]);
+            availability_status=COALESCE(EXCLUDED.availability_status,special_order_item_suppliers.availability_status),
+            source_url=COALESCE(EXCLUDED.source_url,special_order_item_suppliers.source_url)
+        `,[created.rows[0].id,supplierId,priority++,item.supplier_availability?.[supplierId]||null,
+            item.supplier_source_urls?.[supplierId]||item.source_url||null]);
       }
       await client.query(
         'INSERT INTO order_status_history (special_order_item_id,new_status,note,changed_by) VALUES ($1,$2,$3,$4)',
@@ -926,6 +930,53 @@ export function createSpecialOrdersRouter({
     res.json(rows);
   });
 
+
+  router.patch('/items/:id/source-link', requireDb, async (req, res) => {
+    const sourceUrl = req.body?.source_url || null;
+    const supplierId = req.body?.supplier_id || null;
+    if (sourceUrl) {
+      try {
+        const u = new URL(sourceUrl);
+        if (!['http:','https:'].includes(u.protocol)) throw new Error();
+      } catch {
+        return res.status(400).json({ error:'source_url must be a valid http(s) URL.' });
+      }
+    }
+
+    const item = await pool.query(
+      'UPDATE special_order_items SET source_url=$1, updated_at=now() WHERE id=$2 RETURNING *',
+      [sourceUrl, req.params.id]
+    );
+    if (!item.rows[0]) return res.status(404).json({ error:'Special-order item not found.' });
+
+    if (supplierId) {
+      await pool.query(`
+        INSERT INTO special_order_item_suppliers
+          (special_order_item_id,supplier_id,priority,source_url)
+        VALUES ($1,$2,1,$3)
+        ON CONFLICT (special_order_item_id,supplier_id) DO UPDATE SET source_url=EXCLUDED.source_url
+      `, [req.params.id, supplierId, sourceUrl]);
+    }
+    res.json(item.rows[0]);
+  });
+
+  router.patch('/supplier-order-items/:id/source-link', requireDb, async (req, res) => {
+    const sourceUrl = req.body?.source_url || null;
+    if (sourceUrl) {
+      try {
+        const u = new URL(sourceUrl);
+        if (!['http:','https:'].includes(u.protocol)) throw new Error();
+      } catch {
+        return res.status(400).json({ error:'source_url must be a valid http(s) URL.' });
+      }
+    }
+    const updated = await pool.query(
+      'UPDATE supplier_order_items SET source_url=$1 WHERE id=$2 RETURNING *',
+      [sourceUrl, req.params.id]
+    );
+    if (!updated.rows[0]) return res.status(404).json({ error:'Supplier-order item not found.' });
+    res.json(updated.rows[0]);
+  });
 
   router.post('/supplier-orders', requireDb, async (req, res) => {
     const { supplier_id, items = [], notes = null, created_by = null, supplier_order_number = null } = req.body || {};
