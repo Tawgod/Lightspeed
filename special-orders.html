@@ -144,14 +144,50 @@ tbody tr:hover{background:#f2f7fc}
 
   <div id="customerProfile" style="display:none;border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin:12px 0">
     <div class="toolbar">
-      <input id="customerPhone" placeholder="Phone number" size="20">
-      <input id="customerDiscord" placeholder="Discord handle" size="22">
-      <label><input id="syncPhoneLightspeed" type="checkbox" checked> Update phone in Lightspeed</label>
-      <button type="button" onclick="updateCustomerProfile()">Update customer</button>
+      <div id="customerSummary" style="flex:1;color:#334155"></div>
+      <button type="button" onclick="openCustomerModal()">Update customer</button>
     </div>
     <div class="toolbar">
-      <input id="customerNotes" placeholder="Customer note (optional)" size="48">
       <input id="orderNotes" placeholder="Pickup note / alternate pickup person for this order" size="52">
+    </div>
+  </div>
+
+  <div id="customerModal" style="display:none;position:fixed;inset:0;background:#0008;z-index:1000;align-items:center;justify-content:center;padding:20px">
+    <div style="background:var(--panel);color:var(--text);width:min(760px,96vw);max-height:90vh;overflow:auto;border-radius:12px;border:1px solid var(--border);padding:18px;box-shadow:0 20px 60px #0005">
+      <div class="toolbar" style="justify-content:space-between">
+        <h2 style="margin:0">Update customer</h2>
+        <button type="button" onclick="closeCustomerModal()">Close</button>
+      </div>
+      <div class="toolbar">
+        <input id="customerFirstName" placeholder="First name" size="20">
+        <input id="customerLastName" placeholder="Last name" size="20">
+        <input id="customerCompany" placeholder="Company" size="24">
+      </div>
+      <div class="toolbar">
+        <input id="customerPhone" placeholder="Phone number" size="20">
+        <input id="customerEmail" type="email" placeholder="Email" size="28">
+        <input id="customerDiscord" placeholder="Discord handle" size="22">
+      </div>
+      <div class="toolbar">
+        <input id="customerAddress1" placeholder="Address line 1" size="34">
+        <input id="customerAddress2" placeholder="Address line 2" size="24">
+      </div>
+      <div class="toolbar">
+        <input id="customerCity" placeholder="City" size="22">
+        <input id="customerState" placeholder="State" size="12">
+        <input id="customerPostcode" placeholder="ZIP / postal code" size="14">
+        <input id="customerCountry" placeholder="Country code" value="US" size="10">
+      </div>
+      <div class="toolbar">
+        <input id="customerNotes" placeholder="Customer note (Special Orders)" size="52">
+      </div>
+      <div class="toolbar">
+        <label><input id="syncCustomerLightspeed" type="checkbox"> Update this contact information in Lightspeed too</label>
+      </div>
+      <div class="toolbar">
+        <button type="button" onclick="updateCustomerProfile()">Save customer changes</button>
+        <button type="button" onclick="closeCustomerModal()">Cancel</button>
+      </div>
     </div>
   </div>
 
@@ -288,7 +324,7 @@ const ORDER_DRAFT_KEY='hcSpecialOrderDraftV2';
 const PRODUCT_DRAFT_KEY='hcCreateProductDraftV1';
 
 const orderDraftIds=[
-  'customerSearch','customerPhone','customerDiscord','customerNotes','orderNotes','syncPhoneLightspeed',
+  'customerSearch','customerPhone','customerEmail','customerDiscord','customerNotes','orderNotes',
   'newProductSearch','manualItemName','manualSku','orderQty','newStatus',
   'newDepartment','newSupplier','supplierNeeded','newNotes','crowdfundingNote','sourceUrl'
 ];
@@ -419,7 +455,7 @@ function clearCurrentItem(){
 }
 function clearOrderForm(){
   selectedCustomer=null;selectedOrderProduct=null;stagedItems=[];
-  ['customerSearch','customerPhone','customerDiscord','customerNotes','orderNotes'].forEach(id=>writeField(id,''));
+  ['customerSearch','customerFirstName','customerLastName','customerCompany','customerPhone','customerEmail','customerDiscord','customerNotes','customerAddress1','customerAddress2','customerCity','customerState','customerPostcode','orderNotes'].forEach(id=>writeField(id,''));
   document.getElementById('selectedCustomer').textContent='No customer selected';
   document.getElementById('customerProfile').style.display='none';
   document.getElementById('customerResults').innerHTML='';
@@ -679,46 +715,99 @@ async function chooseCustomer(i){
   selectedCustomer=window._customerResults[i];
   showSelectedCustomer();
   document.getElementById('customerProfile').style.display='block';
-  document.getElementById('customerPhone').value=selectedCustomer.special_orders_phone||selectedCustomer.mobile||selectedCustomer.phone||'';
-  document.getElementById('customerDiscord').value=selectedCustomer.discord_handle||'';
-  document.getElementById('customerNotes').value=selectedCustomer.special_orders_notes||'';
   document.getElementById('customerResults').innerHTML='';
-  try{
-    const local=await getJson(api+'/customers/'+encodeURIComponent(selectedCustomer.id)+'/profile');
-    if(local){
-      if(local.phone)document.getElementById('customerPhone').value=local.phone;
-      if(local.discord_handle)document.getElementById('customerDiscord').value=local.discord_handle;
-      if(local.notes)document.getElementById('customerNotes').value=local.notes;
-    }
-  }catch{}
+  await hydrateCustomerFields();
   saveDrafts();
 }
+async function hydrateCustomerFields(){
+  if(!selectedCustomer)return;
+  let merged={...selectedCustomer};
+  try{
+    const local=await getJson(api+'/customers/'+encodeURIComponent(selectedCustomer.id)+'/profile');
+    if(local)merged={...merged,...local};
+  }catch{}
+  selectedCustomer={...selectedCustomer,...merged};
+
+  document.getElementById('customerFirstName').value=selectedCustomer.first_name||'';
+  document.getElementById('customerLastName').value=selectedCustomer.last_name||'';
+  document.getElementById('customerCompany').value=selectedCustomer.company_name||'';
+  document.getElementById('customerPhone').value=selectedCustomer.special_orders_phone||selectedCustomer.phone||selectedCustomer.mobile||'';
+  document.getElementById('customerEmail').value=selectedCustomer.email||'';
+  document.getElementById('customerDiscord').value=selectedCustomer.discord_handle||'';
+  document.getElementById('customerNotes').value=selectedCustomer.special_orders_notes||selectedCustomer.notes||'';
+  document.getElementById('customerAddress1').value=selectedCustomer.physical_address_1||'';
+  document.getElementById('customerAddress2').value=selectedCustomer.physical_address_2||'';
+  document.getElementById('customerCity').value=selectedCustomer.physical_city||'';
+  document.getElementById('customerState').value=selectedCustomer.physical_state||'';
+  document.getElementById('customerPostcode').value=selectedCustomer.physical_postcode||'';
+  document.getElementById('customerCountry').value=selectedCustomer.physical_country_id||'US';
+  document.getElementById('syncCustomerLightspeed').checked=false;
+  renderCustomerSummary();
+}
+function renderCustomerSummary(){
+  if(!selectedCustomer)return;
+  const name=[selectedCustomer.first_name,selectedCustomer.last_name].filter(Boolean).join(' ')||selectedCustomer.company_name||selectedCustomer.name||'Selected customer';
+  const phone=document.getElementById('customerPhone')?.value||selectedCustomer.special_orders_phone||selectedCustomer.phone||selectedCustomer.mobile||'';
+  const email=document.getElementById('customerEmail')?.value||selectedCustomer.email||'';
+  const discord=document.getElementById('customerDiscord')?.value||selectedCustomer.discord_handle||'';
+  document.getElementById('customerSummary').textContent=[name,phone,email,discord?('Discord: '+discord):''].filter(Boolean).join(' • ');
+}
+function openCustomerModal(){
+  if(!selectedCustomer)return showNotice('Select a customer first.');
+  hydrateCustomerFields();
+  document.getElementById('customerModal').style.display='flex';
+}
+function closeCustomerModal(){document.getElementById('customerModal').style.display='none'}
 async function updateCustomerProfile(){
   if(!selectedCustomer)return showNotice('Select a customer first.');
-  const name=[selectedCustomer.first_name,selectedCustomer.last_name].filter(Boolean).join(' ')||selectedCustomer.company_name||selectedCustomer.name||'Unnamed';
-  const originalPhone=selectedCustomer.mobile||selectedCustomer.phone||'';
-  const phone=document.getElementById('customerPhone').value.trim();
+  const first=document.getElementById('customerFirstName').value.trim();
+  const last=document.getElementById('customerLastName').value.trim();
+  const company=document.getElementById('customerCompany').value.trim();
   const payload={
-    name,
-    first_name:selectedCustomer.first_name||null,
-    last_name:selectedCustomer.last_name||null,
-    company_name:selectedCustomer.company_name||null,
-    email:selectedCustomer.email||null,
-    phone,
-    phone_field:selectedCustomer.mobile!==undefined?'mobile':'phone',
+    name:[first,last].filter(Boolean).join(' ')||company||selectedCustomer.name||'Unnamed',
+    first_name:first||null,
+    last_name:last||null,
+    company_name:company||null,
+    email:document.getElementById('customerEmail').value.trim()||null,
+    phone:document.getElementById('customerPhone').value.trim()||null,
+    mobile:document.getElementById('customerPhone').value.trim()||null,
     discord_handle:document.getElementById('customerDiscord').value.trim()||null,
     notes:document.getElementById('customerNotes').value.trim()||null,
-    sync_lightspeed_phone:document.getElementById('syncPhoneLightspeed').checked && phone!==String(originalPhone||'').trim()
+    address_line_1:document.getElementById('customerAddress1').value.trim()||null,
+    address_line_2:document.getElementById('customerAddress2').value.trim()||null,
+    city:document.getElementById('customerCity').value.trim()||null,
+    state:document.getElementById('customerState').value.trim()||null,
+    postcode:document.getElementById('customerPostcode').value.trim()||null,
+    country_code:document.getElementById('customerCountry').value.trim()||null,
+    sync_lightspeed:document.getElementById('syncCustomerLightspeed').checked
   };
   try{
     const r=await getJson(api+'/customers/'+encodeURIComponent(selectedCustomer.id)+'/profile',{
       method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)
     });
-    selectedCustomer.special_orders_phone=r.customer?.phone||phone;
-    selectedCustomer.discord_handle=r.customer?.discord_handle||null;
-    selectedCustomer.special_orders_notes=r.customer?.notes||null;
-    if(r.lightspeed_warning)showNotice('Customer saved locally, but Lightspeed phone update warning: '+r.lightspeed_warning);
-    else showNotice('Customer contact details updated.',2000);
+    selectedCustomer={
+      ...selectedCustomer,
+      first_name:first||null,
+      last_name:last||null,
+      company_name:company||null,
+      email:payload.email,
+      phone:payload.phone,
+      mobile:payload.mobile,
+      special_orders_phone:payload.phone,
+      discord_handle:payload.discord_handle,
+      special_orders_notes:payload.notes,
+      physical_address_1:payload.address_line_1,
+      physical_address_2:payload.address_line_2,
+      physical_city:payload.city,
+      physical_state:payload.state,
+      physical_postcode:payload.postcode,
+      physical_country_id:payload.country_code
+    };
+    showSelectedCustomer();
+    renderCustomerSummary();
+    closeCustomerModal();
+    if(r.lightspeed_warning)showNotice('Customer saved locally, but Lightspeed update warning: '+r.lightspeed_warning);
+    else showNotice(payload.sync_lightspeed?'Customer updated here and in Lightspeed.':'Customer updated for Special Orders.',2200);
     saveDrafts();
   }catch(e){showNotice('Customer update failed: '+e.message)}
 }
@@ -742,7 +831,7 @@ async function createOrder(){
       lightspeed_customer_id:selectedCustomer.id,
       name:customerName,
       phone:document.getElementById('customerPhone').value.trim()||selectedCustomer.mobile||selectedCustomer.phone||null,
-      email:selectedCustomer.email||null,
+      email:document.getElementById('customerEmail').value.trim()||selectedCustomer.email||null,
       discord_handle:document.getElementById('customerDiscord').value.trim()||null,
       notes:document.getElementById('customerNotes').value.trim()||null
     },
