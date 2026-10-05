@@ -342,9 +342,10 @@ CREATE TABLE IF NOT EXISTS product_identifiers (
   supplier_id BIGINT REFERENCES suppliers(id) ON DELETE SET NULL,
   is_primary BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (identifier_type, normalized_value, COALESCE(supplier_id,0))
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_product_identifiers_unique
+ON product_identifiers (identifier_type, normalized_value, COALESCE(supplier_id,0));
 CREATE INDEX IF NOT EXISTS idx_product_identifiers_value
 ON product_identifiers (normalized_value);
 CREATE INDEX IF NOT EXISTS idx_product_identifiers_product
