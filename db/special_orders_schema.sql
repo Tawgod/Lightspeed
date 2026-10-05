@@ -309,3 +309,7 @@ CREATE TABLE IF NOT EXISTS special_order_item_suppliers (
 );
 CREATE INDEX IF NOT EXISTS idx_special_order_item_suppliers_supplier
 ON special_order_item_suppliers (supplier_id, special_order_item_id);
+
+ALTER TABLE supplier_products
+  ADD COLUMN IF NOT EXISTS supplier_description TEXT,
+  ADD COLUMN IF NOT EXISTS manufacturer_text TEXT;
