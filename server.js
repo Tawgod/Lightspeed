@@ -54,6 +54,7 @@ app.use('/api/special-orders', createSpecialOrdersRouter({
   adminKey: process.env.SPECIAL_ORDERS_ADMIN_KEY,
   liveMode: process.env.SPECIAL_ORDERS_LIVE_MODE === 'true',
   allowMigration: process.env.SPECIAL_ORDERS_ALLOW_MIGRATION === 'true',
+  allowProductWrites: process.env.SPECIAL_ORDERS_ALLOW_PRODUCT_WRITES === 'true',
   lightspeedOutletId: process.env.LIGHTSPEED_OUTLET_ID || null
 }));
 
