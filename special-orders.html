@@ -20,7 +20,8 @@ table{width:100%;border-collapse:collapse}th,td{padding:10px 8px;border-bottom:1
 <div class="panel">
   <div class="toolbar">
     <input id="accessKey" type="password" placeholder="Internal access key" size="24">
-    <button onclick="saveKey()">Unlock</button>
+    <button id="unlockButton" onclick="saveKey()">Unlock</button>
+    <span id="authStatus" class="pill">Locked</span>
     <input id="legacyWorkbook" type="file" accept=".xlsx" style="max-width:260px">
     <button onclick="importWorkbook()">Import legacy workbook</button>
   </div>
@@ -137,10 +138,38 @@ const api='/api/special-orders';
 let selectedCustomer=null, selectedOrderProduct=null;
 function showNotice(t){const n=document.getElementById('notice');n.textContent=t;n.style.display='block'}
 function accessKey(){return sessionStorage.getItem('hcSpecialOrdersKey')||''}
-function saveKey(){const v=document.getElementById('accessKey').value.trim();if(v){sessionStorage.setItem('hcSpecialOrdersKey',v);loadAll()}}
+function setAuthState(ok,msg=''){
+  const s=document.getElementById('authStatus');
+  s.textContent=ok?'Unlocked':'Locked';
+  s.style.background=ok?'#dcfce7':'#fee2e2';
+  s.style.color=ok?'#166534':'#991b1b';
+  document.querySelectorAll('button:not(#unlockButton), input:not(#accessKey), select, textarea').forEach(el=>{
+    if(el.id==='legacyWorkbook') return;
+    el.disabled=!ok;
+  });
+  if(msg)showNotice(msg);
+}
+async function saveKey(){
+  const v=document.getElementById('accessKey').value.trim();
+  if(!v)return setAuthState(false,'Enter the internal access key first.');
+  sessionStorage.setItem('hcSpecialOrdersKey',v);
+  try{
+    await getJson(api+'/stats');
+    setAuthState(true,'Access key accepted. Loading Special Orders…');
+    await loadAll();
+  }catch(e){
+    sessionStorage.removeItem('hcSpecialOrdersKey');
+    setAuthState(false,'Access key was not accepted. Please re-enter the test access key.');
+  }
+}
 async function getJson(url,opts={}){
   const headers={...(opts.headers||{}),'x-hobby-corner-key':accessKey()};
   const r=await fetch(url,{...opts,headers});let d={};try{d=await r.json()}catch{}
+  if(r.status===401){
+    sessionStorage.removeItem('hcSpecialOrdersKey');
+    setAuthState(false,'Special Orders is locked. Enter the internal access key and click Unlock.');
+    throw new Error('Access key missing or incorrect.');
+  }
   if(!r.ok)throw new Error(d.error||r.statusText);return d
 }
 async function importWorkbook(){
@@ -223,5 +252,10 @@ async function loadPreorderCampaign(){const id=document.getElementById('preorder
 async function allocatePreorder(id,method){if(!confirm('Allocate currently available preorder inventory using '+method+'?'))return;try{const d=await getJson(api+'/preorders/products/'+id+'/allocate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({method})});showNotice(`Allocated ${d.newlyAllocated}; ${d.remaining} still available.`);await loadPreorderCampaign()}catch(e){showNotice(e.message)}}
 async function loadAll(){await Promise.allSettled([loadStats(),loadOrders(),loadSuppliers(),loadDepartments(),loadProductCategories(),loadPreorders()])}
 document.getElementById('accessKey').value=accessKey();
-if(accessKey())loadAll();else showNotice('Enter the internal access key to load special-order data.');
+setAuthState(false);
+if(accessKey()){
+  saveKey();
+}else{
+  showNotice('Special Orders is locked. Enter the internal access key above and click Unlock.');
+}
 </script></body></html>
