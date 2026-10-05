@@ -205,7 +205,13 @@ tbody tr:hover{background:#f2f7fc}
     <div class="toolbar">
       <input id="cpCost" type="number" step="0.01" min="0" placeholder="Cost *" style="width:110px">
       <input id="cpRetail" type="number" step="0.01" min="0" placeholder="Retail *" style="width:110px">
-      <select id="cpCategory"><option value="">Lightspeed category *</option></select>
+      <div id="categoryPicker" style="min-width:340px;flex:1">
+        <input id="cpCategorySearch" placeholder="Type to filter categories…" size="30" oninput="filterCategoryMatches()">
+        <input id="cpCategory" type="hidden">
+        <div id="categoryBreadcrumb" class="pill" style="margin-left:6px">No category selected</div>
+        <div id="categoryLevels" class="toolbar" style="margin-top:8px"></div>
+        <div id="categoryMatches" style="margin-top:8px"></div>
+      </div>
       <select id="cpSupplier"><option value="">Primary supplier (optional)</option></select>
       <input id="cpSupplierSku" placeholder="Supplier item #" size="18">
     </div>
@@ -281,7 +287,7 @@ const orderDraftIds=[
   'newDepartment','newSupplier','supplierNeeded','newNotes','crowdfundingNote','sourceUrl'
 ];
 const productDraftIds=[
-  'cpName','cpSku','cpUpc','cpIsbn','cpCost','cpRetail','cpCategory','cpSupplier',
+  'cpName','cpSku','cpUpc','cpIsbn','cpCost','cpRetail','cpCategorySearch','cpSupplier',
   'cpSupplierSku','cpDescription','cpSourceUrl','cpImageUrl','cpOrderChannel'
 ];
 
@@ -311,6 +317,7 @@ function saveDrafts(){
 
   const product={};
   productDraftIds.forEach(id=>product[id]=readField(id));
+  product.cpCategory=readField('cpCategory');
   localStorage.setItem(PRODUCT_DRAFT_KEY,JSON.stringify(product));
 }
 function restoreDrafts(){
@@ -332,7 +339,11 @@ function restoreDrafts(){
       renderStagedItems();
     }
     const product=JSON.parse(localStorage.getItem(PRODUCT_DRAFT_KEY)||'null');
-    if(product)productDraftIds.forEach(id=>writeField(id,product[id]));
+    if(product){
+      productDraftIds.forEach(id=>writeField(id,product[id]));
+      writeField('cpCategory',product.cpCategory);
+      if(product.cpCategory && allProductCategories.length)setSelectedCategory(product.cpCategory);
+    }
   }catch(e){console.warn('Could not restore saved form drafts',e)}
 }
 function showNewCustomer(){
@@ -409,7 +420,11 @@ function clearOrderForm(){
 }
 function clearProductForm(){
   productDraftIds.forEach(id=>writeField(id,''));
+  writeField('cpCategory','');
   writeField('cpOrderChannel','TRADE');
+  document.getElementById('categoryBreadcrumb').textContent='No category selected';
+  document.getElementById('categoryMatches').innerHTML='';
+  renderCategoryLevels(null);
   document.getElementById('createProductResult').innerHTML='';
   localStorage.removeItem(PRODUCT_DRAFT_KEY);
 }
@@ -615,7 +630,91 @@ async function createOrder(){
   }catch(e){showNotice(e.message)}
 }
 async function searchProducts(){const q=document.getElementById('productSearch').value.trim();if(!q)return;try{const r=await getJson(api+'/products/search?q='+encodeURIComponent(q));document.getElementById('productResults').innerHTML='<h3>Product matches</h3>'+(!r.length?'<p>No match found. Product creation will be the next form added here.</p>':'<table><tr><th>Name</th><th>SKU</th><th>UPC</th><th>Source</th></tr>'+r.map(x=>`<tr><td>${x.name}</td><td>${x.sku||'—'}</td><td>${x.upc||'—'}</td><td>${x.source}</td></tr>`).join('')+'</table>')}catch(e){showNotice(e.message)}}
-async function loadProductCategories(){try{const c=await getJson(api+'/product-categories');document.getElementById('cpCategory').innerHTML='<option value="">Lightspeed category *</option>'+c.map(x=>`<option value="${x.id}">${x.path}</option>`).join('');if(!c.length)document.getElementById('cpCategory').innerHTML='<option value="">No Lightspeed categories returned</option>'}catch(e){document.getElementById('cpCategory').innerHTML='<option value="">Category load failed</option>';showNotice('Could not load Lightspeed categories: '+e.message)}}
+let allProductCategories=[];
+function categoryChildren(parentId){
+  return allProductCategories
+    .filter(x=>(x.parent_id||null)===(parentId||null))
+    .sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+}
+function setSelectedCategory(id){
+  const row=allProductCategories.find(x=>String(x.id)===String(id));
+  if(!row)return;
+  document.getElementById('cpCategory').value=row.id;
+  document.getElementById('categoryBreadcrumb').textContent=row.path||row.name;
+  document.getElementById('cpCategorySearch').value='';
+  document.getElementById('categoryMatches').innerHTML='';
+  renderCategoryLevels(row.id);
+  saveDrafts();
+}
+function renderCategoryLevels(selectedId=null){
+  const holder=document.getElementById('categoryLevels');
+  holder.innerHTML='';
+  if(!allProductCategories.length)return;
+
+  const selected=selectedId?allProductCategories.find(x=>String(x.id)===String(selectedId)):null;
+  const chain=[];
+  let cur=selected;
+  const guard=new Set();
+  while(cur && !guard.has(String(cur.id))){
+    chain.unshift(cur);
+    guard.add(String(cur.id));
+    cur=cur.parent_id?allProductCategories.find(x=>String(x.id)===String(cur.parent_id)):null;
+  }
+
+  let parentId=null;
+  let depth=0;
+  while(depth<8){
+    const children=categoryChildren(parentId);
+    if(!children.length)break;
+    const select=document.createElement('select');
+    select.innerHTML='<option value="">'+(depth===0?'Choose category…':'Choose subcategory…')+'</option>'+
+      children.map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
+    const chosen=chain[depth];
+    if(chosen)select.value=chosen.id;
+    select.onchange=()=>{
+      const id=select.value;
+      if(!id){
+        document.getElementById('cpCategory').value='';
+        document.getElementById('categoryBreadcrumb').textContent='No category selected';
+        renderCategoryLevels(null);
+        return;
+      }
+      setSelectedCategory(id);
+    };
+    holder.appendChild(select);
+    if(!chosen)break;
+    parentId=chosen.id;
+    depth++;
+    if(!categoryChildren(parentId).length)break;
+  }
+}
+function filterCategoryMatches(){
+  const q=document.getElementById('cpCategorySearch').value.trim().toLowerCase();
+  const box=document.getElementById('categoryMatches');
+  if(!q){box.innerHTML='';return}
+  const matches=allProductCategories
+    .filter(x=>(x.path||x.name||'').toLowerCase().includes(q))
+    .slice(0,30);
+  box.innerHTML=!matches.length
+    ? '<div style="color:#64748b">No category matches.</div>'
+    : '<div style="display:flex;gap:6px;flex-wrap:wrap">'+matches.map(x=>`<button type="button" onclick="setSelectedCategory('${String(x.id).replace(/'/g,"\\'")}')">${x.path||x.name}</button>`).join('')+'</div>';
+}
+async function loadProductCategories(){
+  try{
+    const c=await getJson(api+'/product-categories');
+    allProductCategories=Array.isArray(c)?c:[];
+    if(!allProductCategories.length){
+      document.getElementById('categoryBreadcrumb').textContent='No Lightspeed categories returned';
+      document.getElementById('categoryLevels').innerHTML='';
+      return;
+    }
+    renderCategoryLevels(document.getElementById('cpCategory').value||null);
+  }catch(e){
+    document.getElementById('categoryBreadcrumb').textContent='Category load failed';
+    document.getElementById('categoryLevels').innerHTML='';
+    showNotice('Could not load Lightspeed categories: '+e.message);
+  }
+}
 async function createLightspeedProduct(){
   const name=document.getElementById('cpName').value.trim();
   const sku=document.getElementById('cpSku').value.trim();
