@@ -1314,6 +1314,60 @@ export function createSpecialOrdersRouter({
     }
   });
 
+  router.post('/customers/create-lightspeed', requireDb, async (req, res) => {
+    const body = req.body || {};
+    const firstName = String(body.first_name || '').trim();
+    const lastName = String(body.last_name || '').trim();
+    if (!firstName) return res.status(400).json({ error:'First name is required.' });
+    if (!lastName) return res.status(400).json({ error:'Last name is required.' });
+
+    const payload = {
+      first_name:firstName,
+      last_name:lastName,
+      email:body.email || null,
+      mobile:body.phone || null,
+      note:body.lightspeed_note || null
+    };
+
+    try {
+      const created = await lightspeedVersionedFetch(
+        lightspeedDomain,
+        lightspeedToken,
+        '/customers',
+        { method:'POST', body:JSON.stringify(payload) },
+        '2026-01'
+      );
+      const customer = created?.data || created;
+      if (!customer?.id) throw new Error('Lightspeed did not return a customer id.');
+
+      const name = [customer.first_name || firstName, customer.last_name || lastName].filter(Boolean).join(' ');
+      const { rows } = await pool.query(`
+        INSERT INTO customers
+          (lightspeed_customer_id,name,phone,email,discord_handle,notes,updated_at)
+        VALUES ($1,$2,$3,$4,$5,$6,now())
+        ON CONFLICT (lightspeed_customer_id) DO UPDATE SET
+          name=EXCLUDED.name,
+          phone=EXCLUDED.phone,
+          email=EXCLUDED.email,
+          discord_handle=EXCLUDED.discord_handle,
+          notes=EXCLUDED.notes,
+          updated_at=now()
+        RETURNING *
+      `, [
+        customer.id,
+        name,
+        body.phone || customer.mobile || customer.phone || null,
+        body.email || customer.email || null,
+        body.discord_handle || null,
+        body.notes || null
+      ]);
+
+      res.status(201).json({ lightspeed:customer, local:rows[0] });
+    } catch (error) {
+      res.status(error.status || 502).json({ error:error.message });
+    }
+  });
+
   router.get('/customers/:lightspeedId/profile', requireDb, async (req, res) => {
     const { rows } = await pool.query(
       'SELECT * FROM customers WHERE lightspeed_customer_id=$1 LIMIT 1',
