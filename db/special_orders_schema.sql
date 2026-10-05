@@ -292,3 +292,20 @@ CREATE TABLE IF NOT EXISTS receiving_events (
   notes TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE special_order_items
+  ADD COLUMN IF NOT EXISTS supplier_needed BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS crowdfunding_note TEXT;
+
+CREATE TABLE IF NOT EXISTS special_order_item_suppliers (
+  special_order_item_id BIGINT NOT NULL REFERENCES special_order_items(id) ON DELETE CASCADE,
+  supplier_id BIGINT NOT NULL REFERENCES suppliers(id) ON DELETE CASCADE,
+  priority INTEGER NOT NULL DEFAULT 1,
+  availability_status TEXT,
+  supplier_sku TEXT,
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (special_order_item_id, supplier_id)
+);
+CREATE INDEX IF NOT EXISTS idx_special_order_item_suppliers_supplier
+ON special_order_item_suppliers (supplier_id, special_order_item_id);
