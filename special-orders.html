@@ -72,6 +72,38 @@ table{width:100%;border-collapse:collapse}th,td{padding:10px 8px;border-bottom:1
   </div>
 </div>
 <div class="panel">
+  <h2>Create Product in Lightspeed <span class="pill">Test write enabled</span></h2>
+  <p style="color:#6b7280">Use this when no correct Lightspeed item exists. Products created here are automatically tagged <b>Added by SO</b> and registered in the Railway UUID/identifier index.</p>
+  <div class="toolbar">
+    <input id="cpName" placeholder="Product name *" size="36">
+    <input id="cpSku" placeholder="SKU *" size="18">
+    <input id="cpUpc" placeholder="UPC / EAN" size="18">
+    <input id="cpIsbn" placeholder="ISBN" size="18">
+  </div>
+  <div class="toolbar">
+    <input id="cpCost" type="number" step="0.01" min="0" placeholder="Cost *" style="width:110px">
+    <input id="cpRetail" type="number" step="0.01" min="0" placeholder="Retail *" style="width:110px">
+    <select id="cpCategory"><option value="">Lightspeed category *</option></select>
+    <select id="cpSupplier"><option value="">Primary supplier (optional)</option></select>
+    <input id="cpSupplierSku" placeholder="Supplier item #" size="18">
+  </div>
+  <div class="toolbar">
+    <textarea id="cpDescription" placeholder="Full item description" rows="3" style="min-width:420px;flex:1"></textarea>
+  </div>
+  <div class="toolbar">
+    <input id="cpSourceUrl" placeholder="Distributor / manufacturer item URL" size="40">
+    <input id="cpImageUrl" placeholder="Image URL" size="40">
+    <select id="cpOrderChannel">
+      <option value="TRADE">Trade / normal supplier order</option>
+      <option value="WEB_ONLY">Web only</option>
+      <option value="DIRECT">Direct</option>
+      <option value="CROWDFUNDING">Crowdfunding</option>
+    </select>
+    <button onclick="createLightspeedProduct()">Create test product</button>
+  </div>
+  <div id="createProductResult"></div>
+</div>
+<div class="panel">
   <div class="toolbar">
     <input id="productSearch" placeholder="Search Lightspeed by SKU or exact name…" size="38">
     <button onclick="searchProducts()">Search products</button>
@@ -124,7 +156,8 @@ async function importWorkbook(){
 async function loadStats(){try{const s=await getJson(api+'/stats');for(const k of Object.keys(s))if(document.getElementById(k))document.getElementById(k).textContent=s[k]}catch(e){showNotice(e.message)}}
 async function loadOrders(){try{const p=new URLSearchParams();const st=document.getElementById('statusFilter').value;if(st)p.set('status',st);if(document.getElementById('attention').checked)p.set('attention','1');const rows=await getJson(api+'/orders?'+p);document.getElementById('orders').innerHTML=rows.map(x=>`<tr><td>${x.customer_name||'—'}</td><td>${x.product_name||x.requested_name}</td><td>${x.sku||x.requested_sku||'—'}</td><td>${x.quantity}</td><td><span class="pill">${x.status}</span></td><td>${x.preferred_supplier_name||'—'}</td><td class="${x.days_ordered>=7?'danger':''}">${x.days_ordered==null?'—':x.days_ordered+'d'}</td><td>${x.notes||''}</td></tr>`).join('')}catch(e){showNotice(e.message)}}
 async function loadSuppliers(){try{const s=await getJson(api+'/suppliers');document.getElementById('supplierSelect').innerHTML='<option value="">Order a supplier…</option>'+s.map(x=>`<option value="${x.id}">${x.name}</option>`).join('');document.getElementById('newSupplier').innerHTML='<option value="">Preferred supplier (optional)…</option>'+s.map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
-document.getElementById('newSuppliers').innerHTML=s.map(x=>`<option value="${x.id}">${x.name}</option>`).join('')}catch(e){}}
+document.getElementById('newSuppliers').innerHTML=s.map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
+document.getElementById('cpSupplier').innerHTML='<option value="">Primary supplier (optional)</option>'+s.map(x=>`<option value="${x.id}">${x.name}</option>`).join('')}catch(e){}}
 async function loadDepartments(){try{const d=await getJson(api+'/departments');document.getElementById('departmentSelect').innerHTML='<option value="">Source by department…</option>'+d.map(x=>`<option value="${x.id}">${x.name} (${x.supplier_count})</option>`).join('');document.getElementById('newDepartment').innerHTML='<option value="">Sourcing department…</option>'+d.map(x=>`<option value="${x.id}">${x.name}</option>`).join('')}catch(e){}}
 async function loadDepartment(){const id=document.getElementById('departmentSelect').value;if(!id){document.getElementById('departmentResults').innerHTML='';return}try{const r=await getJson(api+'/departments/'+id+'/suppliers');document.getElementById('departmentResults').innerHTML='<h3>Possible suppliers for this department</h3><p style="color:#6b7280">These are sourcing possibilities even when the product is not currently linked to that supplier in Lightspeed.</p>'+(!r.length?'<p>No suppliers are tagged for this department yet.</p>':'<table><tr><th>Supplier</th><th>Typical cadence</th><th>Known product link?</th><th>Supplier SKU</th><th>Cost</th></tr>'+r.map(x=>`<tr><td>${x.name}</td><td>${x.order_frequency||'—'}</td><td>${x.exact_product_mapping?'Yes':'Possible source'}</td><td>${x.supplier_sku||'—'}</td><td>${x.supply_price||'—'}</td></tr>`).join('')+'</table>')}catch(e){showNotice(e.message)}}
 async function loadSupplier(){const id=document.getElementById('supplierSelect').value;if(!id){document.getElementById('supplierResults').innerHTML='';return}try{const r=await getJson(api+'/suppliers/'+id+'/orderable');document.getElementById('supplierResults').innerHTML='<h3>Items ready for this supplier</h3>'+(!r.length?'<p>Nothing currently waiting.</p>':'<table><tr><th>Item</th><th>Supplier SKU</th><th>Needed</th><th>Customers</th><th>Cost</th></tr>'+r.map(x=>`<tr><td>${x.name}</td><td>${x.supplier_sku||'—'}</td><td>${x.qty_needed}</td><td>${x.waiting_orders}</td><td>${x.supply_price||'—'}</td></tr>`).join('')+'</table>')}catch(e){showNotice(e.message)}}
@@ -154,10 +187,41 @@ async function createOrder(){
   try{await getJson(api+'/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});showNotice('Special order saved.');selectedOrderProduct=null;document.getElementById('selectedProduct').textContent='No product selected';document.getElementById('manualItemName').value='';document.getElementById('manualSku').value='';document.getElementById('newNotes').value='';document.getElementById('crowdfundingNote').value='';document.getElementById('sourceUrl').value='';document.getElementById('supplierNeeded').checked=false;await loadStats();await loadOrders()}catch(e){showNotice(e.message)}
 }
 async function searchProducts(){const q=document.getElementById('productSearch').value.trim();if(!q)return;try{const r=await getJson(api+'/products/search?q='+encodeURIComponent(q));document.getElementById('productResults').innerHTML='<h3>Product matches</h3>'+(!r.length?'<p>No match found. Product creation will be the next form added here.</p>':'<table><tr><th>Name</th><th>SKU</th><th>UPC</th><th>Source</th></tr>'+r.map(x=>`<tr><td>${x.name}</td><td>${x.sku||'—'}</td><td>${x.upc||'—'}</td><td>${x.source}</td></tr>`).join('')+'</table>')}catch(e){showNotice(e.message)}}
+async function loadProductCategories(){try{const c=await getJson(api+'/product-categories');document.getElementById('cpCategory').innerHTML='<option value="">Lightspeed category *</option>'+c.map(x=>`<option value="${x.id}">${x.path}</option>`).join('')}catch(e){showNotice('Could not load Lightspeed categories: '+e.message)}}
+async function createLightspeedProduct(){
+  const name=document.getElementById('cpName').value.trim();
+  const sku=document.getElementById('cpSku').value.trim();
+  const cost=document.getElementById('cpCost').value;
+  const retail=document.getElementById('cpRetail').value;
+  const category=document.getElementById('cpCategory').value;
+  if(!name||!sku||cost===''||retail===''||!category)return showNotice('Name, SKU, cost, retail price, and category are required.');
+  const upc=document.getElementById('cpUpc').value.trim();
+  const payload={
+    name,sku,supply_price:Number(cost),price_including_tax:Number(retail),product_category_id:category,
+    description:document.getElementById('cpDescription').value.trim()||null,
+    image_url:document.getElementById('cpImageUrl').value.trim()||null,
+    source_url:document.getElementById('cpSourceUrl').value.trim()||null,
+    isbn:document.getElementById('cpIsbn').value.trim()||null,
+    local_supplier_id:document.getElementById('cpSupplier').value||null,
+    supplier_sku:document.getElementById('cpSupplierSku').value.trim()||null,
+    order_channel:document.getElementById('cpOrderChannel').value
+  };
+  if(upc) payload.product_codes=[{code:upc}];
+  if(!confirm('Create this product in the connected Lightspeed account? This is a real test write.'))return;
+  try{
+    const r=await getJson(api+'/products/create-lightspeed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const p=r.lightspeed||{};
+    document.getElementById('createProductResult').innerHTML=`<p><b>Created.</b> Lightspeed UUID: <code>${p.id||'—'}</code> &nbsp; SKU: <b>${p.sku||sku}</b> &nbsp; Tag: <b>${r.tag||'Added by SO'}</b></p>`+
+      (r.image_warning?`<p class="danger">Product created, but image warning: ${r.image_warning}</p>`:'')+
+      `<button onclick="copyCreatedToSearch('${String(p.sku||sku).replace(/'/g,"\\'")}')">Search this item</button>`;
+    showNotice('Test product created in Lightspeed and registered in Railway.');
+  }catch(e){showNotice('Product creation failed: '+e.message)}
+}
+function copyCreatedToSearch(sku){document.getElementById('productSearch').value=sku;searchProducts()}
 async function loadPreorders(){try{const c=await getJson(api+'/preorders/campaigns');document.getElementById('preorderCampaign').innerHTML='<option value="">Select preorder campaign…</option>'+c.map(x=>`<option value="${x.id}">${x.name} — ${x.request_count} requests</option>`).join('')}catch(e){}}
 async function loadPreorderCampaign(){const id=document.getElementById('preorderCampaign').value;if(!id){document.getElementById('preorderProducts').innerHTML='';return}try{const d=await getJson(api+'/preorders/campaigns/'+id);document.getElementById('preorderProducts').innerHTML='<table><tr><th>Product</th><th>Ordered</th><th>Received</th><th>Requested</th><th>Allocated</th><th>Available</th><th></th></tr>'+d.products.map(x=>{const available=Math.max(0,Number(x.received_quantity||0)-Number(x.reserved_floor_quantity||0)-Number(x.allocated_total||0));return `<tr><td>${x.item_description}</td><td>${x.ordered_quantity}</td><td>${x.received_quantity}</td><td>${x.requested_total}</td><td>${x.allocated_total}</td><td>${available}</td><td><button onclick="allocatePreorder(${x.id},'FAIR_SHARE')">Fair share</button> <button onclick="allocatePreorder(${x.id},'QUEUE')">Queue</button></td></tr>`}).join('')+'</table>'}catch(e){showNotice(e.message)}}
 async function allocatePreorder(id,method){if(!confirm('Allocate currently available preorder inventory using '+method+'?'))return;try{const d=await getJson(api+'/preorders/products/'+id+'/allocate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({method})});showNotice(`Allocated ${d.newlyAllocated}; ${d.remaining} still available.`);await loadPreorderCampaign()}catch(e){showNotice(e.message)}}
-async function loadAll(){await Promise.allSettled([loadStats(),loadOrders(),loadSuppliers(),loadDepartments(),loadPreorders()])}
+async function loadAll(){await Promise.allSettled([loadStats(),loadOrders(),loadSuppliers(),loadDepartments(),loadProductCategories(),loadPreorders()])}
 document.getElementById('accessKey').value=accessKey();
 if(accessKey())loadAll();else showNotice('Enter the internal access key to load special-order data.');
 </script></body></html>
