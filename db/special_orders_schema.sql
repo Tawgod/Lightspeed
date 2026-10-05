@@ -328,3 +328,6 @@ ALTER TABLE supplier_order_items
   ADD COLUMN IF NOT EXISTS placeholder_sku TEXT,
   ADD COLUMN IF NOT EXISTS source_url TEXT,
   ALTER COLUMN product_id DROP NOT NULL;
+
+ALTER TABLE special_order_item_suppliers
+  ADD COLUMN IF NOT EXISTS source_url TEXT;
