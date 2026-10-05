@@ -316,7 +316,7 @@ tbody tr:hover{background:#f2f7fc}
     </select>
     <label><input type="checkbox" id="attention" onchange="loadOrders()"> ordered &gt; 7 days only</label>
   </div>
-  <table><thead><tr><th>Customer</th><th>Item</th><th>SKU</th><th>Qty</th><th>Status</th><th>Supplier</th><th>Age</th><th>Notes</th></tr></thead>
+  <table><thead><tr><th>Customer</th><th>Item</th><th>SKU</th><th>Qty</th><th>Status</th><th>Supplier</th><th>Age</th><th>Notes</th><th></th></tr></thead>
   <tbody id="orders"></tbody></table>
 </div>
 </div>
@@ -499,7 +499,7 @@ function renderStagedItems(){
     stagedItems.map((x,i)=>`<tr>
       <td>${x.requested_name||x.name||'—'}</td>
       <td>${x.requested_sku||'—'}</td>
-      <td>${x.quantity||1}</td>
+      <td><input type="number" min="1" value="${x.quantity||1}" style="width:64px" onchange="updateStagedQty(${i},this.value)"></td>
       <td><span class="pill">${x.status||'OOS'}</span></td>
       <td>${x.preferred_supplier_name||'—'}</td>
       <td>${x.needs_details?'<span class="pill" style="background:#fff4df;color:#92400e">Needs details</span>':'Ready'}</td>
@@ -507,39 +507,68 @@ function renderStagedItems(){
     </tr>`).join('')+
     '</table>';
 }
+function updateStagedQty(i,value){
+  const qty=Math.max(1,parseInt(value,10)||1);
+  if(!stagedItems[i])return;
+  stagedItems[i].quantity=qty;
+  saveDrafts();
+}
 function removeStagedItem(i){
   if(editingStagedIndex===i)editingStagedIndex=null;
   else if(editingStagedIndex!=null && editingStagedIndex>i)editingStagedIndex--;
   stagedItems.splice(i,1);renderStagedItems();saveDrafts();
 }
-function quickAddItem(){
+async function quickAddItem(){
   if(!selectedCustomer)return showNotice('Select a customer first.');
   const input=document.getElementById('quickAddItem');
   const value=input.value.trim();
   if(!value)return;
-  const codeLike=!/\s/.test(value) && /^[A-Za-z0-9._-]+$/.test(value);
-  stagedItems.push({
-    product_id:null,
-    lightspeed_product_id:null,
-    requested_name:codeLike?'Quick add — '+value:value,
-    requested_sku:codeLike?value:null,
-    quantity:1,
-    status:'OOS',
-    sourcing_department_id:null,
-    preferred_supplier_id:null,
-    preferred_supplier_name:null,
-    supplier_ids:[],
-    supplier_needed:false,
-    notes:null,
-    crowdfunding_note:null,
-    source_url:null,
-    placeholder_product:true,
-    needs_details:true,
-    quick_add:true
-  });
-  input.value='';
-  renderStagedItems();saveDrafts();
-  showNotice('Quick-added. You can edit the details before saving the order.',1800);
+
+  input.disabled=true;
+  try{
+    const matched=await getJson(api+'/products/exact?q='+encodeURIComponent(value));
+    if(matched){
+      selectedOrderProduct=matched;
+      document.getElementById('manualItemName').value=matched.name||value;
+      document.getElementById('manualSku').value=matched.sku||value;
+      document.getElementById('orderQty').value='1';
+      document.getElementById('newStatus').value='OOS';
+      await rankSuppliersForProduct(matched);
+      addCurrentItem();
+      input.value='';
+      showNotice('Quick Add matched '+(matched.name||value)+' and added the existing product.',2000);
+      return;
+    }
+
+    const codeLike=!/\s/.test(value) && /^[A-Za-z0-9._-]+$/.test(value);
+    stagedItems.push({
+      product_id:null,
+      lightspeed_product_id:null,
+      requested_name:codeLike?'Quick add — '+value:value,
+      requested_sku:codeLike?value:null,
+      quantity:1,
+      status:'OOS',
+      sourcing_department_id:null,
+      preferred_supplier_id:null,
+      preferred_supplier_name:null,
+      supplier_ids:[],
+      supplier_needed:false,
+      notes:null,
+      crowdfunding_note:null,
+      source_url:null,
+      placeholder_product:true,
+      needs_details:true,
+      quick_add:true
+    });
+    input.value='';
+    renderStagedItems();saveDrafts();
+    showNotice('No exact product found. Quick-added as Needs details.',1800);
+  }catch(e){
+    showNotice('Quick Add lookup failed: '+e.message);
+  }finally{
+    input.disabled=false;
+    input.focus();
+  }
 }
 async function editStagedItem(i){
   const x=stagedItems[i]; if(!x)return;
@@ -677,7 +706,45 @@ async function importWorkbook(){
   }catch(e){showNotice(e.message)}
 }
 async function loadStats(){try{const s=await getJson(api+'/stats');for(const k of Object.keys(s))if(document.getElementById(k))document.getElementById(k).textContent=s[k]}catch(e){showNotice(e.message)}}
-async function loadOrders(){try{const p=new URLSearchParams();const st=document.getElementById('statusFilter').value;if(st)p.set('status',st);if(document.getElementById('attention').checked)p.set('attention','1');const rows=await getJson(api+'/orders?'+p);document.getElementById('orders').innerHTML=rows.map(x=>`<tr><td>${x.customer_name||'—'}</td><td>${x.product_name||x.requested_name}</td><td>${x.sku||x.requested_sku||'—'}</td><td>${x.quantity}</td><td><span class="pill">${x.status}</span></td><td>${x.preferred_supplier_name||'—'}</td><td class="${x.days_ordered>=7?'danger':''}">${x.days_ordered==null?'—':x.days_ordered+'d'}</td><td>${x.notes||''}</td></tr>`).join('')}catch(e){showNotice(e.message)}}
+async function loadOrders(){try{
+  const p=new URLSearchParams();
+  const st=document.getElementById('statusFilter').value;if(st)p.set('status',st);
+  if(document.getElementById('attention').checked)p.set('attention','1');
+  const rows=await getJson(api+'/orders?'+p);
+  document.getElementById('orders').innerHTML=rows.map(x=>`<tr>
+    <td>${x.customer_name||'—'}</td>
+    <td>${x.product_name||x.requested_name}</td>
+    <td>${x.sku||x.requested_sku||'—'}</td>
+    <td><input type="number" min="1" value="${x.quantity}" style="width:62px" onchange="updateSubmittedQty(${x.id},this.value,this)"></td>
+    <td><span class="pill">${x.status}</span></td>
+    <td>${x.preferred_supplier_name||'—'}</td>
+    <td class="${x.days_ordered>=7?'danger':''}">${x.days_ordered==null?'—':x.days_ordered+'d'}</td>
+    <td>${x.notes||''}</td>
+    <td><button type="button" onclick="removeSubmittedItem(${x.id},'${String(x.product_name||x.requested_name||'item').replace(/'/g,"\\'")}')">Remove</button></td>
+  </tr>`).join('');
+}catch(e){showNotice(e.message)}}
+async function updateSubmittedQty(id,value,input){
+  const qty=Math.max(1,parseInt(value,10)||1);
+  input.disabled=true;
+  try{
+    const r=await getJson(api+'/items/'+encodeURIComponent(id),{
+      method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({quantity:qty})
+    });
+    input.value=r.quantity;
+    showNotice('Quantity updated.',1400);
+  }catch(e){
+    showNotice('Could not update quantity: '+e.message);
+    await loadOrders();
+  }finally{input.disabled=false}
+}
+async function removeSubmittedItem(id,name){
+  if(!confirm('Remove '+name+' from this special order?'))return;
+  try{
+    await getJson(api+'/items/'+encodeURIComponent(id),{method:'DELETE'});
+    showNotice('Item removed from the special order.',1600);
+    await loadOrders();await loadStats();
+  }catch(e){showNotice('Could not remove item: '+e.message)}
+}
 function supplierOptionLabel(x){
   const prefix=x.recommendation_rank===0?'★ ':x.recommendation_rank===1?'◆ ':x.recommendation_rank===2?'• ':'';
   return prefix+x.name+(x.recommendation_reason?' — '+x.recommendation_reason:'');
@@ -695,7 +762,12 @@ async function rankSuppliersForProduct(product,preferredValue=null,otherValues=[
   if(product?.local_id){
     try{
       const ranked=await getJson(api+'/products/'+encodeURIComponent(product.local_id)+'/recommended-suppliers');
-      renderItemSupplierOptions(ranked,preferredValue,otherValues);
+      let autoPreferred=preferredValue;
+      if(!autoPreferred){
+        const exact=ranked.find(x=>Number(x.recommendation_rank)===0);
+        if(exact)autoPreferred=exact.id;
+      }
+      renderItemSupplierOptions(ranked,autoPreferred,otherValues);
       return ranked;
     }catch(e){console.warn('Supplier recommendation load failed',e)}
   }
