@@ -42,9 +42,26 @@ table{width:100%;border-collapse:collapse}th,td{padding:10px 8px;border-bottom:1
   <div class="toolbar">
     <input id="customerSearch" placeholder="Customer name, phone, or email" size="30">
     <button onclick="searchCustomers()">Find customer</button>
+    <button type="button" onclick="showNewCustomer()">New customer</button>
     <span id="selectedCustomer" class="pill">No customer selected</span>
   </div>
   <div id="customerResults"></div>
+
+  <div id="newCustomerPanel" style="display:none;border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin:12px 0">
+    <h3>New Lightspeed Customer</h3>
+    <div class="toolbar">
+      <input id="ncFirstName" placeholder="First name *" size="20">
+      <input id="ncLastName" placeholder="Last name *" size="20">
+      <input id="ncPhone" placeholder="Phone" size="20">
+      <input id="ncEmail" type="email" placeholder="Email" size="28">
+    </div>
+    <div class="toolbar">
+      <input id="ncDiscord" placeholder="Discord handle" size="22">
+      <input id="ncNotes" placeholder="Customer note (Special Orders)" size="44">
+      <button type="button" onclick="createNewCustomer()">Create & use customer</button>
+      <button type="button" onclick="hideNewCustomer()">Cancel</button>
+    </div>
+  </div>
 
   <div id="customerProfile" style="display:none;border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin:12px 0">
     <div class="toolbar">
@@ -238,6 +255,53 @@ function restoreDrafts(){
     const product=JSON.parse(localStorage.getItem(PRODUCT_DRAFT_KEY)||'null');
     if(product)productDraftIds.forEach(id=>writeField(id,product[id]));
   }catch(e){console.warn('Could not restore saved form drafts',e)}
+}
+function showNewCustomer(){
+  document.getElementById('newCustomerPanel').style.display='block';
+  document.getElementById('customerResults').innerHTML='';
+}
+function hideNewCustomer(){
+  document.getElementById('newCustomerPanel').style.display='none';
+}
+async function createNewCustomer(){
+  const first=document.getElementById('ncFirstName').value.trim();
+  const last=document.getElementById('ncLastName').value.trim();
+  if(!first||!last)return showNotice('First and last name are required.');
+  const payload={
+    first_name:first,
+    last_name:last,
+    phone:document.getElementById('ncPhone').value.trim()||null,
+    email:document.getElementById('ncEmail').value.trim()||null,
+    discord_handle:document.getElementById('ncDiscord').value.trim()||null,
+    notes:document.getElementById('ncNotes').value.trim()||null
+  };
+  try{
+    const r=await getJson(api+'/customers/create-lightspeed',{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)
+    });
+    const c=r.lightspeed||{};
+    selectedCustomer={
+      ...c,
+      id:c.id,
+      first_name:c.first_name||first,
+      last_name:c.last_name||last,
+      mobile:payload.phone,
+      email:payload.email,
+      discord_handle:payload.discord_handle,
+      special_orders_phone:payload.phone,
+      special_orders_notes:payload.notes,
+      local_customer_id:r.local?.id||null
+    };
+    showSelectedCustomer();
+    document.getElementById('customerProfile').style.display='block';
+    document.getElementById('customerPhone').value=payload.phone||'';
+    document.getElementById('customerDiscord').value=payload.discord_handle||'';
+    document.getElementById('customerNotes').value=payload.notes||'';
+    ['ncFirstName','ncLastName','ncPhone','ncEmail','ncDiscord','ncNotes'].forEach(id=>document.getElementById(id).value='');
+    hideNewCustomer();
+    saveDrafts();
+    showNotice('New Lightspeed customer created and selected.',2500);
+  }catch(e){showNotice('Customer creation failed: '+e.message)}
 }
 function showSelectedCustomer(){
   if(!selectedCustomer)return;
