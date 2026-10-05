@@ -41,13 +41,79 @@ function requireDb(req, res, next) {
   next();
 }
 
-function lightspeedHeaders(token) {
+function lightspeedHeaders(token, includeJson = true) {
   return {
     Authorization: `Bearer ${token}`,
     Accept: 'application/json',
-    'Content-Type': 'application/json',
+    ...(includeJson ? { 'Content-Type': 'application/json' } : {}),
     'User-Agent': 'HobbyCorner-SpecialOrders/1.0'
   };
+}
+
+async function lightspeedVersionedFetch(domain, token, endpoint, options = {}, version = '2026-04') {
+  if (!domain || !token) throw new Error('LIGHTSPEED_DOMAIN or LIGHTSPEED_TOKEN is missing.');
+  const response = await fetch(`https://${domain}.retail.lightspeed.app/api/${version}${endpoint}`, {
+    ...options,
+    headers: { ...lightspeedHeaders(token), ...(options.headers || {}) }
+  });
+  const text = await response.text();
+  let body = null;
+  try { body = text ? JSON.parse(text) : null; } catch { body = text; }
+  if (!response.ok) {
+    const err = new Error(`Lightspeed ${response.status}: ${typeof body === 'string' ? body : JSON.stringify(body)}`);
+    err.status = response.status;
+    throw err;
+  }
+  return body;
+}
+
+async function ensureLightspeedTag(domain, token, tagName) {
+  const listed = await lightspeedVersionedFetch(domain, token, '/tags?page_size=1000');
+  const tags = listed?.data || listed || [];
+  const existing = Array.isArray(tags) ? tags.find(t => String(t.name || '').toLowerCase() === tagName.toLowerCase()) : null;
+  if (existing?.id) return existing.id;
+  const created = await lightspeedVersionedFetch(domain, token, '/tags', {
+    method: 'POST',
+    body: JSON.stringify({ name: tagName })
+  });
+  const tag = created?.data || created;
+  if (!tag?.id) throw new Error(`Could not resolve Lightspeed tag "${tagName}".`);
+  return tag.id;
+}
+
+function validatePublicImageUrl(raw) {
+  const u = new URL(raw);
+  if (u.protocol !== 'https:') throw new Error('Distributor image URL must use https.');
+  const h = u.hostname.toLowerCase();
+  if (h === 'localhost' || h === '0.0.0.0' || h === '127.0.0.1' || h === '::1' ||
+      h.startsWith('10.') || h.startsWith('192.168.') || /^172\.(1[6-9]|2\d|3[01])\./.test(h)) {
+    throw new Error('Private/local image URLs are not allowed.');
+  }
+  return u;
+}
+
+async function uploadLightspeedImageFromUrl(domain, token, productId, imageUrl) {
+  const url = validatePublicImageUrl(imageUrl);
+  const response = await fetch(url, { redirect: 'follow' });
+  if (!response.ok) throw new Error(`Image download failed: ${response.status}`);
+  const contentType = String(response.headers.get('content-type') || '').split(';')[0].toLowerCase();
+  const allowed = new Set(['image/jpeg','image/png','image/gif','image/tiff','image/webp']);
+  if (!allowed.has(contentType)) throw new Error(`Unsupported image type: ${contentType || 'unknown'}`);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes.byteLength > 10 * 1024 * 1024) throw new Error('Image is larger than Lightspeed\'s 10 MB limit.');
+
+  const ext = ({'image/jpeg':'jpg','image/png':'png','image/gif':'gif','image/tiff':'tiff','image/webp':'webp'})[contentType] || 'jpg';
+  const form = new FormData();
+  form.append('image', new Blob([bytes], { type: contentType }), `special-order.${ext}`);
+  const upload = await fetch(
+    `https://${domain}.retail.lightspeed.app/api/2.0/products/${encodeURIComponent(productId)}/actions/image_upload`,
+    { method:'POST', headers:lightspeedHeaders(token, false), body:form }
+  );
+  const text = await upload.text();
+  let body = null;
+  try { body = text ? JSON.parse(text) : null; } catch { body = text; }
+  if (!upload.ok) throw new Error(`Lightspeed image upload ${upload.status}: ${typeof body === 'string' ? body : JSON.stringify(body)}`);
+  return body;
 }
 
 async function lightspeedFetch(domain, token, endpoint, options = {}) {
@@ -438,14 +504,32 @@ export function createSpecialOrdersRouter({
         const itemResult = await client.query(`
           INSERT INTO special_order_items
             (special_order_id,product_id,requested_name,requested_sku,requested_upc,quantity,status,
-             preferred_supplier_id,sourcing_department_id,release_date,ordered_at,notes)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *
+             preferred_supplier_id,sourcing_department_id,supplier_needed,release_date,ordered_at,notes,crowdfunding_note)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *
         `, [
           orderResult.rows[0].id, item.product_id || null, item.requested_name || item.name,
           item.requested_sku || item.sku || null, item.requested_upc || item.upc || null,
           Number(item.quantity || 1), status, item.preferred_supplier_id || null, item.sourcing_department_id || null,
-          item.release_date || null, status === 'ORDERED' ? new Date() : null, item.notes || null
+          Boolean(item.supplier_needed), item.release_date || null, status === 'ORDERED' ? new Date() : null,
+          item.notes || null, item.crowdfunding_note || null
         ]);
+
+        const supplierIds = Array.from(new Set(
+          (Array.isArray(item.supplier_ids) ? item.supplier_ids : [])
+            .concat(item.preferred_supplier_id ? [item.preferred_supplier_id] : [])
+            .filter(Boolean)
+        ));
+        let supplierPriority = 1;
+        for (const supplierId of supplierIds) {
+          await client.query(`
+            INSERT INTO special_order_item_suppliers
+              (special_order_item_id,supplier_id,priority,availability_status)
+            VALUES ($1,$2,$3,$4)
+            ON CONFLICT (special_order_item_id,supplier_id) DO UPDATE SET
+              priority=LEAST(special_order_item_suppliers.priority,EXCLUDED.priority),
+              availability_status=COALESCE(EXCLUDED.availability_status,special_order_item_suppliers.availability_status)
+          `, [itemResult.rows[0].id, supplierId, supplierPriority++, item.supplier_availability?.[supplierId] || null]);
+        }
         await client.query(
           'INSERT INTO order_status_history (special_order_item_id,new_status,note,changed_by) VALUES ($1,$2,$3,$4)',
           [itemResult.rows[0].id, status, 'Order item created', created_by]
@@ -460,6 +544,56 @@ export function createSpecialOrdersRouter({
     } finally {
       client.release();
     }
+  });
+
+  router.post('/orders/:id/items', requireDb, async (req, res) => {
+    const item = req.body || {};
+    const status = String(item.status || 'OOS').toUpperCase();
+    if (!VALID_STATUSES.has(status)) return res.status(400).json({ error:'Invalid status.' });
+    if (!item.requested_name && !item.name) return res.status(400).json({ error:'Item name is required.' });
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const order = await client.query('SELECT id FROM special_orders WHERE id=$1', [req.params.id]);
+      if (!order.rows[0]) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error:'Special order not found.' });
+      }
+      const created = await client.query(`
+        INSERT INTO special_order_items
+          (special_order_id,product_id,requested_name,requested_sku,requested_upc,quantity,status,
+           preferred_supplier_id,sourcing_department_id,supplier_needed,release_date,ordered_at,notes,crowdfunding_note)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+        RETURNING *
+      `, [
+        req.params.id,item.product_id||null,item.requested_name||item.name,item.requested_sku||item.sku||null,
+        item.requested_upc||item.upc||null,Number(item.quantity||1),status,item.preferred_supplier_id||null,
+        item.sourcing_department_id||null,Boolean(item.supplier_needed),item.release_date||null,
+        status==='ORDERED'?new Date():null,item.notes||null,item.crowdfunding_note||null
+      ]);
+      const supplierIds=Array.from(new Set((Array.isArray(item.supplier_ids)?item.supplier_ids:[])
+        .concat(item.preferred_supplier_id?[item.preferred_supplier_id]:[]).filter(Boolean)));
+      let priority=1;
+      for(const supplierId of supplierIds){
+        await client.query(`
+          INSERT INTO special_order_item_suppliers
+            (special_order_item_id,supplier_id,priority,availability_status)
+          VALUES ($1,$2,$3,$4)
+          ON CONFLICT (special_order_item_id,supplier_id) DO UPDATE SET
+            priority=EXCLUDED.priority,
+            availability_status=COALESCE(EXCLUDED.availability_status,special_order_item_suppliers.availability_status)
+        `,[created.rows[0].id,supplierId,priority++,item.supplier_availability?.[supplierId]||null]);
+      }
+      await client.query(
+        'INSERT INTO order_status_history (special_order_item_id,new_status,note,changed_by) VALUES ($1,$2,$3,$4)',
+        [created.rows[0].id,status,'Item added to existing order',item.created_by||null]
+      );
+      await client.query('COMMIT');
+      res.status(201).json(created.rows[0]);
+    } catch(error) {
+      await client.query('ROLLBACK');
+      res.status(400).json({error:error.message});
+    } finally { client.release(); }
   });
 
   router.post('/items/:id/notifications/ready', requireDb, async (req, res) => {
@@ -1028,12 +1162,32 @@ export function createSpecialOrdersRouter({
       ];
       const payload = {};
       for (const key of allowed) if (body[key] !== undefined) payload[key] = body[key];
+
+      // Every product created through Special Orders is tagged so it can be audited/enriched later.
+      const soTagId = await ensureLightspeedTag(lightspeedDomain, lightspeedToken, 'Added by SO');
+      payload.tag_ids = Array.from(new Set([...(Array.isArray(payload.tag_ids) ? payload.tag_ids : []), soTagId]));
+
       const result = await lightspeedFetch(lightspeedDomain, lightspeedToken, '/products', {
         method: 'POST', body: JSON.stringify(payload)
       });
       const product = result?.data || result;
       const localProduct = await upsertLocalProduct(product);
-      res.status(201).json({ lightspeed: product, local: localProduct });
+      let image = null;
+      let imageWarning = null;
+      if (body.image_url) {
+        try {
+          image = await uploadLightspeedImageFromUrl(lightspeedDomain, lightspeedToken, product.id, body.image_url);
+        } catch (imageError) {
+          imageWarning = imageError.message;
+        }
+      }
+      res.status(201).json({
+        lightspeed: product,
+        local: localProduct,
+        tag: 'Added by SO',
+        image,
+        image_warning: imageWarning
+      });
     } catch (error) {
       res.status(error.status || 502).json({ error: error.message });
     }
