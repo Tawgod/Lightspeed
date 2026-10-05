@@ -50,7 +50,72 @@ function lightspeedHeaders(token, includeJson = true) {
   };
 }
 
-async function lightspeedVersionedFetch(domain, token, endpoint, options = {}, version = '2026-04') {
+async let uspsTokenCache={token:null,expiresAt:0};
+
+async function getUspsAccessToken() {
+  const clientId=String(process.env.USPS_CLIENT_ID||'').trim();
+  const clientSecret=String(process.env.USPS_CLIENT_SECRET||'').trim();
+  if(!clientId||!clientSecret) throw Object.assign(new Error('USPS address verification is not configured yet.'),{status:503});
+  if(uspsTokenCache.token && Date.now()<uspsTokenCache.expiresAt-60000) return uspsTokenCache.token;
+
+  const response=await fetch('https://apis.usps.com/oauth2/v3/token',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','Accept':'application/json'},
+    body:JSON.stringify({client_id:clientId,client_secret:clientSecret,grant_type:'client_credentials'})
+  });
+  const text=await response.text();
+  let body={};try{body=text?JSON.parse(text):{}}catch{}
+  if(!response.ok||!body.access_token){
+    throw Object.assign(new Error('USPS OAuth failed: '+(body.error_description||body.error||response.statusText)),{status:502});
+  }
+  uspsTokenCache={
+    token:body.access_token,
+    expiresAt:Date.now()+Math.max(300,Number(body.expires_in||3600))*1000
+  };
+  return body.access_token;
+}
+
+async function verifyUspsAddress(input={}) {
+  const street=String(input.street_address||'').trim();
+  const secondary=String(input.secondary_address||'').trim();
+  const city=String(input.city||'').trim();
+  const state=String(input.state||'').trim().toUpperCase();
+  const zip=String(input.zip||'').replace(/\D/g,'').slice(0,5);
+  if(!street) throw Object.assign(new Error('Street address is required.'),{status:400});
+  if(!city&&!zip) throw Object.assign(new Error('City/state or ZIP is required.'),{status:400});
+
+  const token=await getUspsAccessToken();
+  const params=new URLSearchParams({streetAddress:street});
+  if(secondary)params.set('secondaryAddress',secondary);
+  if(city)params.set('city',city);
+  if(state)params.set('state',state);
+  if(zip)params.set('ZIPCode',zip);
+
+  const response=await fetch('https://apis.usps.com/addresses/v3/address?'+params.toString(),{
+    headers:{'Accept':'application/json','Authorization':'Bearer '+token}
+  });
+  const text=await response.text();
+  let body={};try{body=text?JSON.parse(text):{}}catch{}
+  if(!response.ok){
+    throw Object.assign(new Error('USPS address validation failed: '+(body.error?.message||body.message||response.statusText)),{status:response.status===400?400:502});
+  }
+  const a=body.address||body.labelAddress||{};
+  return {
+    street_address:a.streetAddress||street,
+    secondary_address:a.secondaryAddress||secondary||null,
+    city:a.city||city,
+    state:a.state||state,
+    zip:a.ZIPCode||zip,
+    zip_plus4:a.ZIPPlus4||null,
+    dpv_confirmation:body.additionalInfo?.DPVConfirmation||null,
+    business:body.additionalInfo?.business||null,
+    vacant:body.additionalInfo?.vacant||null,
+    corrections:Array.isArray(body.corrections)?body.corrections:[],
+    matches:Array.isArray(body.matches)?body.matches:[]
+  };
+}
+
+function lightspeedVersionedFetch(domain, token, endpoint, options = {}, version = '2026-04') {
   if (!domain || !token) throw new Error('LIGHTSPEED_DOMAIN or LIGHTSPEED_TOKEN is missing.');
   const response = await fetch(`https://${domain}.retail.lightspeed.app/api/${version}${endpoint}`, {
     ...options,
@@ -1509,6 +1574,14 @@ export function createSpecialOrdersRouter({
     ]);
 
     res.json({ customer:rows[0], lightspeed:lightspeedCustomer, lightspeed_warning:lightspeedWarning });
+  });
+
+  router.post('/address/verify-usps', async (req, res) => {
+    try {
+      res.json(await verifyUspsAddress(req.body || {}));
+    } catch (error) {
+      res.status(error.status || 502).json({ error:error.message });
+    }
   });
 
   router.get('/products/:id/inventory', async (req, res) => {
