@@ -51,7 +51,10 @@ app.get('/special-orders', (req, res) => {
 app.use('/api/special-orders', createSpecialOrdersRouter({
   lightspeedDomain: LIGHTSPEED_DOMAIN,
   lightspeedToken: LIGHTSPEED_TOKEN,
-  adminKey: process.env.SPECIAL_ORDERS_ADMIN_KEY
+  adminKey: process.env.SPECIAL_ORDERS_ADMIN_KEY,
+  liveMode: process.env.SPECIAL_ORDERS_LIVE_MODE === 'true',
+  allowMigration: process.env.SPECIAL_ORDERS_ALLOW_MIGRATION === 'true',
+  lightspeedOutletId: process.env.LIGHTSPEED_OUTLET_ID || null
 }));
 
 
