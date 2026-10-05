@@ -279,6 +279,8 @@ export function createSpecialOrdersRouter({
       database: Boolean(pool),
       lightspeed: Boolean(lightspeedDomain && lightspeedToken),
       secured: Boolean(adminKey),
+      adminKeyLength: adminKey ? String(adminKey).length : 0,
+      adminKeyTrimmedLength: adminKey ? String(adminKey).trim().length : 0,
       liveMode: Boolean(liveMode),
       allowMigration: Boolean(allowMigration),
       allowProductWrites: Boolean(allowProductWrites)
