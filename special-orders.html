@@ -4,13 +4,92 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Hobby Corner Special Orders</title>
 <style>
-:root{font-family:Inter,system-ui,sans-serif;color:#1f2937;background:#f3f4f6}body{margin:0}.wrap{max-width:1250px;margin:auto;padding:24px}
-h1{margin:0 0 4px}.sub{color:#6b7280;margin-bottom:24px}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:22px}
-.card,.panel{background:white;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 1px 2px #0000000d}.card{padding:16px}.value{font-size:30px;font-weight:750}.label{font-size:13px;color:#6b7280}
-.panel{padding:18px;margin-bottom:18px}.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}input,select,button{font:inherit;padding:9px 10px;border-radius:7px;border:1px solid #d1d5db}
-button{cursor:pointer;background:#111827;color:white}.danger{color:#b91c1c;font-weight:650}.pill{display:inline-block;padding:3px 8px;border-radius:999px;background:#eef2ff;font-size:12px}
-table{width:100%;border-collapse:collapse}th,td{padding:10px 8px;border-bottom:1px solid #eee;text-align:left;font-size:13px}th{color:#6b7280}
-.notice{padding:12px;border-radius:8px;background:#fff7ed;color:#9a3412;margin-bottom:16px;display:none}
+:root{
+  font-family:Inter,system-ui,sans-serif;
+  color:#1f2937;
+  background:#eef2f7;
+  --bg:#eef2f7;
+  --panel:#ffffff;
+  --border:#d9e2ec;
+  --muted:#64748b;
+  --text:#1f2937;
+  --navy:#1f3a5f;
+  --blue:#2563eb;
+  --blue-soft:#eaf2ff;
+  --teal:#0f766e;
+  --teal-soft:#e7f7f4;
+  --amber:#b45309;
+  --amber-soft:#fff4df;
+  --green:#166534;
+  --green-soft:#e9f8ee;
+  --red:#b91c1c;
+  --red-soft:#feecec;
+  --purple:#6d28d9;
+  --purple-soft:#f1ebff;
+}
+body{margin:0;background:var(--bg)}
+.wrap{max-width:1250px;margin:auto;padding:24px}
+h1{margin:0 0 4px;color:#17324d}
+h2{margin-top:0;color:#1e3a5f}
+h3{margin:18px 0 10px;color:#334155}
+.sub{color:var(--muted);margin-bottom:24px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:22px}
+.card,.panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;box-shadow:0 2px 6px #0f172a0d}
+.card{padding:16px;border-top:4px solid #6b8db3}
+.card:nth-child(2){border-top-color:#d97706}
+.card:nth-child(3){border-top-color:#dc2626}
+.card:nth-child(4){border-top-color:#7c3aed}
+.card:nth-child(5){border-top-color:#2563eb}
+.card:nth-child(6){border-top-color:#059669}
+.value{font-size:30px;font-weight:750;color:#17324d}
+.label{font-size:13px;color:var(--muted)}
+.panel{padding:18px;margin-bottom:18px}
+.panel h2+ h3,.panel>h3:first-of-type{padding-top:2px}
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
+input,select,textarea,button{font:inherit}
+input,select,textarea{padding:9px 10px;border-radius:8px;border:1px solid #cbd5e1;background:#fff;color:var(--text)}
+input:focus,select:focus,textarea:focus{outline:2px solid #93c5fd;outline-offset:1px;border-color:#60a5fa}
+button{cursor:pointer;padding:9px 12px;border-radius:8px;border:1px solid #1e3a5f;background:#1f3a5f;color:white;font-weight:650}
+button:hover{filter:brightness(1.05)}
+button:disabled{opacity:.5;cursor:not-allowed}
+button[type="button"]{background:#475569;border-color:#475569}
+button[onclick*="createOrder"],button[onclick*="createNewCustomer"],button[onclick*="createLightspeedProduct"]{background:#0f766e;border-color:#0f766e}
+button[onclick*="showItemEditor"],button[onclick*="search"],button[onclick*="Find"]{background:#2563eb;border-color:#2563eb}
+button[onclick*="clear"],button[onclick*="Cancel"],button[onclick*="removeStagedItem"]{background:#7c2d12;border-color:#7c2d12}
+.danger{color:var(--red);font-weight:650}
+.pill{display:inline-block;padding:4px 9px;border-radius:999px;background:#e2e8f0;color:#334155;font-size:12px;font-weight:650}
+table{width:100%;border-collapse:separate;border-spacing:0;overflow:hidden;border:1px solid #e2e8f0;border-radius:9px}
+th,td{padding:10px 8px;border-bottom:1px solid #edf2f7;text-align:left;font-size:13px}
+th{color:#475569;background:#f8fafc;font-weight:700}
+tr:last-child td{border-bottom:none}
+tbody tr:nth-child(even){background:#fbfdff}
+tbody tr:hover{background:#f2f7fc}
+.notice{padding:12px;border-radius:9px;background:var(--amber-soft);color:#92400e;border:1px solid #f3d39a;margin-bottom:16px;display:none}
+#authStatus{background:var(--red-soft);color:#991b1b}
+#customerProfile{background:var(--blue-soft);border-color:#bfdbfe!important}
+#itemEditor{background:var(--teal-soft);border-color:#99ddd5!important}
+#createProductPanel{background:var(--purple-soft);border-color:#d8c4ff!important}
+#stagedItems{background:#f8fafc;border:1px dashed #cbd5e1;border-radius:9px;padding:10px}
+#newCustomerPanel{background:var(--amber-soft);border-color:#f4cf8f!important}
+#customerProfile h3,#itemEditor h3,#createProductPanel h3,#newCustomerPanel h3{margin-top:0}
+#orders .pill{background:#edf2ff;color:#3730a3}
+@media(prefers-color-scheme:dark){
+  :root{color:#e5e7eb;background:#0f172a;--bg:#0f172a;--panel:#111827;--border:#334155;--muted:#94a3b8;--text:#e5e7eb}
+  body{background:var(--bg)}
+  h1,h2,h3,.value{color:#e5e7eb}
+  .card,.panel{background:#111827;box-shadow:none}
+  input,select,textarea{background:#0b1220;color:#e5e7eb;border-color:#475569}
+  th{background:#182235;color:#cbd5e1}
+  td,th{border-bottom-color:#253247}
+  tbody tr:nth-child(even){background:#121c2b}
+  tbody tr:hover{background:#172235}
+  #customerProfile{background:#10213c}
+  #itemEditor{background:#0d2c2a}
+  #createProductPanel{background:#25163b}
+  #newCustomerPanel{background:#33240d}
+  #stagedItems{background:#0f1a2a;border-color:#475569}
+  .pill{background:#263449;color:#dbeafe}
+}
 @media(max-width:760px){table{display:block;overflow-x:auto}.wrap{padding:14px}}
 </style>
 </head>
