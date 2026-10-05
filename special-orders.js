@@ -613,16 +613,17 @@ export function createSpecialOrdersRouter({
 
       await client.query('BEGIN');
       const customerResult = await client.query(`
-        INSERT INTO customers (lightspeed_customer_id,name,phone,email,discord_user_id,discord_handle,updated_at)
-        VALUES ($1,$2,$3,$4,$5,$6,now())
+        INSERT INTO customers (lightspeed_customer_id,name,phone,email,discord_user_id,discord_handle,notes,updated_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,now())
         ON CONFLICT (lightspeed_customer_id) DO UPDATE SET
           name=EXCLUDED.name, phone=COALESCE(EXCLUDED.phone,customers.phone),
           email=COALESCE(EXCLUDED.email,customers.email),
           discord_user_id=COALESCE(EXCLUDED.discord_user_id,customers.discord_user_id),
-          discord_handle=COALESCE(EXCLUDED.discord_handle,customers.discord_handle), updated_at=now()
+          discord_handle=COALESCE(EXCLUDED.discord_handle,customers.discord_handle),
+          notes=COALESCE(EXCLUDED.notes,customers.notes), updated_at=now()
         RETURNING id
       `, [customer.lightspeed_customer_id || null, customer.name, customer.phone || null, customer.email || null,
-          customer.discord_user_id || null, customer.discord_handle || null]);
+          customer.discord_user_id || null, customer.discord_handle || null, customer.notes || null]);
 
       const orderResult = await client.query(
         'INSERT INTO special_orders (customer_id,source,notes,created_by) VALUES ($1,$2,$3,$4) RETURNING *',
@@ -1288,10 +1289,92 @@ export function createSpecialOrdersRouter({
       const body = text ? JSON.parse(text) : {};
       if (!response.ok) throw new Error(`Lightspeed ${response.status}: ${text}`);
       for (const c of (body.data || [])) candidates.push(c);
+
+      if (pool && candidates.length) {
+        const ids = candidates.map(c => String(c.id || '')).filter(Boolean);
+        if (ids.length) {
+          const local = await pool.query(
+            'SELECT * FROM customers WHERE lightspeed_customer_id = ANY($1::text[])',
+            [ids]
+          );
+          const byLightspeedId = new Map(local.rows.map(c => [String(c.lightspeed_customer_id), c]));
+          for (const c of candidates) {
+            const saved = byLightspeedId.get(String(c.id || ''));
+            if (!saved) continue;
+            c.local_customer_id = saved.id;
+            c.discord_handle = saved.discord_handle || null;
+            c.special_orders_phone = saved.phone || null;
+            c.special_orders_notes = saved.notes || null;
+          }
+        }
+      }
       res.json(candidates);
     } catch (error) {
       res.status(502).json({ error: error.message });
     }
+  });
+
+  router.get('/customers/:lightspeedId/profile', requireDb, async (req, res) => {
+    const { rows } = await pool.query(
+      'SELECT * FROM customers WHERE lightspeed_customer_id=$1 LIMIT 1',
+      [req.params.lightspeedId]
+    );
+    res.json(rows[0] || null);
+  });
+
+  router.patch('/customers/:lightspeedId/profile', requireDb, async (req, res) => {
+    const body = req.body || {};
+    const lightspeedId = String(req.params.lightspeedId || '').trim();
+    if (!lightspeedId) return res.status(400).json({ error:'Lightspeed customer id is required.' });
+    const name = String(body.name || '').trim();
+    if (!name) return res.status(400).json({ error:'Customer name is required.' });
+
+    let lightspeedWarning = null;
+    if (body.sync_lightspeed_phone && body.phone !== undefined) {
+      try {
+        const updatePayload = {
+          first_name: body.first_name ?? null,
+          last_name: body.last_name ?? null,
+          company_name: body.company_name ?? null,
+          email: body.email ?? null
+        };
+        if (body.phone_field === 'phone') updatePayload.phone = body.phone || null;
+        else updatePayload.mobile = body.phone || null;
+
+        await lightspeedVersionedFetch(
+          lightspeedDomain,
+          lightspeedToken,
+          '/customers/' + encodeURIComponent(lightspeedId),
+          { method:'PUT', body:JSON.stringify(updatePayload) },
+          '2026-07'
+        );
+      } catch (error) {
+        lightspeedWarning = error.message;
+      }
+    }
+
+    const { rows } = await pool.query(`
+      INSERT INTO customers
+        (lightspeed_customer_id,name,phone,email,discord_handle,notes,updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,now())
+      ON CONFLICT (lightspeed_customer_id) DO UPDATE SET
+        name=EXCLUDED.name,
+        phone=EXCLUDED.phone,
+        email=COALESCE(EXCLUDED.email,customers.email),
+        discord_handle=EXCLUDED.discord_handle,
+        notes=EXCLUDED.notes,
+        updated_at=now()
+      RETURNING *
+    `, [
+      lightspeedId,
+      name,
+      body.phone || null,
+      body.email || null,
+      body.discord_handle || null,
+      body.notes || null
+    ]);
+
+    res.json({ customer:rows[0], lightspeed_warning:lightspeedWarning });
   });
 
   router.get('/products/:id/inventory', async (req, res) => {
