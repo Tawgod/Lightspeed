@@ -70,6 +70,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:10px 8px;border-bottom:1
     <input id="crowdfundingNote" placeholder="Crowdfunded / future availability note" size="34">
     <input id="sourceUrl" placeholder="Supplier / product page URL" size="34">
     <button onclick="createOrder()">Save special order</button>
+    <button type="button" onclick="clearOrderForm()">Clear form</button>
   </div>
 </div>
 <div class="panel">
@@ -101,6 +102,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:10px 8px;border-bottom:1
       <option value="CROWDFUNDING">Crowdfunding</option>
     </select>
     <button onclick="createLightspeedProduct()">Create test product</button>
+    <button type="button" onclick="clearProductForm()">Clear form</button>
   </div>
   <div id="createProductResult"></div>
 </div>
@@ -136,6 +138,82 @@ table{width:100%;border-collapse:collapse}th,td{padding:10px 8px;border-bottom:1
 <script>
 const api='/api/special-orders';
 let selectedCustomer=null, selectedOrderProduct=null;
+const ORDER_DRAFT_KEY='hcSpecialOrderDraftV1';
+const PRODUCT_DRAFT_KEY='hcCreateProductDraftV1';
+
+const orderDraftIds=[
+  'customerSearch','newProductSearch','manualItemName','manualSku','orderQty','newStatus',
+  'newDepartment','newSupplier','supplierNeeded','newNotes','crowdfundingNote','sourceUrl'
+];
+const productDraftIds=[
+  'cpName','cpSku','cpUpc','cpIsbn','cpCost','cpRetail','cpCategory','cpSupplier',
+  'cpSupplierSku','cpDescription','cpSourceUrl','cpImageUrl','cpOrderChannel'
+];
+
+function readField(id){
+  const el=document.getElementById(id); if(!el)return null;
+  if(el.type==='checkbox')return el.checked;
+  if(el.multiple)return Array.from(el.selectedOptions).map(o=>o.value);
+  return el.value;
+}
+function writeField(id,value){
+  const el=document.getElementById(id); if(!el || value==null)return;
+  if(el.type==='checkbox'){el.checked=Boolean(value);return}
+  if(el.multiple){
+    const vals=new Set(Array.isArray(value)?value:[]);
+    Array.from(el.options).forEach(o=>o.selected=vals.has(o.value)); return;
+  }
+  el.value=String(value);
+}
+function saveDrafts(){
+  const order={};
+  orderDraftIds.forEach(id=>order[id]=readField(id));
+  order.newSuppliers=readField('newSuppliers');
+  order.selectedCustomer=selectedCustomer;
+  order.selectedOrderProduct=selectedOrderProduct;
+  localStorage.setItem(ORDER_DRAFT_KEY,JSON.stringify(order));
+
+  const product={};
+  productDraftIds.forEach(id=>product[id]=readField(id));
+  localStorage.setItem(PRODUCT_DRAFT_KEY,JSON.stringify(product));
+}
+function restoreDrafts(){
+  try{
+    const order=JSON.parse(localStorage.getItem(ORDER_DRAFT_KEY)||'null');
+    if(order){
+      orderDraftIds.forEach(id=>writeField(id,order[id]));
+      writeField('newSuppliers',order.newSuppliers);
+      selectedCustomer=order.selectedCustomer||null;
+      selectedOrderProduct=order.selectedOrderProduct||null;
+      if(selectedCustomer){
+        const name=[selectedCustomer.first_name,selectedCustomer.last_name].filter(Boolean).join(' ')||selectedCustomer.company_name||selectedCustomer.name||'Selected customer';
+        document.getElementById('selectedCustomer').textContent=name;
+      }
+      if(selectedOrderProduct){
+        document.getElementById('selectedProduct').textContent=(selectedOrderProduct.name||'Product')+(selectedOrderProduct.sku?' — '+selectedOrderProduct.sku:'');
+      }
+    }
+    const product=JSON.parse(localStorage.getItem(PRODUCT_DRAFT_KEY)||'null');
+    if(product)productDraftIds.forEach(id=>writeField(id,product[id]));
+  }catch(e){console.warn('Could not restore saved form drafts',e)}
+}
+function clearOrderForm(){
+  selectedCustomer=null; selectedOrderProduct=null;
+  ['customerSearch','newProductSearch','manualItemName','manualSku','newNotes','crowdfundingNote','sourceUrl'].forEach(id=>writeField(id,''));
+  writeField('orderQty','1'); writeField('newStatus','OOS'); writeField('newDepartment',''); writeField('newSupplier','');
+  writeField('newSuppliers',[]); writeField('supplierNeeded',false);
+  document.getElementById('selectedCustomer').textContent='No customer selected';
+  document.getElementById('selectedProduct').textContent='No product selected';
+  document.getElementById('customerResults').innerHTML='';
+  document.getElementById('newProductResults').innerHTML='';
+  localStorage.removeItem(ORDER_DRAFT_KEY);
+}
+function clearProductForm(){
+  productDraftIds.forEach(id=>writeField(id,''));
+  writeField('cpOrderChannel','TRADE');
+  document.getElementById('createProductResult').innerHTML='';
+  localStorage.removeItem(PRODUCT_DRAFT_KEY);
+}
 function showNotice(t){const n=document.getElementById('notice');n.textContent=t;n.style.display='block'}
 function accessKey(){return sessionStorage.getItem('hcSpecialOrdersKey')||''}
 function setAuthState(ok,msg=''){
@@ -157,6 +235,7 @@ async function saveKey(){
     await getJson(api+'/auth-check');
     setAuthState(true,'Access key accepted. Loading Special Orders…');
     await loadAll();
+    restoreDrafts();
   }catch(e){
     sessionStorage.removeItem('hcSpecialOrdersKey');
     setAuthState(false,e.message==='Access key missing or incorrect.'
@@ -188,15 +267,18 @@ async function loadStats(){try{const s=await getJson(api+'/stats');for(const k o
 async function loadOrders(){try{const p=new URLSearchParams();const st=document.getElementById('statusFilter').value;if(st)p.set('status',st);if(document.getElementById('attention').checked)p.set('attention','1');const rows=await getJson(api+'/orders?'+p);document.getElementById('orders').innerHTML=rows.map(x=>`<tr><td>${x.customer_name||'—'}</td><td>${x.product_name||x.requested_name}</td><td>${x.sku||x.requested_sku||'—'}</td><td>${x.quantity}</td><td><span class="pill">${x.status}</span></td><td>${x.preferred_supplier_name||'—'}</td><td class="${x.days_ordered>=7?'danger':''}">${x.days_ordered==null?'—':x.days_ordered+'d'}</td><td>${x.notes||''}</td></tr>`).join('')}catch(e){showNotice(e.message)}}
 async function loadSuppliers(){try{const s=await getJson(api+'/suppliers');document.getElementById('supplierSelect').innerHTML='<option value="">Order a supplier…</option>'+s.map(x=>`<option value="${x.id}">${x.name}</option>`).join('');document.getElementById('newSupplier').innerHTML='<option value="">Preferred supplier (optional)…</option>'+s.map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
 document.getElementById('newSuppliers').innerHTML=s.map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
-document.getElementById('cpSupplier').innerHTML='<option value="">Primary supplier (optional)</option>'+s.map(x=>`<option value="${x.id}">${x.name}</option>`).join('')}catch(e){}}
+document.getElementById('cpSupplier').innerHTML='<option value="">Primary supplier (optional)</option>'+s.map(x=>`<option value="${x.id}">${x.name}</option>`).join('')}catch(e){
+document.getElementById('cpSupplier').innerHTML='<option value="">Supplier load failed</option>';
+document.getElementById('newSupplier').innerHTML='<option value="">Supplier load failed</option>';
+showNotice('Could not load suppliers: '+e.message)}}
 async function loadDepartments(){try{const d=await getJson(api+'/departments');document.getElementById('departmentSelect').innerHTML='<option value="">Source by department…</option>'+d.map(x=>`<option value="${x.id}">${x.name} (${x.supplier_count})</option>`).join('');document.getElementById('newDepartment').innerHTML='<option value="">Sourcing department…</option>'+d.map(x=>`<option value="${x.id}">${x.name}</option>`).join('')}catch(e){}}
 async function loadDepartment(){const id=document.getElementById('departmentSelect').value;if(!id){document.getElementById('departmentResults').innerHTML='';return}try{const r=await getJson(api+'/departments/'+id+'/suppliers');document.getElementById('departmentResults').innerHTML='<h3>Possible suppliers for this department</h3><p style="color:#6b7280">These are sourcing possibilities even when the product is not currently linked to that supplier in Lightspeed.</p>'+(!r.length?'<p>No suppliers are tagged for this department yet.</p>':'<table><tr><th>Supplier</th><th>Typical cadence</th><th>Known product link?</th><th>Supplier SKU</th><th>Cost</th></tr>'+r.map(x=>`<tr><td>${x.name}</td><td>${x.order_frequency||'—'}</td><td>${x.exact_product_mapping?'Yes':'Possible source'}</td><td>${x.supplier_sku||'—'}</td><td>${x.supply_price||'—'}</td></tr>`).join('')+'</table>')}catch(e){showNotice(e.message)}}
 async function loadSupplier(){const id=document.getElementById('supplierSelect').value;if(!id){document.getElementById('supplierResults').innerHTML='';return}try{const r=await getJson(api+'/suppliers/'+id+'/orderable');document.getElementById('supplierResults').innerHTML='<h3>Items ready for this supplier</h3>'+(!r.length?'<p>Nothing currently waiting.</p>':'<table><tr><th>Item</th><th>Supplier SKU</th><th>Needed</th><th>Customers</th><th>Cost</th></tr>'+r.map(x=>`<tr><td>${x.name}</td><td>${x.supplier_sku||'—'}</td><td>${x.qty_needed}</td><td>${x.waiting_orders}</td><td>${x.supply_price||'—'}</td></tr>`).join('')+'</table>')}catch(e){showNotice(e.message)}}
 async function searchCustomers(){const q=document.getElementById('customerSearch').value.trim();if(!q)return;try{const r=await getJson(api+'/customers/search?q='+encodeURIComponent(q));document.getElementById('customerResults').innerHTML=!r.length?'<p>No Lightspeed customer found.</p>':'<table><tr><th>Name</th><th>Phone</th><th>Email</th><th></th></tr>'+r.map((x,i)=>`<tr><td>${[x.first_name,x.last_name].filter(Boolean).join(' ')||x.company_name||'Unnamed'}</td><td>${x.mobile||x.phone||'—'}</td><td>${x.email||'—'}</td><td><button onclick="chooseCustomer(${i})">Use</button></td></tr>`).join('')+'</table>';window._customerResults=r}catch(e){showNotice(e.message)}}
-function chooseCustomer(i){selectedCustomer=window._customerResults[i];const name=[selectedCustomer.first_name,selectedCustomer.last_name].filter(Boolean).join(' ')||selectedCustomer.company_name||'Unnamed';document.getElementById('selectedCustomer').textContent=name}
+function chooseCustomer(i){selectedCustomer=window._customerResults[i];const name=[selectedCustomer.first_name,selectedCustomer.last_name].filter(Boolean).join(' ')||selectedCustomer.company_name||'Unnamed';document.getElementById('selectedCustomer').textContent=name;saveDrafts()}
 async function searchOrderProducts(){const q=document.getElementById('newProductSearch').value.trim();if(!q)return;try{const r=await getJson(api+'/products/search?q='+encodeURIComponent(q));window._orderProductResults=r;document.getElementById('newProductResults').innerHTML=!r.length?'<p>No existing product match. Enter the item name/SKU manually below.</p>':'<table><tr><th>Name</th><th>SKU</th><th>UPC</th><th>Source</th><th>Inventory</th><th></th></tr>'+r.map((x,i)=>`<tr><td>${x.name}</td><td>${x.sku||'—'}</td><td>${x.upc||'—'}</td><td>${x.source}</td><td id="inv-${i}">—</td><td><button onclick="chooseOrderProduct(${i})">Use</button></td></tr>`).join('')+'</table>';r.forEach((x,i)=>{const lsId=x.lightspeed_product_id||(x.source==='lightspeed'?x.id:null);if(lsId)loadInventory(lsId,i)})}catch(e){showNotice(e.message)}}
 async function loadInventory(id,i){try{const d=await getJson(api+'/products/'+encodeURIComponent(id)+'/inventory');const rows=d.data||[];const levels=rows.map(x=>Number(x.inventory_level??x.quantity??x.current_amount??0)).filter(Number.isFinite);document.getElementById('inv-'+i).textContent=levels.length?levels.reduce((a,b)=>a+b,0):'See detail'}catch{}}
-function chooseOrderProduct(i){selectedOrderProduct=window._orderProductResults[i];document.getElementById('selectedProduct').textContent=(selectedOrderProduct.name||'Product')+(selectedOrderProduct.sku?' — '+selectedOrderProduct.sku:'');document.getElementById('manualItemName').value=selectedOrderProduct.name||'';document.getElementById('manualSku').value=selectedOrderProduct.sku||''}
+function chooseOrderProduct(i){selectedOrderProduct=window._orderProductResults[i];document.getElementById('selectedProduct').textContent=(selectedOrderProduct.name||'Product')+(selectedOrderProduct.sku?' — '+selectedOrderProduct.sku:'');document.getElementById('manualItemName').value=selectedOrderProduct.name||'';document.getElementById('manualSku').value=selectedOrderProduct.sku||'';saveDrafts()}
 async function createOrder(){
   if(!selectedCustomer)return showNotice('Select a Lightspeed customer first.');
   const itemName=document.getElementById('manualItemName').value.trim()||(selectedOrderProduct&&selectedOrderProduct.name);
@@ -215,10 +297,10 @@ async function createOrder(){
     source_url:document.getElementById('sourceUrl').value.trim()||null,
     placeholder_product:!selectedOrderProduct
   }]};
-  try{await getJson(api+'/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});showNotice('Special order saved.');selectedOrderProduct=null;document.getElementById('selectedProduct').textContent='No product selected';document.getElementById('manualItemName').value='';document.getElementById('manualSku').value='';document.getElementById('newNotes').value='';document.getElementById('crowdfundingNote').value='';document.getElementById('sourceUrl').value='';document.getElementById('supplierNeeded').checked=false;await loadStats();await loadOrders()}catch(e){showNotice(e.message)}
+  try{await getJson(api+'/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});showNotice('Special order saved.');clearOrderForm();await loadStats();await loadOrders()}catch(e){showNotice(e.message)}
 }
 async function searchProducts(){const q=document.getElementById('productSearch').value.trim();if(!q)return;try{const r=await getJson(api+'/products/search?q='+encodeURIComponent(q));document.getElementById('productResults').innerHTML='<h3>Product matches</h3>'+(!r.length?'<p>No match found. Product creation will be the next form added here.</p>':'<table><tr><th>Name</th><th>SKU</th><th>UPC</th><th>Source</th></tr>'+r.map(x=>`<tr><td>${x.name}</td><td>${x.sku||'—'}</td><td>${x.upc||'—'}</td><td>${x.source}</td></tr>`).join('')+'</table>')}catch(e){showNotice(e.message)}}
-async function loadProductCategories(){try{const c=await getJson(api+'/product-categories');document.getElementById('cpCategory').innerHTML='<option value="">Lightspeed category *</option>'+c.map(x=>`<option value="${x.id}">${x.path}</option>`).join('')}catch(e){showNotice('Could not load Lightspeed categories: '+e.message)}}
+async function loadProductCategories(){try{const c=await getJson(api+'/product-categories');document.getElementById('cpCategory').innerHTML='<option value="">Lightspeed category *</option>'+c.map(x=>`<option value="${x.id}">${x.path}</option>`).join('');if(!c.length)document.getElementById('cpCategory').innerHTML='<option value="">No Lightspeed categories returned</option>'}catch(e){document.getElementById('cpCategory').innerHTML='<option value="">Category load failed</option>';showNotice('Could not load Lightspeed categories: '+e.message)}}
 async function createLightspeedProduct(){
   const name=document.getElementById('cpName').value.trim();
   const sku=document.getElementById('cpSku').value.trim();
@@ -253,6 +335,8 @@ async function loadPreorders(){try{const c=await getJson(api+'/preorders/campaig
 async function loadPreorderCampaign(){const id=document.getElementById('preorderCampaign').value;if(!id){document.getElementById('preorderProducts').innerHTML='';return}try{const d=await getJson(api+'/preorders/campaigns/'+id);document.getElementById('preorderProducts').innerHTML='<table><tr><th>Product</th><th>Ordered</th><th>Received</th><th>Requested</th><th>Allocated</th><th>Available</th><th></th></tr>'+d.products.map(x=>{const available=Math.max(0,Number(x.received_quantity||0)-Number(x.reserved_floor_quantity||0)-Number(x.allocated_total||0));return `<tr><td>${x.item_description}</td><td>${x.ordered_quantity}</td><td>${x.received_quantity}</td><td>${x.requested_total}</td><td>${x.allocated_total}</td><td>${available}</td><td><button onclick="allocatePreorder(${x.id},'FAIR_SHARE')">Fair share</button> <button onclick="allocatePreorder(${x.id},'QUEUE')">Queue</button></td></tr>`}).join('')+'</table>'}catch(e){showNotice(e.message)}}
 async function allocatePreorder(id,method){if(!confirm('Allocate currently available preorder inventory using '+method+'?'))return;try{const d=await getJson(api+'/preorders/products/'+id+'/allocate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({method})});showNotice(`Allocated ${d.newlyAllocated}; ${d.remaining} still available.`);await loadPreorderCampaign()}catch(e){showNotice(e.message)}}
 async function loadAll(){await Promise.allSettled([loadStats(),loadOrders(),loadSuppliers(),loadDepartments(),loadProductCategories(),loadPreorders()])}
+document.addEventListener('input',e=>{if(orderDraftIds.includes(e.target.id)||productDraftIds.includes(e.target.id))saveDrafts()});
+document.addEventListener('change',e=>{if(orderDraftIds.includes(e.target.id)||productDraftIds.includes(e.target.id)||e.target.id==='newSuppliers')saveDrafts()});
 document.getElementById('accessKey').value=accessKey();
 setAuthState(false);
 if(accessKey()){
