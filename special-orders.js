@@ -1505,20 +1505,82 @@ export function createSpecialOrdersRouter({
         {},
         '2026-07'
       );
-      const rows = Array.isArray(result?.data) ? result.data : (Array.isArray(result) ? result : []);
-      const flatten = [];
-      const walk = (nodes, path = []) => {
-        for (const node of (nodes || [])) {
-          const name = node.name || node.label || 'Unnamed category';
-          const nextPath = [...path, name];
-          flatten.push({ id: node.id, name, path: nextPath.join(' › '), parent_id: node.parent_id || null });
-          if (Array.isArray(node.children)) walk(node.children, nextPath);
+
+      // Lightspeed has returned this resource in both flat and nested envelope shapes.
+      // Collect category-looking objects recursively, then reconstruct readable paths
+      // from parent ids when the response is flat.
+      const found = new Map();
+      const visit = (value) => {
+        if (Array.isArray(value)) {
+          value.forEach(visit);
+          return;
+        }
+        if (!value || typeof value !== 'object') return;
+
+        const id = value.id || value.category_id || null;
+        const name = value.name || value.label || value.category_name || null;
+        const looksLikeCategory = Boolean(id && name) &&
+          ('parent_id' in value || 'parent' in value || 'children' in value ||
+           'category_id' in value || 'category_name' in value ||
+           Object.keys(value).some(k => /categor/i.test(k)));
+
+        if (looksLikeCategory) {
+          const parentRaw = value.parent_id ?? value.parent?.id ?? value.parent ?? null;
+          const parentId = (typeof parentRaw === 'object' ? parentRaw?.id : parentRaw) || null;
+          found.set(String(id), {
+            id:String(id),
+            name:String(name),
+            parent_id:parentId ? String(parentId) : null
+          });
+        }
+
+        for (const child of Object.values(value)) {
+          if (child && typeof child === 'object') visit(child);
         }
       };
-      walk(rows);
-      const unique = new Map(flatten.filter(x => x.id).map(x => [x.id, x]));
-      res.json([...unique.values()].sort((a,b) => a.path.localeCompare(b.path)));
+      visit(result);
+
+      // Fallback for the common direct-array/data-array shapes where category objects
+      // contain only id/name and no explicit category-named fields.
+      const directRows =
+        Array.isArray(result) ? result :
+        Array.isArray(result?.data) ? result.data :
+        Array.isArray(result?.categories) ? result.categories :
+        Array.isArray(result?.data?.categories) ? result.data.categories :
+        [];
+      for (const row of directRows) {
+        if (!row?.id || !(row.name || row.label)) continue;
+        const parentRaw = row.parent_id ?? row.parent?.id ?? row.parent ?? null;
+        const parentId = (typeof parentRaw === 'object' ? parentRaw?.id : parentRaw) || null;
+        found.set(String(row.id), {
+          id:String(row.id),
+          name:String(row.name || row.label),
+          parent_id:parentId ? String(parentId) : null
+        });
+      }
+
+      const pathFor = (id, seen = new Set()) => {
+        const row = found.get(String(id));
+        if (!row) return '';
+        if (!row.parent_id || seen.has(String(id))) return row.name;
+        const nextSeen = new Set(seen); nextSeen.add(String(id));
+        const parentPath = pathFor(row.parent_id, nextSeen);
+        return parentPath ? parentPath + ' › ' + row.name : row.name;
+      };
+
+      const categories = [...found.values()]
+        .map(row => ({ ...row, path:pathFor(row.id) }))
+        .sort((a,b) => a.path.localeCompare(b.path));
+
+      console.log('[special-orders] Lightspeed categories parsed', {
+        topLevelKeys: result && typeof result === 'object' && !Array.isArray(result) ? Object.keys(result) : [],
+        count: categories.length
+      });
+
+      res.set('Cache-Control','no-store');
+      res.json(categories);
     } catch (error) {
+      console.error('[special-orders] category load failed:', error);
       res.status(error.status || 502).json({ error:error.message });
     }
   });
