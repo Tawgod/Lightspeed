@@ -85,12 +85,26 @@ async function upsertLocalProduct(product) {
   return result.rows[0];
 }
 
-export function createSpecialOrdersRouter({ lightspeedDomain, lightspeedToken, adminKey }) {
+export function createSpecialOrdersRouter({
+  lightspeedDomain,
+  lightspeedToken,
+  adminKey,
+  liveMode = false,
+  allowMigration = false,
+  lightspeedOutletId = null
+}) {
   const router = express.Router();
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
 
   router.get('/health', async (req, res) => {
-    res.json({ ok: true, database: Boolean(pool), lightspeed: Boolean(lightspeedDomain && lightspeedToken), secured: Boolean(adminKey) });
+    res.json({
+      ok: true,
+      database: Boolean(pool),
+      lightspeed: Boolean(lightspeedDomain && lightspeedToken),
+      secured: Boolean(adminKey),
+      liveMode: Boolean(liveMode),
+      allowMigration: Boolean(allowMigration)
+    });
   });
 
   router.use((req, res, next) => {
@@ -100,6 +114,7 @@ export function createSpecialOrdersRouter({ lightspeedDomain, lightspeedToken, a
   });
 
   router.post('/import/workbook', requireDb, upload.single('workbook'), async (req, res) => {
+    if (!allowMigration) return res.status(423).json({ error: 'Legacy migration is disabled until Lightspeed go-live.' });
     if (!req.file?.buffer) return res.status(400).json({ error: 'Upload an .xlsx workbook in the workbook field.' });
     try {
       const result = await importLegacyWorkbook(pool, req.file.buffer, req.file.originalname);
@@ -682,6 +697,234 @@ export function createSpecialOrdersRouter({ lightspeedDomain, lightspeedToken, a
       HAVING sum(CASE WHEN i.status IN ('OOS','READY_TO_ORDER') THEN i.quantity ELSE 0 END) > 0
       ORDER BY sp.priority, p.name
     `, [req.params.id]);
+    res.json(rows);
+  });
+
+
+  router.post('/supplier-orders', requireDb, async (req, res) => {
+    const { supplier_id, items = [], notes = null, created_by = null, supplier_order_number = null } = req.body || {};
+    if (!supplier_id) return res.status(400).json({ error: 'supplier_id is required.' });
+    if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'At least one item is required.' });
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const supplierResult = await client.query('SELECT * FROM suppliers WHERE id=$1', [supplier_id]);
+      const supplier = supplierResult.rows[0];
+      if (!supplier) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Supplier not found.' });
+      }
+
+      const order = await client.query(`
+        INSERT INTO supplier_orders
+          (supplier_id,status,supplier_order_number,notes,created_by,lightspeed_sync_status)
+        VALUES ($1,'DRAFT',$2,$3,$4,'LOCAL_ONLY')
+        RETURNING *
+      `, [supplier_id, supplier_order_number, notes, created_by]);
+
+      for (const item of items) {
+        const qty = Number(item.quantity || 0);
+        if (!item.product_id || qty <= 0) continue;
+        const specialQty = Math.max(0, Number(item.special_order_quantity || 0));
+        const floorQty = Math.max(0, Number(item.floor_quantity ?? (qty - specialQty)));
+        await client.query(`
+          INSERT INTO supplier_order_items
+            (supplier_order_id,product_id,supplier_product_id,quantity,unit_cost,
+             special_order_item_id,special_order_quantity,floor_quantity)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+        `, [order.rows[0].id, item.product_id, item.supplier_product_id || null, qty,
+             item.unit_cost || null, item.special_order_item_id || null, specialQty, floorQty]);
+      }
+
+      await client.query('COMMIT');
+      res.status(201).json({ order: order.rows[0], liveMode: Boolean(liveMode) });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      res.status(400).json({ error: error.message });
+    } finally {
+      client.release();
+    }
+  });
+
+  router.get('/supplier-orders/:id', requireDb, async (req, res) => {
+    const order = await pool.query(`
+      SELECT so.*, s.name AS supplier_name, s.lightspeed_supplier_id
+      FROM supplier_orders so JOIN suppliers s ON s.id=so.supplier_id
+      WHERE so.id=$1
+    `, [req.params.id]);
+    if (!order.rows[0]) return res.status(404).json({ error:'Supplier order not found.' });
+    const items = await pool.query(`
+      SELECT soi.*, p.name, p.sku, p.lightspeed_product_id, sp.supplier_sku
+      FROM supplier_order_items soi
+      JOIN products p ON p.id=soi.product_id
+      LEFT JOIN supplier_products sp ON sp.id=soi.supplier_product_id
+      WHERE soi.supplier_order_id=$1
+      ORDER BY p.name
+    `, [req.params.id]);
+    res.json({ order:order.rows[0], items:items.rows });
+  });
+
+  router.post('/supplier-orders/:id/push-lightspeed', requireDb, async (req, res) => {
+    if (!liveMode) return res.status(423).json({ error:'Lightspeed writes are disabled in setup mode.' });
+    if (!lightspeedOutletId) return res.status(503).json({ error:'LIGHTSPEED_OUTLET_ID is not configured.' });
+
+    const orderResult = await pool.query(`
+      SELECT so.*, s.name AS supplier_name, s.lightspeed_supplier_id
+      FROM supplier_orders so JOIN suppliers s ON s.id=so.supplier_id
+      WHERE so.id=$1
+    `, [req.params.id]);
+    const order = orderResult.rows[0];
+    if (!order) return res.status(404).json({ error:'Supplier order not found.' });
+
+    const itemsResult = await pool.query(`
+      SELECT soi.*, p.lightspeed_product_id
+      FROM supplier_order_items soi JOIN products p ON p.id=soi.product_id
+      WHERE soi.supplier_order_id=$1
+    `, [req.params.id]);
+    const missing = itemsResult.rows.filter(x => !x.lightspeed_product_id);
+    if (missing.length) return res.status(409).json({ error:'One or more order items are not linked to a Lightspeed product.' });
+
+    try {
+      const payload = {
+        data: {
+          name: order.notes || `Hobby Corner special-order PO — ${order.supplier_name}`,
+          outlet_id: lightspeedOutletId,
+          type: 'SUPPLIER',
+          status: 'OPEN'
+        }
+      };
+      if (order.lightspeed_supplier_id) payload.data.supplier_id = order.lightspeed_supplier_id;
+      const created = await lightspeedFetch(lightspeedDomain, lightspeedToken, '/consignments', {
+        method:'POST', body:JSON.stringify(payload)
+      });
+      const consignment = created?.data || created;
+
+      const bulk = itemsResult.rows.map(x => ({
+        product_id:x.lightspeed_product_id,
+        count:Number(x.quantity),
+        ...(x.unit_cost != null ? { cost:Number(x.unit_cost) } : {})
+      }));
+      await lightspeedFetch(lightspeedDomain, lightspeedToken, `/consignments/${consignment.id}/bulk`, {
+        method:'POST', body:JSON.stringify({ data: bulk })
+      });
+
+      const updated = await pool.query(`
+        UPDATE supplier_orders
+        SET lightspeed_consignment_id=$1, lightspeed_sync_status='SYNCED', updated_at=now()
+        WHERE id=$2 RETURNING *
+      `, [consignment.id, req.params.id]);
+      res.json({ order:updated.rows[0], lightspeed:consignment });
+    } catch (error) {
+      await pool.query(`
+        UPDATE supplier_orders SET lightspeed_sync_status='ERROR', updated_at=now() WHERE id=$1
+      `, [req.params.id]);
+      res.status(error.status || 502).json({ error:error.message });
+    }
+  });
+
+  router.post('/supplier-orders/:id/receive', requireDb, async (req, res) => {
+    const { items = [], received_by = null, notes = null } = req.body || {};
+    if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ error:'Received items are required.' });
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const orderResult = await client.query('SELECT * FROM supplier_orders WHERE id=$1 FOR UPDATE', [req.params.id]);
+      const order = orderResult.rows[0];
+      if (!order) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error:'Supplier order not found.' });
+      }
+
+      const outcomes = [];
+      for (const incoming of items) {
+        const lineResult = await client.query(`
+          SELECT soi.*, p.name
+          FROM supplier_order_items soi JOIN products p ON p.id=soi.product_id
+          WHERE soi.id=$1 AND soi.supplier_order_id=$2 FOR UPDATE OF soi
+        `, [incoming.supplier_order_item_id, req.params.id]);
+        const line = lineResult.rows[0];
+        if (!line) continue;
+        const qty = Math.max(0, Number(incoming.received_quantity || 0));
+        if (qty <= 0) continue;
+
+        await client.query(`
+          UPDATE supplier_order_items
+          SET quantity_received=quantity_received+$1
+          WHERE id=$2
+        `, [qty, line.id]);
+        await client.query(`
+          INSERT INTO receiving_events
+            (supplier_order_id,supplier_order_item_id,product_id,quantity_received,received_by,notes)
+          VALUES ($1,$2,$3,$4,$5,$6)
+        `, [req.params.id, line.id, line.product_id, qty, received_by, notes]);
+
+        let remaining = qty;
+        const waiting = await client.query(`
+          SELECT i.id, i.quantity, o.customer_id
+          FROM special_order_items i
+          JOIN special_orders o ON o.id=i.special_order_id
+          WHERE i.product_id=$1
+            AND i.status IN ('ORDERED','BACKORDERED','OOS','READY_TO_ORDER')
+          ORDER BY i.created_at, i.id
+          FOR UPDATE OF i
+        `, [line.product_id]);
+
+        const allocated = [];
+        for (const so of waiting.rows) {
+          if (remaining <= 0) break;
+          const existingAlloc = await client.query(`
+            SELECT COALESCE(sum(quantity),0)::int AS qty
+            FROM inventory_allocations
+            WHERE special_order_item_id=$1 AND released_at IS NULL
+          `, [so.id]);
+          const needed = Math.max(0, Number(so.quantity) - Number(existingAlloc.rows[0].qty || 0));
+          if (needed <= 0) continue;
+          const give = Math.min(needed, remaining);
+          await client.query(`
+            INSERT INTO inventory_allocations (special_order_item_id,product_id,quantity)
+            VALUES ($1,$2,$3)
+          `, [so.id, line.product_id, give]);
+          if (give >= needed) {
+            await client.query(`
+              UPDATE special_order_items
+              SET status='RECEIVED', received_at=COALESCE(received_at,now()), updated_at=now()
+              WHERE id=$1
+            `, [so.id]);
+            await client.query(`
+              INSERT INTO order_status_history (special_order_item_id,old_status,new_status,note,changed_by)
+              VALUES ($1,NULL,'RECEIVED','Allocated during receiving',$2)
+            `, [so.id, received_by]);
+          }
+          allocated.push({ special_order_item_id:so.id, quantity:give });
+          remaining -= give;
+        }
+
+        outcomes.push({ supplier_order_item_id:line.id, product:line.name, received:qty, allocated, floor_remaining:remaining });
+      }
+
+      await client.query(`
+        UPDATE supplier_orders SET status='RECEIVING', updated_at=now() WHERE id=$1
+      `, [req.params.id]);
+      await client.query('COMMIT');
+      res.json({ order_id:req.params.id, outcomes });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      res.status(400).json({ error:error.message });
+    } finally { client.release(); }
+  });
+
+  router.get('/notifications/queue', requireDb, async (req, res) => {
+    const { rows } = await pool.query(`
+      SELECT n.*, c.name AS customer_name, i.requested_name, i.status AS item_status
+      FROM notifications n
+      LEFT JOIN customers c ON c.id=n.customer_id
+      LEFT JOIN special_order_items i ON i.id=n.special_order_item_id
+      WHERE n.status IN ('PENDING','QUEUED')
+      ORDER BY n.created_at
+      LIMIT 500
+    `);
     res.json(rows);
   });
 
