@@ -152,6 +152,39 @@ async function upsertLocalProduct(product) {
 }
 
 
+
+function normalizeIdentifier(type, value) {
+  const raw = String(value || '').trim();
+  const t = String(type || '').toUpperCase();
+  if (!raw) return '';
+  if (['UPC','EAN','ISBN','GTIN'].includes(t)) return raw.replace(/\D/g,'');
+  return raw.toUpperCase().replace(/\s+/g,'').replace(/[^A-Z0-9-]/g,'');
+}
+
+async function upsertProductIdentifiers(client, productId, identifiers = [], source = null) {
+  for (const ident of identifiers) {
+    const type = String(ident?.type || '').trim().toUpperCase();
+    const value = String(ident?.value || '').trim();
+    const normalized = normalizeIdentifier(type, value);
+    if (!type || !value || !normalized) continue;
+    await client.query(`
+      INSERT INTO product_identifiers
+        (product_id,identifier_type,identifier_value,normalized_value,source,supplier_id,is_primary,updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,now())
+      ON CONFLICT (identifier_type, normalized_value, COALESCE(supplier_id,0))
+      DO UPDATE SET
+        product_id=EXCLUDED.product_id,
+        identifier_value=EXCLUDED.identifier_value,
+        source=COALESCE(EXCLUDED.source,product_identifiers.source),
+        is_primary=product_identifiers.is_primary OR EXCLUDED.is_primary,
+        updated_at=now()
+    `, [
+      productId,type,value,normalized,ident.source || source || null,
+      ident.supplier_id || null,Boolean(ident.is_primary)
+    ]);
+  }
+}
+
 function normalizeMatchText(v) {
   return String(v || '')
     .toLowerCase()
@@ -1255,6 +1288,57 @@ export function createSpecialOrdersRouter({
     }
   });
 
+  router.post('/products/registry-upsert', requireDb, async (req, res) => {
+    const body = req.body || {};
+    if (!body.lightspeed_product_id) return res.status(400).json({ error:'lightspeed_product_id is required.' });
+    if (!body.name) return res.status(400).json({ error:'name is required.' });
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const product = await client.query(`
+        INSERT INTO products
+          (lightspeed_product_id,name,sku,upc,description,brand,product_category,last_lightspeed_sync_at,updated_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,now(),now())
+        ON CONFLICT (lightspeed_product_id) DO UPDATE SET
+          name=EXCLUDED.name,
+          sku=COALESCE(EXCLUDED.sku,products.sku),
+          upc=COALESCE(EXCLUDED.upc,products.upc),
+          description=COALESCE(EXCLUDED.description,products.description),
+          brand=COALESCE(EXCLUDED.brand,products.brand),
+          product_category=COALESCE(EXCLUDED.product_category,products.product_category),
+          last_lightspeed_sync_at=now(),
+          updated_at=now()
+        RETURNING *
+      `, [
+        body.lightspeed_product_id,body.name,body.sku||null,body.upc||null,
+        body.description||null,body.brand||null,body.product_category||null
+      ]);
+
+      const identifiers = Array.isArray(body.identifiers) ? [...body.identifiers] : [];
+      if (body.sku) identifiers.push({type:'SKU',value:body.sku,is_primary:true});
+      if (body.upc) identifiers.push({type:'UPC',value:body.upc});
+      if (body.isbn) identifiers.push({type:'ISBN',value:body.isbn});
+      for (const value of (Array.isArray(body.other_codes) ? body.other_codes : [])) {
+        if (value) identifiers.push({type:'OTHER',value});
+      }
+
+      await upsertProductIdentifiers(client, product.rows[0].id, identifiers, body.source || 'importer');
+      await client.query('COMMIT');
+
+      const ids = await pool.query(`
+        SELECT identifier_type,identifier_value,source,supplier_id,is_primary
+        FROM product_identifiers WHERE product_id=$1
+        ORDER BY identifier_type,identifier_value
+      `, [product.rows[0].id]);
+
+      res.json({ product:product.rows[0], identifiers:ids.rows });
+    } catch(error) {
+      await client.query('ROLLBACK');
+      res.status(400).json({error:error.message});
+    } finally { client.release(); }
+  });
+
   router.get('/products/potential-matches', requireDb, async (req, res) => {
     const q = String(req.query.q || '').trim();
     const supplierId = req.query.supplier_id || null;
@@ -1275,10 +1359,12 @@ export function createSpecialOrdersRouter({
         ON sp.product_id=p.id
        AND ($1::bigint IS NULL OR sp.supplier_id=$1::bigint)
       LEFT JOIN suppliers s ON s.id=sp.supplier_id
+      LEFT JOIN product_identifiers pi ON pi.product_id=p.id
       WHERE
         lower(coalesce(p.sku,''))=lower($2)
         OR p.upc=$2
         OR lower(coalesce(sp.supplier_sku,''))=lower($2)
+        OR pi.normalized_value=upper(regexp_replace($2,'[^A-Za-z0-9-]','','g'))
         OR lower(p.name) LIKE lower($3)
         OR lower(coalesce(p.description,'')) LIKE lower($3)
         OR lower(coalesce(sp.supplier_description,'')) LIKE lower($3)
