@@ -154,12 +154,14 @@ async function saveKey(){
   if(!v)return setAuthState(false,'Enter the internal access key first.');
   sessionStorage.setItem('hcSpecialOrdersKey',v);
   try{
-    await getJson(api+'/stats');
+    await getJson(api+'/auth-check');
     setAuthState(true,'Access key accepted. Loading Special Orders…');
     await loadAll();
   }catch(e){
     sessionStorage.removeItem('hcSpecialOrdersKey');
-    setAuthState(false,'Access key was not accepted. Please re-enter the test access key.');
+    setAuthState(false,e.message==='Access key missing or incorrect.'
+      ? 'Access key was not accepted. Please re-enter the test access key.'
+      : 'Access key accepted, but the Special Orders service is not ready: '+e.message);
   }
 }
 async function getJson(url,opts={}){
