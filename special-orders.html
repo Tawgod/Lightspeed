@@ -67,6 +67,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:10px 8px;border-bottom:1
   <div class="toolbar">
     <input id="newNotes" placeholder="Notes" size="44">
     <input id="crowdfundingNote" placeholder="Crowdfunded / future availability note" size="34">
+    <input id="sourceUrl" placeholder="Supplier / product page URL" size="34">
     <button onclick="createOrder()">Save special order</button>
   </div>
 </div>
@@ -146,9 +147,11 @@ async function createOrder(){
     supplier_ids:Array.from(document.getElementById('newSuppliers').selectedOptions).map(o=>o.value),
     supplier_needed:document.getElementById('supplierNeeded').checked,
     notes:document.getElementById('newNotes').value.trim()||null,
-    crowdfunding_note:document.getElementById('crowdfundingNote').value.trim()||null
+    crowdfunding_note:document.getElementById('crowdfundingNote').value.trim()||null,
+    source_url:document.getElementById('sourceUrl').value.trim()||null,
+    placeholder_product:!selectedOrderProduct
   }]};
-  try{await getJson(api+'/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});showNotice('Special order saved.');selectedOrderProduct=null;document.getElementById('selectedProduct').textContent='No product selected';document.getElementById('manualItemName').value='';document.getElementById('manualSku').value='';document.getElementById('newNotes').value='';document.getElementById('crowdfundingNote').value='';document.getElementById('supplierNeeded').checked=false;await loadStats();await loadOrders()}catch(e){showNotice(e.message)}
+  try{await getJson(api+'/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});showNotice('Special order saved.');selectedOrderProduct=null;document.getElementById('selectedProduct').textContent='No product selected';document.getElementById('manualItemName').value='';document.getElementById('manualSku').value='';document.getElementById('newNotes').value='';document.getElementById('crowdfundingNote').value='';document.getElementById('sourceUrl').value='';document.getElementById('supplierNeeded').checked=false;await loadStats();await loadOrders()}catch(e){showNotice(e.message)}
 }
 async function searchProducts(){const q=document.getElementById('productSearch').value.trim();if(!q)return;try{const r=await getJson(api+'/products/search?q='+encodeURIComponent(q));document.getElementById('productResults').innerHTML='<h3>Product matches</h3>'+(!r.length?'<p>No match found. Product creation will be the next form added here.</p>':'<table><tr><th>Name</th><th>SKU</th><th>UPC</th><th>Source</th></tr>'+r.map(x=>`<tr><td>${x.name}</td><td>${x.sku||'—'}</td><td>${x.upc||'—'}</td><td>${x.source}</td></tr>`).join('')+'</table>')}catch(e){showNotice(e.message)}}
 async function loadPreorders(){try{const c=await getJson(api+'/preorders/campaigns');document.getElementById('preorderCampaign').innerHTML='<option value="">Select preorder campaign…</option>'+c.map(x=>`<option value="${x.id}">${x.name} — ${x.request_count} requests</option>`).join('')}catch(e){}}
