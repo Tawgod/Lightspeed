@@ -289,7 +289,9 @@ export function createSpecialOrdersRouter({
 
   router.use((req, res, next) => {
     if (!adminKey) return res.status(503).json({ error: 'SPECIAL_ORDERS_ADMIN_KEY is not configured.' });
-    if (req.get('x-hobby-corner-key') !== adminKey) return res.status(401).json({ error: 'Special-orders access key required.' });
+    const suppliedKey = String(req.get('x-hobby-corner-key') || '').trim();
+    const configuredKey = String(adminKey || '').trim();
+    if (!suppliedKey || suppliedKey !== configuredKey) return res.status(401).json({ error: 'Special-orders access key required.' });
     next();
   });
 
