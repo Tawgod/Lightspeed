@@ -234,6 +234,7 @@ export function createSpecialOrdersRouter({
   adminKey,
   liveMode = false,
   allowMigration = false,
+  allowProductWrites = false,
   lightspeedOutletId = null
 }) {
   const router = express.Router();
@@ -246,7 +247,8 @@ export function createSpecialOrdersRouter({
       lightspeed: Boolean(lightspeedDomain && lightspeedToken),
       secured: Boolean(adminKey),
       liveMode: Boolean(liveMode),
-      allowMigration: Boolean(allowMigration)
+      allowMigration: Boolean(allowMigration),
+      allowProductWrites: Boolean(allowProductWrites)
     });
   });
 
@@ -1362,7 +1364,9 @@ export function createSpecialOrdersRouter({
   });
 
   router.post('/products/create-lightspeed', async (req, res) => {
-    if (!liveMode) return res.status(423).json({ error:'Lightspeed product creation is disabled in setup mode.' });
+    if (!allowProductWrites && !liveMode) {
+      return res.status(423).json({ error:'Lightspeed product creation is disabled. Enable product-write testing or live mode.' });
+    }
     const body = req.body || {};
     const missing = [];
     if (!body.name) missing.push('name');
