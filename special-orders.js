@@ -50,7 +50,7 @@ function lightspeedHeaders(token, includeJson = true) {
   };
 }
 
-async let uspsTokenCache={token:null,expiresAt:0};
+let uspsTokenCache={token:null,expiresAt:0};
 
 async function getUspsAccessToken() {
   const clientId=String(process.env.USPS_CLIENT_ID||'').trim();
@@ -115,7 +115,7 @@ async function verifyUspsAddress(input={}) {
   };
 }
 
-function lightspeedVersionedFetch(domain, token, endpoint, options = {}, version = '2026-04') {
+async function lightspeedVersionedFetch(domain, token, endpoint, options = {}, version = '2026-04') {
   if (!domain || !token) throw new Error('LIGHTSPEED_DOMAIN or LIGHTSPEED_TOKEN is missing.');
   const response = await fetch(`https://${domain}.retail.lightspeed.app/api/${version}${endpoint}`, {
     ...options,
