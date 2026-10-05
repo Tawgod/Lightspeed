@@ -169,14 +169,17 @@ tbody tr:hover{background:#f2f7fc}
         <input id="customerDiscord" placeholder="Discord handle" size="22">
       </div>
       <div class="toolbar">
-        <input id="customerAddress1" placeholder="Address line 1" size="34">
-        <input id="customerAddress2" placeholder="Address line 2" size="24">
+        <input id="customerPostcode" placeholder="ZIP / postal code" size="14" inputmode="numeric" autocomplete="postal-code" oninput="lookupCustomerZip(this.value)">
+        <span id="customerZipStatus" style="font-size:12px;color:var(--muted)"></span>
       </div>
       <div class="toolbar">
-        <input id="customerCity" placeholder="City" size="22">
-        <input id="customerState" placeholder="State" size="12">
-        <input id="customerPostcode" placeholder="ZIP / postal code" size="14">
-        <input id="customerCountry" placeholder="Country code" value="US" size="10">
+        <input id="customerAddress1" placeholder="Address line 1" size="34" autocomplete="address-line1">
+        <input id="customerAddress2" placeholder="Address line 2" size="24" autocomplete="address-line2">
+      </div>
+      <div class="toolbar">
+        <input id="customerCity" placeholder="City" size="22" autocomplete="address-level2">
+        <input id="customerState" placeholder="State" size="12" autocomplete="address-level1">
+        <input id="customerCountry" placeholder="Country code" value="US" size="10" autocomplete="country">
       </div>
       <div class="toolbar">
         <input id="customerNotes" placeholder="Customer note (Special Orders)" size="52">
@@ -751,6 +754,39 @@ function renderCustomerSummary(){
   const email=document.getElementById('customerEmail')?.value||selectedCustomer.email||'';
   const discord=document.getElementById('customerDiscord')?.value||selectedCustomer.discord_handle||'';
   document.getElementById('customerSummary').textContent=[name,phone,email,discord?('Discord: '+discord):''].filter(Boolean).join(' • ');
+}
+const zipLookupCache=new Map();
+let customerZipLookupTimer=null;
+async function lookupUsZip(zip){
+  const clean=String(zip||'').replace(/\D/g,'').slice(0,5);
+  if(clean.length!==5)return null;
+  if(zipLookupCache.has(clean))return zipLookupCache.get(clean);
+  const r=await fetch('https://api.zippopotam.us/us/'+encodeURIComponent(clean));
+  if(!r.ok)return null;
+  const data=await r.json();
+  const place=Array.isArray(data.places)?data.places[0]:null;
+  const result=place?{city:place['place name']||'',state:place['state abbreviation']||place.state||''}:null;
+  zipLookupCache.set(clean,result);
+  return result;
+}
+function lookupCustomerZip(value){
+  const clean=String(value||'').replace(/\D/g,'').slice(0,5);
+  const status=document.getElementById('customerZipStatus');
+  if(customerZipLookupTimer)clearTimeout(customerZipLookupTimer);
+  if(clean.length!==5){if(status)status.textContent='';return}
+  if(status)status.textContent='Looking up ZIP…';
+  customerZipLookupTimer=setTimeout(async()=>{
+    try{
+      const place=await lookupUsZip(clean);
+      if(!place){if(status)status.textContent='ZIP not found';return}
+      document.getElementById('customerCity').value=place.city;
+      document.getElementById('customerState').value=place.state;
+      if(status)status.textContent=place.city+', '+place.state;
+      saveDrafts();
+    }catch(e){
+      if(status)status.textContent='ZIP lookup unavailable';
+    }
+  },200);
 }
 function openCustomerModal(){
   if(!selectedCustomer)return showNotice('Select a customer first.');
