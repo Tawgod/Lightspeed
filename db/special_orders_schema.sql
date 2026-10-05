@@ -331,3 +331,21 @@ ALTER TABLE supplier_order_items
 
 ALTER TABLE special_order_item_suppliers
   ADD COLUMN IF NOT EXISTS source_url TEXT;
+
+CREATE TABLE IF NOT EXISTS product_identifiers (
+  id BIGSERIAL PRIMARY KEY,
+  product_id BIGINT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  identifier_type TEXT NOT NULL,
+  identifier_value TEXT NOT NULL,
+  normalized_value TEXT NOT NULL,
+  source TEXT,
+  supplier_id BIGINT REFERENCES suppliers(id) ON DELETE SET NULL,
+  is_primary BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (identifier_type, normalized_value, COALESCE(supplier_id,0))
+);
+CREATE INDEX IF NOT EXISTS idx_product_identifiers_value
+ON product_identifiers (normalized_value);
+CREATE INDEX IF NOT EXISTS idx_product_identifiers_product
+ON product_identifiers (product_id);
