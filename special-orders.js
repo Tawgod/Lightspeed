@@ -880,6 +880,105 @@ export function createSpecialOrdersRouter({
     }
   });
 
+  router.patch('/items/:id', requireDb, async (req, res) => {
+    const quantity = Number(req.body?.quantity);
+    if (!Number.isInteger(quantity) || quantity < 1) {
+      return res.status(400).json({ error:'quantity must be a positive whole number.' });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const current = await client.query(
+        'SELECT * FROM special_order_items WHERE id=$1 FOR UPDATE',
+        [req.params.id]
+      );
+      if (!current.rows[0]) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error:'Order item not found.' });
+      }
+      if (['RECEIVED','HELD','COMPLETED','CANCELLED'].includes(current.rows[0].status)) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error:'This item has progressed too far to change quantity directly.' });
+      }
+
+      const supplierLines = await client.query(`
+        SELECT soi.id,soi.quantity_received,so.status
+        FROM supplier_order_items soi
+        JOIN supplier_orders so ON so.id=soi.supplier_order_id
+        WHERE soi.special_order_item_id=$1
+      `, [req.params.id]);
+
+      const nonDraft = supplierLines.rows.find(x => String(x.status || '').toUpperCase() !== 'DRAFT');
+      if (nonDraft) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error:'This item is already on a submitted supplier order. Adjust the supplier order before changing quantity.' });
+      }
+      const receivedTooHigh = supplierLines.rows.find(x => Number(x.quantity_received || 0) > quantity);
+      if (receivedTooHigh) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error:'Quantity cannot be lower than the amount already received.' });
+      }
+
+      const updated = await client.query(
+        'UPDATE special_order_items SET quantity=$1,updated_at=now() WHERE id=$2 RETURNING *',
+        [quantity,req.params.id]
+      );
+      if (supplierLines.rows.length) {
+        await client.query(
+          'UPDATE supplier_order_items SET quantity=$1 WHERE special_order_item_id=$2',
+          [quantity,req.params.id]
+        );
+      }
+      await client.query('COMMIT');
+      res.json(updated.rows[0]);
+    } catch (error) {
+      await client.query('ROLLBACK');
+      res.status(400).json({ error:error.message });
+    } finally {
+      client.release();
+    }
+  });
+
+  router.delete('/items/:id', requireDb, async (req, res) => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const current = await client.query(
+        'SELECT * FROM special_order_items WHERE id=$1 FOR UPDATE',
+        [req.params.id]
+      );
+      if (!current.rows[0]) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error:'Order item not found.' });
+      }
+      if (['RECEIVED','HELD','COMPLETED'].includes(current.rows[0].status)) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error:'Received/held/completed items cannot be removed.' });
+      }
+
+      const supplierLines = await client.query(`
+        SELECT soi.id,so.status
+        FROM supplier_order_items soi
+        JOIN supplier_orders so ON so.id=soi.supplier_order_id
+        WHERE soi.special_order_item_id=$1
+      `, [req.params.id]);
+      if (supplierLines.rows.length) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error:'This item is already attached to a supplier order. Remove or adjust that supplier-order line first.' });
+      }
+
+      await client.query('DELETE FROM special_order_items WHERE id=$1', [req.params.id]);
+      await client.query('COMMIT');
+      res.json({ ok:true });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      res.status(400).json({ error:error.message });
+    } finally {
+      client.release();
+    }
+  });
+
   router.patch('/items/:id/status', requireDb, async (req, res) => {
     const newStatus = String(req.body?.status || '').toUpperCase();
     if (!VALID_STATUSES.has(newStatus)) return res.status(400).json({ error: 'Invalid status.' });
@@ -1786,6 +1885,55 @@ export function createSpecialOrdersRouter({
       .slice(0, 25);
 
     res.json(scored);
+  });
+
+  router.get('/products/exact', async (req, res) => {
+    const q = String(req.query.q || '').trim();
+    if (!q) return res.json(null);
+
+    if (pool) {
+      const normalizedCode = q.toUpperCase().replace(/[^A-Z0-9-]/g, '');
+      const digits = q.replace(/\D/g, '');
+      const local = await pool.query(`
+        SELECT DISTINCT p.*
+        FROM products p
+        LEFT JOIN product_identifiers pi ON pi.product_id=p.id
+        WHERE lower(coalesce(p.sku,''))=lower($1)
+           OR p.upc=$1
+           OR pi.normalized_value=$2
+           OR ($3 <> '' AND pi.normalized_value=$3)
+        ORDER BY p.updated_at DESC
+        LIMIT 1
+      `, [q, normalizedCode, digits]);
+      if (local.rows[0]) {
+        const p = local.rows[0];
+        return res.json({ ...p, local_id:p.id, source:'local' });
+      }
+    }
+
+    try {
+      const result = await lightspeedFetch(
+        lightspeedDomain,
+        lightspeedToken,
+        '/products?sku=' + encodeURIComponent(q)
+      );
+      const products = Array.isArray(result?.data) ? result.data : [];
+      const exact = products.find(p =>
+        String(p.sku || '').toLowerCase() === q.toLowerCase() ||
+        String(p.upc || '') === q ||
+        (Array.isArray(p.product_codes) && p.product_codes.some(code =>
+          String(code?.code || code?.value || '') === q
+        ))
+      );
+      if (exact) {
+        const localProduct = await upsertLocalProduct(exact);
+        return res.json({ ...exact, local_id:localProduct?.id || null, source:'lightspeed' });
+      }
+    } catch (error) {
+      console.warn('[special-orders] exact product lookup warning:', error.message);
+    }
+
+    res.json(null);
   });
 
   router.get('/products/search', async (req, res) => {
