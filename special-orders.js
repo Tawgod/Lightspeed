@@ -1448,28 +1448,40 @@ export function createSpecialOrdersRouter({
     const body = req.body || {};
     const lightspeedId = String(req.params.lightspeedId || '').trim();
     if (!lightspeedId) return res.status(400).json({ error:'Lightspeed customer id is required.' });
-    const name = String(body.name || '').trim();
+
+    const firstName = String(body.first_name || '').trim();
+    const lastName = String(body.last_name || '').trim();
+    const companyName = String(body.company_name || '').trim() || null;
+    const name = String(body.name || [firstName,lastName].filter(Boolean).join(' ') || companyName || '').trim();
     if (!name) return res.status(400).json({ error:'Customer name is required.' });
 
     let lightspeedWarning = null;
-    if (body.sync_lightspeed_phone && body.phone !== undefined) {
+    let lightspeedCustomer = null;
+    if (body.sync_lightspeed === true) {
       try {
         const updatePayload = {
-          first_name: body.first_name ?? null,
-          last_name: body.last_name ?? null,
-          company_name: body.company_name ?? null,
-          email: body.email ?? null
+          first_name: firstName || null,
+          last_name: lastName || null,
+          company_name: companyName,
+          email: body.email || null,
+          phone: body.phone || null,
+          mobile: body.mobile || body.phone || null,
+          physical_address_1: body.address_line_1 || null,
+          physical_address_2: body.address_line_2 || null,
+          physical_city: body.city || null,
+          physical_state: body.state || null,
+          physical_postcode: body.postcode || null,
+          physical_country_id: body.country_code || null
         };
-        if (body.phone_field === 'phone') updatePayload.phone = body.phone || null;
-        else updatePayload.mobile = body.phone || null;
 
-        await lightspeedVersionedFetch(
+        const updated = await lightspeedVersionedFetch(
           lightspeedDomain,
           lightspeedToken,
           '/customers/' + encodeURIComponent(lightspeedId),
           { method:'PUT', body:JSON.stringify(updatePayload) },
           '2026-07'
         );
+        lightspeedCustomer = updated?.data || updated;
       } catch (error) {
         lightspeedWarning = error.message;
       }
@@ -1482,7 +1494,7 @@ export function createSpecialOrdersRouter({
       ON CONFLICT (lightspeed_customer_id) DO UPDATE SET
         name=EXCLUDED.name,
         phone=EXCLUDED.phone,
-        email=COALESCE(EXCLUDED.email,customers.email),
+        email=EXCLUDED.email,
         discord_handle=EXCLUDED.discord_handle,
         notes=EXCLUDED.notes,
         updated_at=now()
@@ -1490,13 +1502,13 @@ export function createSpecialOrdersRouter({
     `, [
       lightspeedId,
       name,
-      body.phone || null,
+      body.phone || body.mobile || null,
       body.email || null,
       body.discord_handle || null,
       body.notes || null
     ]);
 
-    res.json({ customer:rows[0], lightspeed_warning:lightspeedWarning });
+    res.json({ customer:rows[0], lightspeed:lightspeedCustomer, lightspeed_warning:lightspeedWarning });
   });
 
   router.get('/products/:id/inventory', async (req, res) => {
