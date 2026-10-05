@@ -931,6 +931,74 @@ export function createSpecialOrdersRouter({
     res.json(rows);
   });
 
+  router.get('/products/:id/recommended-suppliers', requireDb, async (req, res) => {
+    const productId = Number(req.params.id);
+    if (!Number.isFinite(productId)) return res.status(400).json({ error:'Local product id is required.' });
+
+    const product = await pool.query('SELECT id,product_category FROM products WHERE id=$1', [productId]);
+    if (!product.rows[0]) return res.status(404).json({ error:'Product not found.' });
+    const categoryText = String(product.rows[0].product_category || '').toLowerCase();
+
+    const { rows } = await pool.query(`
+      WITH direct AS (
+        SELECT supplier_id, min(priority)::int AS priority
+        FROM supplier_products
+        WHERE product_id=$1 AND is_orderable=true
+        GROUP BY supplier_id
+      ),
+      product_depts AS (
+        SELECT sourcing_department_id
+        FROM product_sourcing_departments
+        WHERE product_id=$1
+      ),
+      dept_match AS (
+        SELECT ssd.supplier_id, min(ssd.priority)::int AS priority
+        FROM supplier_sourcing_departments ssd
+        JOIN product_depts pd ON pd.sourcing_department_id=ssd.sourcing_department_id
+        GROUP BY ssd.supplier_id
+      ),
+      category_depts AS (
+        SELECT id
+        FROM sourcing_departments
+        WHERE is_active=true
+          AND (
+            $2 <> '' AND (
+              lower($2) LIKE '%' || lower(name) || '%'
+              OR lower(name) LIKE '%' || lower($2) || '%'
+            )
+          )
+      ),
+      category_match AS (
+        SELECT ssd.supplier_id, min(ssd.priority)::int AS priority
+        FROM supplier_sourcing_departments ssd
+        JOIN category_depts cd ON cd.id=ssd.sourcing_department_id
+        GROUP BY ssd.supplier_id
+      )
+      SELECT s.*,
+             CASE
+               WHEN d.supplier_id IS NOT NULL THEN 0
+               WHEN dm.supplier_id IS NOT NULL THEN 1
+               WHEN cm.supplier_id IS NOT NULL THEN 2
+               ELSE 3
+             END AS recommendation_rank,
+             COALESCE(d.priority,dm.priority,cm.priority,9999) AS recommendation_priority,
+             CASE
+               WHEN d.supplier_id IS NOT NULL THEN 'Exact product supplier'
+               WHEN dm.supplier_id IS NOT NULL THEN 'Product department supplier'
+               WHEN cm.supplier_id IS NOT NULL THEN 'Category supplier'
+               ELSE NULL
+             END AS recommendation_reason
+      FROM suppliers s
+      LEFT JOIN direct d ON d.supplier_id=s.id
+      LEFT JOIN dept_match dm ON dm.supplier_id=s.id
+      LEFT JOIN category_match cm ON cm.supplier_id=s.id
+      WHERE s.is_active=true
+      ORDER BY recommendation_rank,recommendation_priority,s.name
+    `, [productId, categoryText]);
+
+    res.json(rows);
+  });
+
   router.post('/suppliers', requireDb, async (req, res) => {
     const { name, supplier_type, order_frequency, lightspeed_supplier_id, notes } = req.body || {};
     if (!name) return res.status(400).json({ error: 'name is required.' });
