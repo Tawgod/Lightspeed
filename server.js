@@ -664,6 +664,22 @@ app.post('/api/labels/generate', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 8080;
-ensureTemplatesExist().then(() => {
+
+async function startServer() {
+  try {
+    await ensureTemplatesExist();
+  } catch (error) {
+    console.error('[startup] template initialization failed:', error);
+  }
+
+  try {
+    const dbReady = await initializeSpecialOrdersDb();
+    console.log('[special-orders] database initialization result:', dbReady);
+  } catch (error) {
+    console.error('[special-orders] database initialization failed:', error);
+  }
+
   app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
-});
+}
+
+startServer();
