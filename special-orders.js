@@ -581,13 +581,16 @@ export function createSpecialOrdersRouter({
         const itemResult = await client.query(`
           INSERT INTO special_order_items
             (special_order_id,product_id,requested_name,requested_sku,requested_upc,quantity,status,
-             preferred_supplier_id,sourcing_department_id,supplier_needed,release_date,ordered_at,notes,crowdfunding_note)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *
+             preferred_supplier_id,sourcing_department_id,supplier_needed,placeholder_product,product_data_status,source_url,
+             release_date,ordered_at,notes,crowdfunding_note)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *
         `, [
           orderResult.rows[0].id, item.product_id || null, item.requested_name || item.name,
           item.requested_sku || item.sku || null, item.requested_upc || item.upc || null,
           Number(item.quantity || 1), status, item.preferred_supplier_id || null, item.sourcing_department_id || null,
-          Boolean(item.supplier_needed), item.release_date || null, status === 'ORDERED' ? new Date() : null,
+          Boolean(item.supplier_needed), Boolean(item.placeholder_product || !item.product_id),
+          String(item.product_data_status || (item.product_id ? 'COMPLETE' : 'NEEDS_LIGHTSPEED_PRODUCT')).toUpperCase(),
+          item.source_url || null, item.release_date || null, status === 'ORDERED' ? new Date() : null,
           item.notes || null, item.crowdfunding_note || null
         ]);
 
@@ -639,14 +642,16 @@ export function createSpecialOrdersRouter({
       const created = await client.query(`
         INSERT INTO special_order_items
           (special_order_id,product_id,requested_name,requested_sku,requested_upc,quantity,status,
-           preferred_supplier_id,sourcing_department_id,supplier_needed,release_date,ordered_at,notes,crowdfunding_note)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+           preferred_supplier_id,sourcing_department_id,supplier_needed,placeholder_product,product_data_status,source_url,
+           release_date,ordered_at,notes,crowdfunding_note)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
         RETURNING *
       `, [
         req.params.id,item.product_id||null,item.requested_name||item.name,item.requested_sku||item.sku||null,
         item.requested_upc||item.upc||null,Number(item.quantity||1),status,item.preferred_supplier_id||null,
-        item.sourcing_department_id||null,Boolean(item.supplier_needed),item.release_date||null,
-        status==='ORDERED'?new Date():null,item.notes||null,item.crowdfunding_note||null
+        item.sourcing_department_id||null,Boolean(item.supplier_needed),Boolean(item.placeholder_product || !item.product_id),
+        String(item.product_data_status || (item.product_id ? 'COMPLETE' : 'NEEDS_LIGHTSPEED_PRODUCT')).toUpperCase(),
+        item.source_url||null,item.release_date||null,status==='ORDERED'?new Date():null,item.notes||null,item.crowdfunding_note||null
       ]);
       const supplierIds=Array.from(new Set((Array.isArray(item.supplier_ids)?item.supplier_ids:[])
         .concat(item.preferred_supplier_id?[item.preferred_supplier_id]:[]).filter(Boolean)));
@@ -883,20 +888,24 @@ export function createSpecialOrdersRouter({
 
   router.post('/supplier-products', requireDb, async (req, res) => {
     const { supplier_id, product_id, supplier_sku, supplier_description, manufacturer_text,
+      order_channel = 'TRADE', order_url = null,
       supply_price, priority = 1, is_orderable = true, notes } = req.body || {};
     if (!supplier_id || !product_id) return res.status(400).json({ error: 'supplier_id and product_id are required.' });
     const { rows } = await pool.query(`
       INSERT INTO supplier_products
-        (supplier_id,product_id,supplier_sku,supplier_description,manufacturer_text,supply_price,priority,is_orderable,notes)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        (supplier_id,product_id,supplier_sku,supplier_description,manufacturer_text,order_channel,order_url,supply_price,priority,is_orderable,notes)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
       ON CONFLICT (supplier_id,product_id) DO UPDATE SET
         supplier_sku=EXCLUDED.supplier_sku,
         supplier_description=COALESCE(EXCLUDED.supplier_description,supplier_products.supplier_description),
         manufacturer_text=COALESCE(EXCLUDED.manufacturer_text,supplier_products.manufacturer_text),
+        order_channel=EXCLUDED.order_channel,
+        order_url=COALESCE(EXCLUDED.order_url,supplier_products.order_url),
         supply_price=EXCLUDED.supply_price, priority=EXCLUDED.priority, is_orderable=EXCLUDED.is_orderable,
         notes=EXCLUDED.notes
       RETURNING *
     `, [supplier_id, product_id, supplier_sku || null, supplier_description || null, manufacturer_text || null,
+        String(order_channel || 'TRADE').toUpperCase(), order_url || null,
         supply_price || null, priority, Boolean(is_orderable), notes || null]);
     res.status(201).json(rows[0]);
   });
@@ -942,16 +951,19 @@ export function createSpecialOrdersRouter({
 
       for (const item of items) {
         const qty = Number(item.quantity || 0);
-        if (!item.product_id || qty <= 0) continue;
+        if (qty <= 0) continue;
+        if (!item.product_id && !item.placeholder_name) continue;
         const specialQty = Math.max(0, Number(item.special_order_quantity || 0));
         const floorQty = Math.max(0, Number(item.floor_quantity ?? (qty - specialQty)));
         await client.query(`
           INSERT INTO supplier_order_items
             (supplier_order_id,product_id,supplier_product_id,quantity,unit_cost,
-             special_order_item_id,special_order_quantity,floor_quantity)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-        `, [order.rows[0].id, item.product_id, item.supplier_product_id || null, qty,
-             item.unit_cost || null, item.special_order_item_id || null, specialQty, floorQty]);
+             special_order_item_id,special_order_quantity,floor_quantity,
+             placeholder_name,placeholder_sku,source_url)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+        `, [order.rows[0].id, item.product_id || null, item.supplier_product_id || null, qty,
+             item.unit_cost || null, item.special_order_item_id || null, specialQty, floorQty,
+             item.placeholder_name || null, item.placeholder_sku || null, item.source_url || null]);
       }
 
       await client.query('COMMIT');
@@ -972,9 +984,11 @@ export function createSpecialOrdersRouter({
     `, [req.params.id]);
     if (!order.rows[0]) return res.status(404).json({ error:'Supplier order not found.' });
     const items = await pool.query(`
-      SELECT soi.*, p.name, p.sku, p.lightspeed_product_id, sp.supplier_sku
+      SELECT soi.*, COALESCE(p.name,soi.placeholder_name) AS name,
+             COALESCE(p.sku,soi.placeholder_sku) AS sku,
+             p.lightspeed_product_id, sp.supplier_sku
       FROM supplier_order_items soi
-      JOIN products p ON p.id=soi.product_id
+      LEFT JOIN products p ON p.id=soi.product_id
       LEFT JOIN supplier_products sp ON sp.id=soi.supplier_product_id
       WHERE soi.supplier_order_id=$1
       ORDER BY p.name
@@ -1000,7 +1014,10 @@ export function createSpecialOrdersRouter({
       WHERE soi.supplier_order_id=$1
     `, [req.params.id]);
     const missing = itemsResult.rows.filter(x => !x.lightspeed_product_id);
-    if (missing.length) return res.status(409).json({ error:'One or more order items are not linked to a Lightspeed product.' });
+    if (missing.length) return res.status(409).json({
+      error:'One or more supplier-order lines are placeholders and must be completed as Lightspeed products before this PO can be pushed to Lightspeed.',
+      placeholder_line_ids: missing.map(x => x.id)
+    });
 
     try {
       const payload = {
@@ -1272,6 +1289,25 @@ export function createSpecialOrdersRouter({
       if (local.length === 0) return res.status(502).json({ error: error.message });
     }
     res.json([...local, ...remote].slice(0, 25));
+  });
+
+  router.patch('/items/:id/link-product', requireDb, async (req, res) => {
+    const productId = req.body?.product_id;
+    if (!productId) return res.status(400).json({ error:'product_id is required.' });
+    const product = await pool.query('SELECT * FROM products WHERE id=$1', [productId]);
+    if (!product.rows[0]) return res.status(404).json({ error:'Product not found.' });
+    const updated = await pool.query(`
+      UPDATE special_order_items
+      SET product_id=$1, placeholder_product=false, product_data_status='COMPLETE', updated_at=now()
+      WHERE id=$2 RETURNING *
+    `, [productId, req.params.id]);
+    if (!updated.rows[0]) return res.status(404).json({ error:'Special-order item not found.' });
+    await pool.query(`
+      UPDATE supplier_order_items
+      SET product_id=$1, placeholder_name=NULL, placeholder_sku=NULL
+      WHERE special_order_item_id=$2 AND product_id IS NULL
+    `, [productId, req.params.id]);
+    res.json(updated.rows[0]);
   });
 
   router.post('/products/create-lightspeed', async (req, res) => {
