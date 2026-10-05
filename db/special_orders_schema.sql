@@ -313,3 +313,18 @@ ON special_order_item_suppliers (supplier_id, special_order_item_id);
 ALTER TABLE supplier_products
   ADD COLUMN IF NOT EXISTS supplier_description TEXT,
   ADD COLUMN IF NOT EXISTS manufacturer_text TEXT;
+
+ALTER TABLE supplier_products
+  ADD COLUMN IF NOT EXISTS order_channel TEXT NOT NULL DEFAULT 'TRADE',
+  ADD COLUMN IF NOT EXISTS order_url TEXT;
+
+ALTER TABLE special_order_items
+  ADD COLUMN IF NOT EXISTS placeholder_product BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS product_data_status TEXT NOT NULL DEFAULT 'COMPLETE',
+  ADD COLUMN IF NOT EXISTS source_url TEXT;
+
+ALTER TABLE supplier_order_items
+  ADD COLUMN IF NOT EXISTS placeholder_name TEXT,
+  ADD COLUMN IF NOT EXISTS placeholder_sku TEXT,
+  ADD COLUMN IF NOT EXISTS source_url TEXT,
+  ALTER COLUMN product_id DROP NOT NULL;
