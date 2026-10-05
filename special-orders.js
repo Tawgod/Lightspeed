@@ -307,6 +307,10 @@ export function createSpecialOrdersRouter({
     next();
   });
 
+  router.get('/auth-check', (req, res) => {
+    res.json({ ok:true });
+  });
+
   router.post('/import/workbook', requireDb, upload.single('workbook'), async (req, res) => {
     if (!allowMigration) return res.status(423).json({ error: 'Legacy migration is disabled until Lightspeed go-live.' });
     if (!req.file?.buffer) return res.status(400).json({ error: 'Upload an .xlsx workbook in the workbook field.' });
