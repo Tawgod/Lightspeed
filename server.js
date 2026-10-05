@@ -26,6 +26,120 @@ app.get('/index.html', (req, res) => {
 const LIGHTSPEED_DOMAIN = process.env.LIGHTSPEED_DOMAIN;
 const LIGHTSPEED_TOKEN = process.env.LIGHTSPEED_TOKEN;
 
+let uspsTokenCache = { token:null, expiresAt:0 };
+
+async function getUspsAccessToken() {
+  const clientId = String(process.env.USPS_CLIENT_ID || '').trim();
+  const clientSecret = String(process.env.USPS_CLIENT_SECRET || '').trim();
+  if (!clientId || !clientSecret) {
+    const error = new Error('USPS address verification is not configured yet.');
+    error.status = 503;
+    throw error;
+  }
+
+  if (uspsTokenCache.token && Date.now() < uspsTokenCache.expiresAt - 60000) {
+    return uspsTokenCache.token;
+  }
+
+  const response = await fetch('https://apis.usps.com/oauth2/v3/token', {
+    method:'POST',
+    headers:{'Content-Type':'application/json','Accept':'application/json'},
+    body:JSON.stringify({
+      client_id:clientId,
+      client_secret:clientSecret,
+      grant_type:'client_credentials'
+    })
+  });
+
+  const text = await response.text();
+  let body = {};
+  try { body = text ? JSON.parse(text) : {}; } catch {}
+
+  if (!response.ok || !body.access_token) {
+    const error = new Error('USPS OAuth failed: ' + (body.error_description || body.error || response.statusText));
+    error.status = 502;
+    throw error;
+  }
+
+  uspsTokenCache = {
+    token:body.access_token,
+    expiresAt:Date.now() + Math.max(300, Number(body.expires_in || 3600)) * 1000
+  };
+  return body.access_token;
+}
+
+async function verifyUspsAddress(input = {}) {
+  const street = String(input.street_address || '').trim();
+  const secondary = String(input.secondary_address || '').trim();
+  const city = String(input.city || '').trim();
+  const state = String(input.state || '').trim().toUpperCase();
+  const zip = String(input.zip || '').replace(/\D/g, '').slice(0, 5);
+
+  if (!street) {
+    const error = new Error('Street address is required.');
+    error.status = 400;
+    throw error;
+  }
+
+  const token = await getUspsAccessToken();
+  const params = new URLSearchParams({ streetAddress:street });
+  if (secondary) params.set('secondaryAddress', secondary);
+  if (city) params.set('city', city);
+  if (state) params.set('state', state);
+  if (zip) params.set('ZIPCode', zip);
+
+  const response = await fetch('https://apis.usps.com/addresses/v3/address?' + params.toString(), {
+    headers:{'Accept':'application/json','Authorization':'Bearer ' + token}
+  });
+
+  const text = await response.text();
+  let body = {};
+  try { body = text ? JSON.parse(text) : {}; } catch {}
+
+  if (!response.ok) {
+    const error = new Error('USPS address validation failed: ' + (body.error?.message || body.message || response.statusText));
+    error.status = response.status === 400 ? 400 : 502;
+    throw error;
+  }
+
+  const a = body.address || body.labelAddress || {};
+  return {
+    street_address:a.streetAddress || street,
+    secondary_address:a.secondaryAddress || secondary || null,
+    city:a.city || city,
+    state:a.state || state,
+    zip:a.ZIPCode || zip,
+    zip_plus4:a.ZIPPlus4 || null,
+    dpv_confirmation:body.additionalInfo?.DPVConfirmation || null,
+    business:body.additionalInfo?.business || null,
+    vacant:body.additionalInfo?.vacant || null
+  };
+}
+
+app.get('/api/address/zip', async (req, res) => {
+  const zip = String(req.query.zip || '').replace(/\D/g,'').slice(0,5);
+  if (zip.length !== 5) return res.status(400).json({ error:'5-digit ZIP required.' });
+  try {
+    const response = await fetch('https://api.zippopotam.us/us/' + encodeURIComponent(zip));
+    if (!response.ok) return res.status(404).json({ error:'ZIP not found.' });
+    const body = await response.json();
+    const place = Array.isArray(body.places) ? body.places[0] : null;
+    if (!place) return res.status(404).json({ error:'ZIP not found.' });
+    res.json({ city:place['place name'] || '', state:place['state abbreviation'] || place.state || '' });
+  } catch (error) {
+    res.status(502).json({ error:'ZIP lookup unavailable.' });
+  }
+});
+
+app.post('/api/address/verify-usps', async (req, res) => {
+  try {
+    res.json(await verifyUspsAddress(req.body || {}));
+  } catch (error) {
+    res.status(error.status || 502).json({ error:error.message });
+  }
+});
+
+
 app.use('/api/order-split', createOrderSplitRouter({
   domain: LIGHTSPEED_DOMAIN,
   token: LIGHTSPEED_TOKEN
