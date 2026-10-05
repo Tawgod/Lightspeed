@@ -548,7 +548,7 @@ async function editStagedItem(i){
   } : null;
   document.getElementById('itemEditor').style.display='block';
   document.getElementById('createProductPanel').style.display='none';
-  writeField('newProductSearch','');
+  writeField('newProductSearch',x.requested_sku||((x.quick_add && !String(x.requested_name||'').startsWith('Quick add — '))?x.requested_name:''));
   writeField('manualItemName',x.quick_add && String(x.requested_name||'').startsWith('Quick add — ')?'':x.requested_name||'');
   writeField('manualSku',x.requested_sku||'');
   writeField('orderQty',x.quantity||1);
@@ -814,12 +814,47 @@ async function updateCustomerProfile(){
 async function searchOrderProducts(){const q=document.getElementById('newProductSearch').value.trim();if(!q)return;try{const r=await getJson(api+'/products/search?q='+encodeURIComponent(q));window._orderProductResults=r;document.getElementById('newProductResults').innerHTML=!r.length?'<p>No existing product match. Enter the item name/SKU manually below.</p>':'<table><tr><th>Name</th><th>SKU</th><th>UPC</th><th>Source</th><th>Inventory</th><th></th></tr>'+r.map((x,i)=>`<tr><td>${x.name}</td><td>${x.sku||'—'}</td><td>${x.upc||'—'}</td><td>${x.source}</td><td id="inv-${i}">—</td><td><button onclick="chooseOrderProduct(${i})">Use</button></td></tr>`).join('')+'</table>';r.forEach((x,i)=>{const lsId=x.lightspeed_product_id||(x.source==='lightspeed'?x.id:null);if(lsId)loadInventory(lsId,i)})}catch(e){showNotice(e.message)}}
 async function loadInventory(id,i){try{const d=await getJson(api+'/products/'+encodeURIComponent(id)+'/inventory');const rows=d.data||[];const levels=rows.map(x=>Number(x.inventory_level??x.quantity??x.current_amount??0)).filter(Number.isFinite);document.getElementById('inv-'+i).textContent=levels.length?levels.reduce((a,b)=>a+b,0):'See detail'}catch{}}
 async function chooseOrderProduct(i){
-  selectedOrderProduct=window._orderProductResults[i];
-  document.getElementById('manualItemName').value=selectedOrderProduct.name||'';
-  document.getElementById('manualSku').value=selectedOrderProduct.sku||'';
+  const matched=window._orderProductResults[i];
+  if(!matched)return;
+  selectedOrderProduct=matched;
+
+  // When resolving an existing staged/Quick Add row, preserve the order-specific
+  // information and replace only the product identity/details.
+  if(editingStagedIndex!=null){
+    const existing=stagedItems[editingStagedIndex];
+    document.getElementById('manualItemName').value=matched.name||existing.requested_name||'';
+    document.getElementById('manualSku').value=matched.sku||existing.requested_sku||'';
+    document.getElementById('selectedProduct').textContent=(matched.name||'Product')+(matched.sku?' — '+matched.sku:'');
+    await rankSuppliersForProduct(matched,existing.preferred_supplier_id,existing.supplier_ids||[]);
+
+    const preferredSupplierId=document.getElementById('newSupplier').value||existing.preferred_supplier_id||null;
+    const preferredSupplier=allSuppliers.find(s=>String(s.id)===String(preferredSupplierId));
+    stagedItems[editingStagedIndex]={
+      ...existing,
+      product_id:matched.local_id||matched.local?.id||null,
+      lightspeed_product_id:matched.lightspeed_product_id||matched.id||null,
+      requested_name:matched.name||existing.requested_name,
+      requested_sku:matched.sku||existing.requested_sku||null,
+      preferred_supplier_id:preferredSupplierId,
+      preferred_supplier_name:preferredSupplierId?(preferredSupplier?.name||existing.preferred_supplier_name||null):null,
+      supplier_ids:Array.from(document.getElementById('newSuppliers').selectedOptions).map(o=>o.value),
+      placeholder_product:false,
+      needs_details:false,
+      quick_add:false
+    };
+    editingStagedIndex=null;
+    renderStagedItems();
+    clearCurrentItem();
+    saveDrafts();
+    showNotice('Quick Add item matched to the Lightspeed product.',2200);
+    return;
+  }
+
+  document.getElementById('manualItemName').value=matched.name||'';
+  document.getElementById('manualSku').value=matched.sku||'';
   document.getElementById('orderQty').value='1';
   document.getElementById('newStatus').value='OOS';
-  await rankSuppliersForProduct(selectedOrderProduct);
+  await rankSuppliersForProduct(matched);
   addCurrentItem();
 }
 async function createOrder(){
