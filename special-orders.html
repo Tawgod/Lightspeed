@@ -175,7 +175,9 @@ tbody tr:hover{background:#f2f7fc}
       <div class="toolbar">
         <input id="customerAddress1" placeholder="Address line 1" size="34" autocomplete="address-line1">
         <input id="customerAddress2" placeholder="Address line 2" size="24" autocomplete="address-line2">
+        <button type="button" onclick="verifyCustomerAddress()">Verify address</button>
       </div>
+      <div id="customerAddressVerify" style="display:none;background:var(--green-soft);color:var(--green);border:1px solid #bbdfc6;border-radius:8px;padding:10px;margin-bottom:10px"></div>
       <div class="toolbar">
         <input id="customerCity" placeholder="City" size="22" autocomplete="address-level2">
         <input id="customerState" placeholder="State" size="12" autocomplete="address-level1">
@@ -787,6 +789,38 @@ function lookupCustomerZip(value){
       if(status)status.textContent='ZIP lookup unavailable';
     }
   },200);
+}
+async function verifyCustomerAddress(){
+  const street=document.getElementById('customerAddress1').value.trim();
+  const secondary=document.getElementById('customerAddress2').value.trim();
+  const city=document.getElementById('customerCity').value.trim();
+  const state=document.getElementById('customerState').value.trim();
+  const zip=document.getElementById('customerPostcode').value.trim();
+  const box=document.getElementById('customerAddressVerify');
+  if(!street)return showNotice('Enter the street address before verifying it.');
+  box.style.display='block';
+  box.innerHTML='Checking address with USPS…';
+  try{
+    const r=await getJson(api+'/address/verify-usps',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({street_address:street,secondary_address:secondary,city,state,zip})
+    });
+    const zipText=r.zip_plus4?r.zip+'-'+r.zip_plus4:r.zip;
+    const display=[r.street_address,r.secondary_address,[r.city,r.state,zipText].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+    box.innerHTML='<b>USPS standardized address:</b> '+display+
+      '<div style="margin-top:8px"><button type="button" id="acceptUspsAddress">Use USPS address</button></div>';
+    document.getElementById('acceptUspsAddress').onclick=()=>{
+      writeField('customerPostcode',zipText||'');
+      writeField('customerAddress1',r.street_address||'');
+      writeField('customerAddress2',r.secondary_address||'');
+      writeField('customerCity',r.city||'');
+      writeField('customerState',r.state||'');
+      box.innerHTML='<b>USPS address accepted.</b> '+display;
+      saveDrafts();
+    };
+  }catch(e){
+    box.innerHTML='<b>Could not verify address.</b> '+e.message;
+  }
 }
 function openCustomerModal(){
   if(!selectedCustomer)return showNotice('Select a customer first.');
