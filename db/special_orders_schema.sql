@@ -272,3 +272,23 @@ CREATE TABLE IF NOT EXISTS customer_pickup_events (
 );
 CREATE INDEX IF NOT EXISTS idx_customer_pickup_events_customer
 ON customer_pickup_events (customer_id, occurred_at DESC);
+
+ALTER TABLE supplier_orders
+  ADD COLUMN IF NOT EXISTS lightspeed_sync_status TEXT NOT NULL DEFAULT 'LOCAL_ONLY',
+  ADD COLUMN IF NOT EXISTS sent_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS received_at TIMESTAMPTZ;
+
+ALTER TABLE supplier_order_items
+  ADD COLUMN IF NOT EXISTS special_order_quantity INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS floor_quantity INTEGER NOT NULL DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS receiving_events (
+  id BIGSERIAL PRIMARY KEY,
+  supplier_order_id BIGINT REFERENCES supplier_orders(id) ON DELETE SET NULL,
+  supplier_order_item_id BIGINT REFERENCES supplier_order_items(id) ON DELETE SET NULL,
+  product_id BIGINT REFERENCES products(id),
+  quantity_received INTEGER NOT NULL CHECK (quantity_received > 0),
+  received_by TEXT,
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
