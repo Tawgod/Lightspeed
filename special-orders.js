@@ -271,6 +271,11 @@ export function createSpecialOrdersRouter({
   lightspeedOutletId = null
 }) {
   const router = express.Router();
+  console.log('Special Orders auth diagnostic', {
+    configured: Boolean(adminKey),
+    length: adminKey ? String(adminKey).length : 0,
+    trimmedLength: adminKey ? String(adminKey).trim().length : 0
+  });
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
 
   router.get('/health', async (req, res) => {
