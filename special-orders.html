@@ -214,7 +214,14 @@ function clearProductForm(){
   document.getElementById('createProductResult').innerHTML='';
   localStorage.removeItem(PRODUCT_DRAFT_KEY);
 }
-function showNotice(t){const n=document.getElementById('notice');n.textContent=t;n.style.display='block'}
+let noticeTimer=null;
+function showNotice(t,autoHideMs=0){
+  const n=document.getElementById('notice');
+  if(noticeTimer){clearTimeout(noticeTimer);noticeTimer=null}
+  n.textContent=t;n.style.display='block';
+  if(autoHideMs>0)noticeTimer=setTimeout(()=>{n.style.display='none';n.textContent='';noticeTimer=null},autoHideMs);
+}
+function hideNotice(){const n=document.getElementById('notice');if(noticeTimer)clearTimeout(noticeTimer);noticeTimer=null;n.style.display='none';n.textContent=''}
 function accessKey(){return sessionStorage.getItem('hcSpecialOrdersKey')||''}
 function setAuthState(ok,msg=''){
   const s=document.getElementById('authStatus');
@@ -236,6 +243,7 @@ async function saveKey(){
     setAuthState(true,'Access key accepted. Loading Special Orders…');
     await loadAll();
     restoreDrafts();
+    showNotice('Special Orders ready.',2500);
   }catch(e){
     sessionStorage.removeItem('hcSpecialOrdersKey');
     setAuthState(false,e.message==='Access key missing or incorrect.'
