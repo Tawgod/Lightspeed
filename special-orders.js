@@ -171,7 +171,7 @@ async function upsertProductIdentifiers(client, productId, identifiers = [], sou
       INSERT INTO product_identifiers
         (product_id,identifier_type,identifier_value,normalized_value,source,supplier_id,is_primary,updated_at)
       VALUES ($1,$2,$3,$4,$5,$6,$7,now())
-      ON CONFLICT (identifier_type, normalized_value, COALESCE(supplier_id,0))
+      ON CONFLICT (identifier_type, normalized_value, (COALESCE(supplier_id,0)))
       DO UPDATE SET
         product_id=EXCLUDED.product_id,
         identifier_value=EXCLUDED.identifier_value,
@@ -1365,6 +1365,7 @@ export function createSpecialOrdersRouter({
         OR p.upc=$2
         OR lower(coalesce(sp.supplier_sku,''))=lower($2)
         OR pi.normalized_value=upper(regexp_replace($2,'[^A-Za-z0-9-]','','g'))
+        OR pi.normalized_value=regexp_replace($2,'\\D','','g')
         OR lower(p.name) LIKE lower($3)
         OR lower(coalesce(p.description,'')) LIKE lower($3)
         OR lower(coalesce(sp.supplier_description,'')) LIKE lower($3)
