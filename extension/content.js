@@ -1,6 +1,98 @@
 const HCT_BACKEND = 'https://lightspeed-api-production-c087.up.railway.app';
 const HCT_TIMECLOCK_BACKEND = 'https://timeclock-production-2bfa.up.railway.app';
 
+const hctZipLookupCache = new Map();
+let hctZipLookupTimer = null;
+
+async function hctLookupUsZip(zip) {
+  const clean = String(zip || '').replace(/\D/g, '').slice(0, 5);
+  if (clean.length !== 5) return null;
+  if (hctZipLookupCache.has(clean)) return hctZipLookupCache.get(clean);
+
+  const response = await fetch('https://api.zippopotam.us/us/' + encodeURIComponent(clean));
+  if (!response.ok) return null;
+  const data = await response.json();
+  const place = Array.isArray(data.places) ? data.places[0] : null;
+  const result = place ? {
+    city: place['place name'] || '',
+    state: place['state abbreviation'] || place.state || ''
+  } : null;
+
+  hctZipLookupCache.set(clean, result);
+  return result;
+}
+
+function hctFieldDescriptor(el) {
+  return [
+    el.id,
+    el.name,
+    el.getAttribute('aria-label'),
+    el.getAttribute('placeholder'),
+    el.getAttribute('autocomplete')
+  ].filter(Boolean).join(' ').toLowerCase();
+}
+
+function hctFindAddressField(root, hints) {
+  const fields = [...root.querySelectorAll('input')];
+  return fields.find(el => {
+    const d = hctFieldDescriptor(el);
+    return hints.some(hint => d.includes(hint));
+  }) || null;
+}
+
+function hctSetNativeInputValue(el, value) {
+  if (!el || !value) return;
+  const proto = Object.getPrototypeOf(el);
+  const descriptor = Object.getOwnPropertyDescriptor(proto, 'value');
+  if (descriptor?.set) descriptor.set.call(el, value);
+  else el.value = value;
+  el.dispatchEvent(new Event('input', { bubbles:true }));
+  el.dispatchEvent(new Event('change', { bubbles:true }));
+}
+
+function ensureCustomerZipAutofill() {
+  const inputs = [...document.querySelectorAll('input')];
+
+  for (const zipInput of inputs) {
+    if (zipInput.dataset.hctZipAutofill === '1') continue;
+    const descriptor = hctFieldDescriptor(zipInput);
+    const looksLikeZip =
+      descriptor.includes('postal') ||
+      descriptor.includes('postcode') ||
+      descriptor.includes('zip') ||
+      descriptor.includes('postal-code');
+    if (!looksLikeZip) continue;
+
+    zipInput.dataset.hctZipAutofill = '1';
+
+    zipInput.addEventListener('input', () => {
+      const clean = String(zipInput.value || '').replace(/\D/g, '').slice(0, 5);
+      if (hctZipLookupTimer) clearTimeout(hctZipLookupTimer);
+      if (clean.length !== 5) return;
+
+      hctZipLookupTimer = setTimeout(async () => {
+        try {
+          const place = await hctLookupUsZip(clean);
+          if (!place) return;
+
+          const root =
+            zipInput.closest('form,[role="dialog"],[data-testid*="customer" i],[class*="customer" i]') ||
+            document;
+
+          const city = hctFindAddressField(root, ['address-level2','city','town']);
+          const state = hctFindAddressField(root, ['address-level1','state','province','region']);
+
+          hctSetNativeInputValue(city, place.city);
+          hctSetNativeInputValue(state, place.state);
+        } catch (error) {
+          console.warn('[Hobby Corner] ZIP lookup failed', error);
+        }
+      }, 200);
+    });
+  }
+}
+
+
 function extractPurchaseOrderId() {
   const match = location.pathname.match(/\/inventory\/purchase-order\/([^/?#]+)/i);
   return match ? match[1] : null;
@@ -60,10 +152,12 @@ function ensurePoLabelButton() {
 ensurePoLabelButton();
 ensureSplitLauncher();
 ensureTimeclockButton();
+ensureCustomerZipAutofill();
 new MutationObserver(() => {
   ensurePoLabelButton();
   ensureSplitLauncher();
   ensureTimeclockButton();
+  ensureCustomerZipAutofill();
 }).observe(document.documentElement, {childList:true, subtree:true});
 
 
