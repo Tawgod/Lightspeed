@@ -1891,20 +1891,23 @@ export function createSpecialOrdersRouter({
     const q = String(req.query.q || '').trim();
     if (!q) return res.json(null);
 
+    const normalizedCode = q.toUpperCase().replace(/[^A-Z0-9-]/g, '');
+    const digits = q.replace(/\D/g, '');
+
     if (pool) {
-      const normalizedCode = q.toUpperCase().replace(/[^A-Z0-9-]/g, '');
-      const digits = q.replace(/\D/g, '');
       const local = await pool.query(`
         SELECT DISTINCT p.*
         FROM products p
         LEFT JOIN product_identifiers pi ON pi.product_id=p.id
+        LEFT JOIN supplier_products sp ON sp.product_id=p.id
         WHERE lower(coalesce(p.sku,''))=lower($1)
-           OR p.upc=$1
-           OR pi.normalized_value=$2
-           OR ($3 <> '' AND pi.normalized_value=$3)
+           OR regexp_replace(coalesce(p.upc,''),'\\D','','g')=$2
+           OR pi.normalized_value=$3
+           OR ($2 <> '' AND pi.normalized_value=$2)
+           OR lower(coalesce(sp.supplier_sku,''))=lower($1)
         ORDER BY p.updated_at DESC
         LIMIT 1
-      `, [q, normalizedCode, digits]);
+      `, [q, digits, normalizedCode]);
       if (local.rows[0]) {
         const p = local.rows[0];
         return res.json({ ...p, local_id:p.id, source:'local' });
@@ -1912,22 +1915,39 @@ export function createSpecialOrdersRouter({
     }
 
     try {
-      const result = await lightspeedFetch(
+      const skuResult = await lightspeedVersionedFetch(
         lightspeedDomain,
         lightspeedToken,
-        '/products?sku=' + encodeURIComponent(q)
+        '/products?sku=' + encodeURIComponent(q.toLowerCase()),
+        {},
+        '2026-07'
       );
-      const products = Array.isArray(result?.data) ? result.data : [];
+      const products = Array.isArray(skuResult?.data) ? skuResult.data : [];
       const exact = products.find(p =>
         String(p.sku || '').toLowerCase() === q.toLowerCase() ||
-        String(p.upc || '') === q ||
-        (Array.isArray(p.product_codes) && p.product_codes.some(code =>
-          String(code?.code || code?.value || '') === q
-        ))
-      );
+        String(p.upc || '').replace(/\D/g,'') === digits ||
+        (Array.isArray(p.product_codes) && p.product_codes.some(code => {
+          const value=String(code?.code || code?.value || '');
+          return value.toLowerCase()===q.toLowerCase() || value.replace(/\D/g,'')===digits;
+        }))
+      ) || products[0] || null;
+
       if (exact) {
         const localProduct = await upsertLocalProduct(exact);
         return res.json({ ...exact, local_id:localProduct?.id || null, source:'lightspeed' });
+      }
+
+      const searchResult = await lightspeedVersionedFetch(
+        lightspeedDomain,
+        lightspeedToken,
+        '/search?type=products&sku=' + encodeURIComponent(q.toLowerCase()) + '&page_size=20',
+        {},
+        '2026-07'
+      );
+      const searched = Array.isArray(searchResult?.data) ? searchResult.data : [];
+      if (searched[0]) {
+        const localProduct = await upsertLocalProduct(searched[0]);
+        return res.json({ ...searched[0], local_id:localProduct?.id || null, source:'lightspeed' });
       }
     } catch (error) {
       console.warn('[special-orders] exact product lookup warning:', error.message);
@@ -1940,42 +1960,80 @@ export function createSpecialOrdersRouter({
     const q = String(req.query.q || '').trim();
     if (!q) return res.json([]);
 
+    const normalizedCode = q.toUpperCase().replace(/[^A-Z0-9-]/g, '');
+    const digits = q.replace(/\D/g, '');
     let local = [];
+
     if (pool) {
       const localResult = await pool.query(`
-        SELECT *, CASE
-          WHEN lower(sku)=lower($1) OR upc=$1 THEN 0
-          WHEN lower(name)=lower($1) THEN 1
-          ELSE 2 END AS rank
-        FROM products
-        WHERE lower(coalesce(sku,''))=lower($1) OR upc=$1
-           OR lower(name) LIKE lower($2) OR lower(coalesce(description,'')) LIKE lower($2)
-        ORDER BY rank, name LIMIT 25
-      `, [q, `%${q}%`]);
-      local = localResult.rows.map(p => ({ ...p, local_id: p.id, source: 'local' }));
+        SELECT DISTINCT p.*,
+          CASE
+            WHEN lower(coalesce(p.sku,''))=lower($1) THEN 0
+            WHEN regexp_replace(coalesce(p.upc,''),'\\D','','g')=$3 THEN 0
+            WHEN pi.normalized_value IN ($4,$3) THEN 0
+            WHEN lower(coalesce(sp.supplier_sku,''))=lower($1) THEN 0
+            WHEN lower(p.name)=lower($1) THEN 1
+            ELSE 2
+          END AS rank
+        FROM products p
+        LEFT JOIN product_identifiers pi ON pi.product_id=p.id
+        LEFT JOIN supplier_products sp ON sp.product_id=p.id
+        WHERE lower(coalesce(p.sku,''))=lower($1)
+           OR regexp_replace(coalesce(p.upc,''),'\\D','','g')=$3
+           OR pi.normalized_value=$4
+           OR ($3 <> '' AND pi.normalized_value=$3)
+           OR lower(coalesce(sp.supplier_sku,''))=lower($1)
+           OR lower(p.name) LIKE lower($2)
+           OR lower(coalesce(p.description,'')) LIKE lower($2)
+        ORDER BY rank,p.name
+        LIMIT 25
+      `, [q, `%${q}%`, digits, normalizedCode]);
+      local = localResult.rows.map(p => ({ ...p, local_id:p.id, source:'local' }));
     }
 
     const seen = new Set(local.map(p => p.lightspeed_product_id).filter(Boolean));
     const remote = [];
+
     try {
-      const [skuResult, nameResult] = await Promise.allSettled([
-        lightspeedFetch(lightspeedDomain, lightspeedToken, `/products?sku=${encodeURIComponent(q)}`),
-        lightspeedFetch(lightspeedDomain, lightspeedToken, `/products?name=${encodeURIComponent(q)}`)
-      ]);
-      for (const result of [skuResult, nameResult]) {
+      const requests = [
+        lightspeedVersionedFetch(
+          lightspeedDomain,
+          lightspeedToken,
+          '/products?sku=' + encodeURIComponent(q.toLowerCase()),
+          {},
+          '2026-07'
+        ),
+        lightspeedVersionedFetch(
+          lightspeedDomain,
+          lightspeedToken,
+          '/products?name=' + encodeURIComponent(q),
+          {},
+          '2026-07'
+        ),
+        lightspeedVersionedFetch(
+          lightspeedDomain,
+          lightspeedToken,
+          '/search?type=products&sku=' + encodeURIComponent(q.toLowerCase()) + '&page_size=20',
+          {},
+          '2026-07'
+        )
+      ];
+
+      const results = await Promise.allSettled(requests);
+      for (const result of results) {
         if (result.status !== 'fulfilled') continue;
-        for (const product of (result.value?.data || [])) {
-          if (!seen.has(product.id)) {
-            seen.add(product.id);
-            const localProduct = await upsertLocalProduct(product);
-            remote.push({ ...product, local_id: localProduct?.id || null, source: 'lightspeed' });
-          }
+        for (const product of (Array.isArray(result.value?.data) ? result.value.data : [])) {
+          if (!product?.id || seen.has(product.id)) continue;
+          seen.add(product.id);
+          const localProduct = await upsertLocalProduct(product);
+          remote.push({ ...product, local_id:localProduct?.id || null, source:'lightspeed' });
         }
       }
     } catch (error) {
-      if (local.length === 0) return res.status(502).json({ error: error.message });
+      if (local.length === 0) return res.status(502).json({ error:error.message });
     }
-    res.json([...local, ...remote].slice(0, 25));
+
+    res.json([...local,...remote].slice(0,25));
   });
 
   router.patch('/items/:id/link-product', requireDb, async (req, res) => {
