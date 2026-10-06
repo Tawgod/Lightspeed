@@ -517,6 +517,24 @@ export function createSpecialOrdersRouter({
     `, [req.params.id]);
     if (!product.rows[0]) return res.status(404).json({ error:'Preorder product not found.' });
 
+    if (String(req.query.refresh_lightspeed || '') === '1') {
+      const stale = await pool.query(`
+        SELECT DISTINCT pr.customer_id,c.lightspeed_customer_id,pm.updated_at
+        FROM preorder_requests pr
+        JOIN customers c ON c.id=pr.customer_id
+        LEFT JOIN preorder_allocations pa ON pa.preorder_request_id=pr.id
+        LEFT JOIN customer_purchase_metrics pm
+          ON pm.customer_id=pr.customer_id AND pm.source='LIGHTSPEED'
+        WHERE pr.preorder_product_id=$1
+          AND pr.status='REQUESTED'
+          AND pa.id IS NULL
+          AND c.lightspeed_customer_id IS NOT NULL
+          AND (pm.updated_at IS NULL OR pm.updated_at < now()-interval '24 hours')
+        LIMIT 40
+      `, [req.params.id]);
+      await Promise.allSettled(stale.rows.map(x => refreshLightspeedPurchaseMetrics(x.customer_id)));
+    }
+
     const requests = await pool.query(`
       SELECT
         pr.id AS request_id,
