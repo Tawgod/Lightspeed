@@ -1178,7 +1178,7 @@ async function showAllocationSuggestions(id,available){
   const box=document.getElementById('allocationSuggestions');
   box.innerHTML='<p>Calculating suggested allocation…</p>';
   try{
-    const d=await getJson(api+'/preorders/products/'+id+'/allocation-suggestions?available_quantity='+encodeURIComponent(available));
+    const d=await getJson(api+'/preorders/products/'+id+'/allocation-suggestions?available_quantity='+encodeURIComponent(available)+'&refresh_lightspeed=1');
     const rows=d.suggestions||[];
     box.innerHTML='<h3>Suggested allocation <span class="pill">Advisory only</span></h3>'+
       '<p style="color:#64748b">Higher scores reward reliable pickup history and purchase history. Nothing is allocated until you choose an allocation action.</p>'+
