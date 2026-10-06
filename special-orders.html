@@ -245,6 +245,25 @@ tbody tr:hover{background:#f2f7fc}
     </div>
   </div>
 
+  <div id="productMatchModal" style="display:none;position:fixed;inset:0;background:#0008;z-index:1100;align-items:center;justify-content:center;padding:20px">
+    <div style="background:var(--panel);color:var(--text);width:min(980px,96vw);max-height:88vh;overflow:auto;border-radius:12px;border:1px solid var(--border);padding:18px;box-shadow:0 20px 60px #0007">
+      <div class="toolbar" style="justify-content:space-between">
+        <div>
+          <h2 style="margin:0">Match item to an existing product</h2>
+          <div id="productMatchHint" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
+        </div>
+        <button type="button" onclick="closeProductMatchModal()">Close</button>
+      </div>
+      <div class="toolbar">
+        <input id="productMatchSearch" placeholder="SKU, UPC, ISBN, supplier code, custom number, or product name" size="52"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();runProductMatchSearch()}">
+        <button type="button" onclick="runProductMatchSearch()">Search</button>
+        <button type="button" onclick="createProductFromMatchSearch()">Create new item</button>
+      </div>
+      <div id="productMatchResults"></div>
+    </div>
+  </div>
+
   <div id="createProductPanel" style="display:none;border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin:12px 0">
     <h3>Create New Lightspeed Item <span class="pill">Test write enabled</span></h3>
     <p style="color:#6b7280">Only use this when the correct item does not already exist. It will be tagged <b>Added by SO</b>.</p>
@@ -499,6 +518,13 @@ function showCreateProduct(){
 function hideCreateProduct(){
   document.getElementById('createProductPanel').style.display='none';
 }
+function cleanStagedName(value){
+  const s=String(value||'').trim();
+  const lower=s.toLowerCase();
+  if(lower.startsWith('quick add — '))return s.slice(12).trim();
+  if(lower.startsWith('quick add - '))return s.slice(12).trim();
+  return s;
+}
 function renderStagedItems(){
   const el=document.getElementById('stagedItems');
   if(!stagedItems.length){el.innerHTML='<p style="color:#6b7280">No items added yet.</p>';return}
@@ -551,7 +577,7 @@ async function quickAddItem(){
     stagedItems.push({
       product_id:null,
       lightspeed_product_id:null,
-      requested_name:codeLike?'Quick add — '+value:value,
+      requested_name:value,
       requested_sku:codeLike?value:null,
       quantity:1,
       status:'OOS',
@@ -569,7 +595,7 @@ async function quickAddItem(){
     });
     input.value='';
     renderStagedItems();saveDrafts();
-    showNotice('No exact product found. Quick-added as Needs details.',1800);
+    showNotice('No exact identifier match found. Added as Needs details so you can match or create the product.',2200);
   }catch(e){
     showNotice('Quick Add lookup failed: '+e.message);
   }finally{
@@ -589,8 +615,9 @@ async function editStagedItem(i){
   } : null;
   document.getElementById('itemEditor').style.display='block';
   document.getElementById('createProductPanel').style.display='none';
-  writeField('newProductSearch',x.requested_sku||((x.quick_add && !String(x.requested_name||'').startsWith('Quick add — '))?x.requested_name:''));
-  writeField('manualItemName',x.quick_add && String(x.requested_name||'').startsWith('Quick add — ')?'':x.requested_name||'');
+  const inferredSearch=x.requested_sku||cleanStagedName(x.requested_name);
+  writeField('newProductSearch',inferredSearch);
+  writeField('manualItemName',cleanStagedName(x.requested_name));
   writeField('manualSku',x.requested_sku||'');
   writeField('orderQty',x.quantity||1);
   writeField('newStatus',x.status||'OOS');
@@ -601,10 +628,11 @@ async function editStagedItem(i){
   writeField('sourceUrl',x.source_url||'');
   document.getElementById('selectedProduct').textContent=selectedOrderProduct
     ? ((selectedOrderProduct.name||'Product')+(selectedOrderProduct.sku?' — '+selectedOrderProduct.sku:''))
-    : 'Manual / quick-add item';
+    : 'Unmatched item';
   await rankSuppliersForProduct(selectedOrderProduct,x.preferred_supplier_id,x.supplier_ids||[]);
   document.getElementById('addItemButton').textContent='Update item';
-  document.getElementById('itemEditor').scrollIntoView({behavior:'smooth',block:'center'});
+  if(!selectedOrderProduct)await openProductMatchModal(inferredSearch);
+  else document.getElementById('itemEditor').scrollIntoView({behavior:'smooth',block:'center'});
 }
 function addCurrentItem(){
   if(!selectedCustomer)return showNotice('Select a customer first.');
@@ -960,22 +988,89 @@ async function updateCustomerProfile(){
     saveDrafts();
   }catch(e){showNotice('Customer update failed: '+e.message)}
 }
-async function searchOrderProducts(){const q=document.getElementById('newProductSearch').value.trim();if(!q)return;try{const r=await getJson(api+'/products/search?q='+encodeURIComponent(q));window._orderProductResults=r;document.getElementById('newProductResults').innerHTML=!r.length?'<p>No existing product match. Enter the item name/SKU manually below.</p>':'<table><tr><th>Name</th><th>SKU</th><th>UPC</th><th>Source</th><th>Inventory</th><th></th></tr>'+r.map((x,i)=>`<tr><td>${x.name}</td><td>${x.sku||'—'}</td><td>${x.upc||'—'}</td><td>${x.source}</td><td id="inv-${i}">—</td><td><button onclick="chooseOrderProduct(${i})">Use</button></td></tr>`).join('')+'</table>';r.forEach((x,i)=>{const lsId=x.lightspeed_product_id||(x.source==='lightspeed'?x.id:null);if(lsId)loadInventory(lsId,i)})}catch(e){showNotice(e.message)}}
-async function loadInventory(id,i){try{const d=await getJson(api+'/products/'+encodeURIComponent(id)+'/inventory');const rows=d.data||[];const levels=rows.map(x=>Number(x.inventory_level??x.quantity??x.current_amount??0)).filter(Number.isFinite);document.getElementById('inv-'+i).textContent=levels.length?levels.reduce((a,b)=>a+b,0):'See detail'}catch{}}
-async function chooseOrderProduct(i){
-  const matched=window._orderProductResults[i];
+async function openProductMatchModal(initialQuery){
+  const modal=document.getElementById('productMatchModal');
+  const q=String(initialQuery||'').trim();
+  document.getElementById('productMatchSearch').value=q;
+  document.getElementById('productMatchHint').textContent=editingStagedIndex!=null
+    ? 'Choose the product this staged item should be linked to. Exact identifiers are matched automatically.'
+    : 'Choose an existing product or create a new one if no match exists.';
+  modal.style.display='flex';
+  if(q)await runProductMatchSearch();
+}
+function closeProductMatchModal(){
+  document.getElementById('productMatchModal').style.display='none';
+}
+function onlyDigits(value){
+  return String(value||'').split('').filter(ch=>ch>='0'&&ch<='9').join('');
+}
+function looksLikeCode(value){
+  const s=String(value||'');
+  if(!s || s.includes(' '))return false;
+  return s.split('').every(ch=>'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-'.includes(ch));
+}
+async function runProductMatchSearch(){
+  const q=document.getElementById('productMatchSearch').value.trim();
+  const box=document.getElementById('productMatchResults');
+  if(!q){box.innerHTML='<p>Enter an identifier or product name.</p>';return}
+  box.innerHTML='<p>Searching products…</p>';
+  try{
+    const exact=await getJson(api+'/products/exact?q='+encodeURIComponent(q));
+    if(exact){
+      window._orderProductResults=[exact];
+      await chooseOrderProduct(0,{closeModal:true,exact:true});
+      return;
+    }
+    const r=await getJson(api+'/products/search?q='+encodeURIComponent(q));
+    window._orderProductResults=r;
+    if(!r.length){
+      box.innerHTML='<p><b>No matching products found.</b></p>'+
+        '<p style="color:var(--muted)">Try another identifier/name, or create a new Lightspeed item using the information already entered.</p>'+
+        '<button type="button" onclick="createProductFromMatchSearch()">Create new item</button>';
+      return;
+    }
+    box.innerHTML='<table><tr><th>Name</th><th>SKU</th><th>UPC</th><th>Source</th><th>Inventory</th><th></th></tr>'+
+      r.map((x,i)=>`<tr>
+        <td>${x.name||'—'}</td>
+        <td>${x.sku||'—'}</td>
+        <td>${x.upc||'—'}</td>
+        <td>${x.source||'—'}</td>
+        <td id="match-inv-${i}">—</td>
+        <td><button type="button" onclick="chooseOrderProduct(${i},{closeModal:true})">Use this product</button></td>
+      </tr>`).join('')+'</table>';
+    r.forEach((x,i)=>{
+      const lsId=x.lightspeed_product_id||(x.source==='lightspeed'?x.id:null);
+      if(lsId)loadInventory(lsId,i,'match-inv-');
+    });
+  }catch(e){
+    box.innerHTML='<p class="danger">Product search failed: '+e.message+'</p>';
+  }
+}
+async function searchOrderProducts(){
+  const q=document.getElementById('newProductSearch').value.trim();
+  if(!q)return;
+  await openProductMatchModal(q);
+}
+async function loadInventory(id,i,prefix){
+  try{
+    const d=await getJson(api+'/products/'+encodeURIComponent(id)+'/inventory');
+    const rows=d.data||[];
+    const levels=rows.map(x=>Number(x.inventory_level??x.quantity??x.current_amount??0)).filter(Number.isFinite);
+    const el=document.getElementById((prefix||'inv-')+i);
+    if(el)el.textContent=levels.length?levels.reduce((a,b)=>a+b,0):'See detail';
+  }catch{}
+}
+async function chooseOrderProduct(i,options){
+  options=options||{};
+  const matched=window._orderProductResults&&window._orderProductResults[i];
   if(!matched)return;
   selectedOrderProduct=matched;
-
-  // When resolving an existing staged/Quick Add row, preserve the order-specific
-  // information and replace only the product identity/details.
   if(editingStagedIndex!=null){
     const existing=stagedItems[editingStagedIndex];
     document.getElementById('manualItemName').value=matched.name||existing.requested_name||'';
     document.getElementById('manualSku').value=matched.sku||existing.requested_sku||'';
     document.getElementById('selectedProduct').textContent=(matched.name||'Product')+(matched.sku?' — '+matched.sku:'');
     await rankSuppliersForProduct(matched,existing.preferred_supplier_id,existing.supplier_ids||[]);
-
     const preferredSupplierId=document.getElementById('newSupplier').value||existing.preferred_supplier_id||null;
     const preferredSupplier=allSuppliers.find(s=>String(s.id)===String(preferredSupplierId));
     stagedItems[editingStagedIndex]={
@@ -991,20 +1086,39 @@ async function chooseOrderProduct(i){
       needs_details:false,
       quick_add:false
     };
-    editingStagedIndex=null;
     renderStagedItems();
-    clearCurrentItem();
     saveDrafts();
-    showNotice('Quick Add item matched to the Lightspeed product.',2200);
+    if(options.closeModal)closeProductMatchModal();
+    showNotice((options.exact?'Exact identifier matched: ':'Item matched to ')+(matched.name||matched.sku||'existing product')+'.',2200);
+    document.getElementById('itemEditor').scrollIntoView({behavior:'smooth',block:'center'});
     return;
   }
-
   document.getElementById('manualItemName').value=matched.name||'';
   document.getElementById('manualSku').value=matched.sku||'';
   document.getElementById('orderQty').value='1';
   document.getElementById('newStatus').value='OOS';
   await rankSuppliersForProduct(matched);
-  addCurrentItem();
+  if(options.closeModal)closeProductMatchModal();
+}
+function createProductFromMatchSearch(){
+  const q=String(document.getElementById('productMatchSearch').value||document.getElementById('newProductSearch').value||'').trim();
+  const staged=editingStagedIndex!=null?stagedItems[editingStagedIndex]:null;
+  const existingName=cleanStagedName(staged?.requested_name||document.getElementById('manualItemName').value||'');
+  const existingSku=String(staged?.requested_sku||document.getElementById('manualSku').value||'').trim();
+  const digits=onlyDigits(q);
+  closeProductMatchModal();
+  showCreateProduct();
+  if(existingName)writeField('cpName',existingName);
+  else if(!looksLikeCode(q) && q)writeField('cpName',q);
+  if(existingSku)writeField('cpSku',existingSku);
+  else if(looksLikeCode(q) && q)writeField('cpSku',q);
+  if([8,12,13,14].includes(digits.length))writeField('cpUpc',digits);
+  if([10,13].includes(digits.length))writeField('cpIsbn',digits);
+  if(staged?.source_url)writeField('cpSourceUrl',staged.source_url);
+  if(staged?.notes && !document.getElementById('cpDescription').value)writeField('cpDescription',staged.notes);
+  saveDrafts();
+  document.getElementById('createProductPanel').scrollIntoView({behavior:'smooth',block:'start'});
+  showNotice('New item form opened with the search information filled in. Complete the required product details.',2600);
 }
 async function createOrder(){
   if(!selectedCustomer)return showNotice('Select a Lightspeed customer first.');
