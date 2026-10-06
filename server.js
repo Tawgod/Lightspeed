@@ -48,6 +48,14 @@ app.get('/special-orders', (req, res) => {
   res.sendFile(path.join(__dirname, 'special-orders.html'));
 });
 
+app.get('/special-orders.css', (req, res) => {
+  res.type('text/css').sendFile(path.join(__dirname, 'special-orders.css'));
+});
+
+app.get('/special-orders-client.js', (req, res) => {
+  res.type('application/javascript').sendFile(path.join(__dirname, 'special-orders-client.js'));
+});
+
 app.use('/api/special-orders', createSpecialOrdersRouter({
   lightspeedDomain: LIGHTSPEED_DOMAIN,
   lightspeedToken: LIGHTSPEED_TOKEN,
