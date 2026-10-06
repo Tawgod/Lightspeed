@@ -177,41 +177,56 @@
   </div>
 
   <div id="createProductPanel" style="display:none;border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin:12px 0">
-    <h3>Create New Lightspeed Item <span class="pill">Test write enabled</span></h3>
-    <p style="color:#6b7280">Only use this when the correct item does not already exist. It will be tagged <b>Added by SO</b>.</p>
-    <div class="toolbar">
-      <input id="cpName" placeholder="Product name *" size="36">
-      <input id="cpSku" placeholder="SKU *" size="18">
-      <input id="cpUpc" placeholder="UPC / EAN" size="18">
-      <input id="cpIsbn" placeholder="ISBN" size="18">
-    </div>
-    <div class="toolbar">
-      <input id="cpCost" type="number" step="0.01" min="0" placeholder="Cost *" style="width:110px">
-      <input id="cpRetail" type="number" step="0.01" min="0" placeholder="Retail *" style="width:110px">
-      <div id="categoryPicker" style="min-width:340px;flex:1">
-        <input id="cpCategorySearch" placeholder="Type to filter categories…" size="30" oninput="filterCategoryMatches()">
-        <input id="cpCategory" type="hidden">
-        <div id="categoryBreadcrumb" class="pill" style="margin-left:6px">No category selected</div>
-        <div id="categoryLevels" class="toolbar" style="margin-top:8px"></div>
-        <div id="categoryMatches" style="margin-top:8px"></div>
+    <div class="section-heading">
+      <div>
+        <h3>Create New Lightspeed Item <span class="pill">Test write enabled</span></h3>
+        <p class="form-note">Only use this when the correct item does not already exist. It will be tagged <b>Added by SO</b>.</p>
       </div>
-      <select id="cpSupplier"><option value="">Primary supplier (optional)</option></select>
-      <input id="cpSupplierSku" placeholder="Supplier item #" size="18">
+      <button type="button" class="secondary-button" onclick="clearProductForm()">Clear form</button>
     </div>
-    <div class="toolbar">
-      <textarea id="cpDescription" placeholder="Full item description" rows="3" style="min-width:420px;flex:1"></textarea>
+
+    <div class="form-grid form-grid-4">
+      <label class="field"><span>Product name *</span><input id="cpName" placeholder="Product name"></label>
+      <label class="field"><span>SKU *</span><input id="cpSku" placeholder="SKU"></label>
+      <label class="field"><span>UPC / EAN / ISBN</span><input id="cpProductCode" placeholder="Scan or enter code" inputmode="text" oninput="updateDetectedProductCode()"><small id="cpProductCodeType">Type will be detected automatically</small></label>
+      <label class="field"><span>Supplier item #</span><input id="cpSupplierSku" placeholder="Supplier code"></label>
     </div>
-    <div class="toolbar">
-      <input id="cpSourceUrl" placeholder="Distributor / manufacturer item URL" size="40">
-      <input id="cpImageUrl" placeholder="Image URL" size="40">
-      <select id="cpOrderChannel">
+
+    <div class="form-grid form-grid-4">
+      <label class="field"><span>Cost *</span><input id="cpCost" type="number" step="0.01" min="0" placeholder="0.00"></label>
+      <label class="field"><span>Retail price *</span><input id="cpRetail" type="number" step="0.01" min="0" placeholder="0.00"></label>
+      <label class="field"><span>Primary supplier</span><select id="cpSupplier"><option value="">Optional</option></select></label>
+      <label class="field"><span>Order channel</span><select id="cpOrderChannel">
         <option value="TRADE">Trade / normal supplier order</option>
         <option value="WEB_ONLY">Web only</option>
         <option value="DIRECT">Direct</option>
         <option value="CROWDFUNDING">Crowdfunding</option>
-      </select>
-      <button onclick="createLightspeedProduct()">Create item & use it</button>
-      <button type="button" onclick="hideCreateProduct()">Cancel new item</button>
+      </select></label>
+    </div>
+
+    <div class="field">
+      <span>Category *</span>
+      <div id="categoryPicker">
+        <input id="cpCategorySearch" placeholder="Type to filter categories…" oninput="filterCategoryMatches()">
+        <input id="cpCategory" type="hidden">
+        <div id="categoryBreadcrumb" class="pill">No category selected</div>
+        <div id="categoryLevels" class="toolbar category-levels"></div>
+        <div id="categoryMatches"></div>
+      </div>
+    </div>
+
+    <div class="form-grid form-grid-2">
+      <label class="field"><span>Description</span><textarea id="cpDescription" placeholder="Full item description" rows="4"></textarea></label>
+      <div class="field-stack">
+        <label class="field"><span>Distributor / manufacturer URL</span><input id="cpSourceUrl" placeholder="https://…"></label>
+        <label class="field"><span>Image URL</span><input id="cpImageUrl" placeholder="https://…"></label>
+      </div>
+    </div>
+
+    <div class="toolbar form-actions">
+      <button type="button" onclick="createLightspeedProduct()">Check matches & create item</button>
+      <button type="button" class="secondary-button" onclick="hideCreateProduct()">Cancel</button>
+      <button type="button" class="secondary-button" onclick="clearProductForm()">Clear form</button>
     </div>
     <div id="createProductResult"></div>
   </div>
