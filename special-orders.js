@@ -2162,8 +2162,8 @@ export function createSpecialOrdersRouter({
         LEFT JOIN product_identifiers pi ON pi.product_id=p.id
         LEFT JOIN supplier_products sp ON sp.product_id=p.id
         WHERE lower(coalesce(p.sku,''))=lower($1)
-           OR regexp_replace(coalesce(p.upc,''),'\\D','','g')=$2
-           OR pi.normalized_value=$3
+           OR ($2 <> '' AND regexp_replace(coalesce(p.upc,''),'\\D','','g')=$2)
+           OR ($3 <> '' AND pi.normalized_value=$3)
            OR ($2 <> '' AND pi.normalized_value=$2)
            OR lower(coalesce(sp.supplier_sku,''))=lower($1)
         ORDER BY p.updated_at DESC
@@ -2206,9 +2206,21 @@ export function createSpecialOrdersRouter({
         '2026-07'
       );
       const searched = Array.isArray(searchResult?.data) ? searchResult.data : [];
-      if (searched[0]) {
-        const localProduct = await upsertLocalProduct(searched[0]);
-        return res.json({ ...searched[0], local_id:localProduct?.id || null, source:'lightspeed' });
+      const searchedExact = searched.find(p => {
+        const sku = String(p?.sku || '').trim();
+        const upc = String(p?.upc || '').replace(/\D/g,'');
+        const codes = Array.isArray(p?.product_codes) ? p.product_codes : [];
+        return sku.toLowerCase() === q.toLowerCase() ||
+          (digits !== '' && upc === digits) ||
+          codes.some(code => {
+            const value = String(code?.code || code?.value || '').trim();
+            return value.toLowerCase() === q.toLowerCase() ||
+              (digits !== '' && value.replace(/\D/g,'') === digits);
+          });
+      });
+      if (searchedExact) {
+        const localProduct = await upsertLocalProduct(searchedExact);
+        return res.json({ ...searchedExact, local_id:localProduct?.id || null, source:'lightspeed' });
       }
     } catch (error) {
       console.warn('[special-orders] exact product lookup warning:', error.message);
@@ -2230,8 +2242,8 @@ export function createSpecialOrdersRouter({
         SELECT DISTINCT p.*,
           CASE
             WHEN lower(coalesce(p.sku,''))=lower($1) THEN 0
-            WHEN regexp_replace(coalesce(p.upc,''),'\\D','','g')=$3 THEN 0
-            WHEN pi.normalized_value IN ($4,$3) THEN 0
+            WHEN ($3 <> '' AND regexp_replace(coalesce(p.upc,''),'\\D','','g')=$3) THEN 0
+            WHEN (($4 <> '' AND pi.normalized_value=$4) OR ($3 <> '' AND pi.normalized_value=$3)) THEN 0
             WHEN lower(coalesce(sp.supplier_sku,''))=lower($1) THEN 0
             WHEN lower(p.name)=lower($1) THEN 1
             ELSE 2
@@ -2240,8 +2252,8 @@ export function createSpecialOrdersRouter({
         LEFT JOIN product_identifiers pi ON pi.product_id=p.id
         LEFT JOIN supplier_products sp ON sp.product_id=p.id
         WHERE lower(coalesce(p.sku,''))=lower($1)
-           OR regexp_replace(coalesce(p.upc,''),'\\D','','g')=$3
-           OR pi.normalized_value=$4
+           OR ($3 <> '' AND regexp_replace(coalesce(p.upc,''),'\\D','','g')=$3)
+           OR ($4 <> '' AND pi.normalized_value=$4)
            OR ($3 <> '' AND pi.normalized_value=$3)
            OR lower(coalesce(sp.supplier_sku,''))=lower($1)
            OR lower(p.name) LIKE lower($2)
