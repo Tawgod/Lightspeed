@@ -11,7 +11,7 @@ const orderDraftIds=[
   'newDepartment','newSupplier','supplierNeeded','newNotes','crowdfundingNote','sourceUrl'
 ];
 const productDraftIds=[
-  'cpName','cpSku','cpUpc','cpIsbn','cpCost','cpRetail','cpCategorySearch','cpSupplier',
+  'cpName','cpSku','cpProductCode','cpCost','cpRetail','cpCategorySearch','cpSupplier',
   'cpSupplierSku','cpDescription','cpSourceUrl','cpImageUrl','cpOrderChannel'
 ];
 
@@ -67,6 +67,7 @@ function restoreDrafts(){
       productDraftIds.forEach(id=>writeField(id,product[id]));
       writeField('cpCategory',product.cpCategory);
       if(product.cpCategory && allProductCategories.length)setSelectedCategory(product.cpCategory);
+      updateDetectedProductCode();
     }
   }catch(e){console.warn('Could not restore saved form drafts',e)}
 }
@@ -151,8 +152,9 @@ function clearProductForm(){
   writeField('cpOrderChannel','TRADE');
   document.getElementById('categoryBreadcrumb').textContent='No category selected';
   document.getElementById('categoryMatches').innerHTML='';
-  renderCategoryLevels(null);
   document.getElementById('createProductResult').innerHTML='';
+  updateDetectedProductCode();
+  renderCategoryLevels(null);
   localStorage.removeItem(PRODUCT_DRAFT_KEY);
 }
 function showItemEditor(){
@@ -207,52 +209,34 @@ async function quickAddItem(){
   const input=document.getElementById('quickAddItem');
   const value=input.value.trim();
   if(!value)return;
-
   input.disabled=true;
   try{
-    const matched=await getJson(api+'/products/exact?q='+encodeURIComponent(value));
-    if(matched){
-      selectedOrderProduct=matched;
-      document.getElementById('manualItemName').value=matched.name||value;
-      document.getElementById('manualSku').value=matched.sku||value;
+    const matches=await findProductMatches([value]);
+    const exact=matches.find(x=>x._exact);
+    if(exact){
+      selectedOrderProduct=exact;
+      document.getElementById('manualItemName').value=exact.name||value;
+      document.getElementById('manualSku').value=exact.sku||value;
       document.getElementById('orderQty').value='1';
       document.getElementById('newStatus').value='OOS';
-      await rankSuppliersForProduct(matched);
+      await rankSuppliersForProduct(exact);
       addCurrentItem();
       input.value='';
-      showNotice('Quick Add matched '+(matched.name||value)+' and added the existing product.',2000);
+      showNotice('Quick Add matched '+(exact.name||value)+' and added the existing product.',2000);
       return;
     }
-
-    const codeLike=!/\s/.test(value) && /^[A-Za-z0-9._-]+$/.test(value);
+    const codeLike=looksLikeCode(value);
     stagedItems.push({
-      product_id:null,
-      lightspeed_product_id:null,
-      requested_name:value,
-      requested_sku:codeLike?value:null,
-      quantity:1,
-      status:'OOS',
-      sourcing_department_id:null,
-      preferred_supplier_id:null,
-      preferred_supplier_name:null,
-      supplier_ids:[],
-      supplier_needed:false,
-      notes:null,
-      crowdfunding_note:null,
-      source_url:null,
-      placeholder_product:true,
-      needs_details:true,
-      quick_add:true
+      product_id:null,lightspeed_product_id:null,requested_name:value,requested_sku:codeLike?value:null,
+      quantity:1,status:'OOS',sourcing_department_id:null,preferred_supplier_id:null,preferred_supplier_name:null,
+      supplier_ids:[],supplier_needed:false,notes:null,crowdfunding_note:null,source_url:null,
+      placeholder_product:true,needs_details:true,quick_add:true
     });
     input.value='';
     renderStagedItems();saveDrafts();
     showNotice('No exact identifier match found. Added as Needs details so you can match or create the product.',2200);
-  }catch(e){
-    showNotice('Quick Add lookup failed: '+e.message);
-  }finally{
-    input.disabled=false;
-    input.focus();
-  }
+  }catch(e){showNotice('Quick Add lookup failed: '+e.message)}
+  finally{input.disabled=false;input.focus()}
 }
 async function editStagedItem(i){
   const x=stagedItems[i]; if(!x)return;
@@ -639,6 +623,64 @@ async function updateCustomerProfile(){
     saveDrafts();
   }catch(e){showNotice('Customer update failed: '+e.message)}
 }
+function detectProductCodeType(value){
+  const raw=String(value||'').trim();
+  const compact=raw.replace(/[\s-]/g,'');
+  const digits=onlyDigits(raw);
+  if(!raw)return {type:null,code:'',label:'Type will be detected automatically'};
+  if(/^\d{9}[\dXx]$/.test(compact))return {type:'ISBN',code:compact.toUpperCase(),label:'Detected ISBN-10'};
+  if(/^\d{13}$/.test(compact) && (compact.startsWith('978')||compact.startsWith('979')))return {type:'ISBN',code:compact,label:'Detected ISBN-13'};
+  if(/^\d{12}$/.test(compact))return {type:'UPC',code:compact,label:'Detected UPC'};
+  if(/^\d{8}$/.test(compact) || /^\d{13}$/.test(compact))return {type:'EAN',code:compact,label:'Detected EAN'};
+  if(digits===compact && digits.length>=11 && digits.length<=18)return {type:'UPC',code:compact,label:'Detected numeric product code (stored as UPC)'};
+  return {type:'CUSTOM',code:raw,label:'Custom product code'};
+}
+function updateDetectedProductCode(){
+  const field=document.getElementById('cpProductCode');
+  const label=document.getElementById('cpProductCodeType');
+  if(!field||!label)return;
+  label.textContent=detectProductCodeType(field.value).label;
+}
+async function findProductMatches(queries){
+  const unique=[...new Set((queries||[]).map(x=>String(x||'').trim()).filter(Boolean))];
+  const found=[];
+  const seen=new Set();
+  for(const q of unique){
+    try{
+      const exact=await getJson(api+'/products/exact?q='+encodeURIComponent(q));
+      if(exact){
+        const key=String(exact.lightspeed_product_id||exact.id||exact.local_id||exact.sku||exact.name);
+        if(!seen.has(key)){seen.add(key);found.push({...exact,_match_query:q,_exact:true})}
+      }
+      const rows=await getJson(api+'/products/search?q='+encodeURIComponent(q));
+      for(const row of rows||[]){
+        const key=String(row.lightspeed_product_id||row.id||row.local_id||row.sku||row.name);
+        if(seen.has(key))continue;
+        seen.add(key);
+        found.push({...row,_match_query:q,_exact:false});
+      }
+    }catch(e){
+      console.warn('Product match query failed',q,e);
+    }
+  }
+  return found.slice(0,25);
+}
+function renderProductMatchRows(rows,{allowCreateAnyway=false}={}){
+  const extra=allowCreateAnyway
+    ? '<div class="toolbar" style="margin-top:12px"><button type="button" onclick="confirmCreateNewProduct()">Create new item anyway</button><button type="button" class="secondary-button" onclick="closeProductMatchModal()">Back to form</button></div>'
+    : '';
+  if(!rows.length)return '<p><b>No matching products found.</b></p>'+extra;
+  return '<table><tr><th>Name</th><th>SKU</th><th>UPC / code</th><th>Source</th><th>Match</th><th></th></tr>'+
+    rows.map((x,i)=>`<tr>
+      <td>${x.name||'—'}</td>
+      <td>${x.sku||'—'}</td>
+      <td>${x.upc||'—'}</td>
+      <td>${x.source||'—'}</td>
+      <td>${x._exact?'Exact: ':''}${x._match_query||'—'}</td>
+      <td><button type="button" onclick="chooseOrderProduct(${i},{closeModal:true})">Use existing product</button></td>
+    </tr>`).join('')+'</table>'+extra;
+}
+
 async function openProductMatchModal(initialQuery){
   const modal=document.getElementById('productMatchModal');
   const q=String(initialQuery||'').trim();
@@ -665,37 +707,13 @@ async function runProductMatchSearch(){
   const box=document.getElementById('productMatchResults');
   if(!q){box.innerHTML='<p>Enter an identifier or product name.</p>';return}
   box.innerHTML='<p>Searching products…</p>';
-  try{
-    const exact=await getJson(api+'/products/exact?q='+encodeURIComponent(q));
-    if(exact){
-      window._orderProductResults=[exact];
-      await chooseOrderProduct(0,{closeModal:true,exact:true});
-      return;
-    }
-    const r=await getJson(api+'/products/search?q='+encodeURIComponent(q));
-    window._orderProductResults=r;
-    if(!r.length){
-      box.innerHTML='<p><b>No matching products found.</b></p>'+
-        '<p style="color:var(--muted)">Try another identifier/name, or create a new Lightspeed item using the information already entered.</p>'+
-        '<button type="button" onclick="createProductFromMatchSearch()">Create new item</button>';
-      return;
-    }
-    box.innerHTML='<table><tr><th>Name</th><th>SKU</th><th>UPC</th><th>Source</th><th>Inventory</th><th></th></tr>'+
-      r.map((x,i)=>`<tr>
-        <td>${x.name||'—'}</td>
-        <td>${x.sku||'—'}</td>
-        <td>${x.upc||'—'}</td>
-        <td>${x.source||'—'}</td>
-        <td id="match-inv-${i}">—</td>
-        <td><button type="button" onclick="chooseOrderProduct(${i},{closeModal:true})">Use this product</button></td>
-      </tr>`).join('')+'</table>';
-    r.forEach((x,i)=>{
-      const lsId=x.lightspeed_product_id||(x.source==='lightspeed'?x.id:null);
-      if(lsId)loadInventory(lsId,i,'match-inv-');
-    });
-  }catch(e){
-    box.innerHTML='<p class="danger">Product search failed: '+e.message+'</p>';
+  const rows=await findProductMatches([q]);
+  window._orderProductResults=rows;
+  if(rows.length===1 && rows[0]._exact){
+    await chooseOrderProduct(0,{closeModal:true,exact:true});
+    return;
   }
+  box.innerHTML=renderProductMatchRows(rows);
 }
 async function searchOrderProducts(){
   const q=document.getElementById('newProductSearch').value.trim();
@@ -763,8 +781,8 @@ function createProductFromMatchSearch(){
   else if(!looksLikeCode(q) && q)writeField('cpName',q);
   if(existingSku)writeField('cpSku',existingSku);
   else if(looksLikeCode(q) && q)writeField('cpSku',q);
-  if([8,12,13,14].includes(digits.length))writeField('cpUpc',digits);
-  if([10,13].includes(digits.length))writeField('cpIsbn',digits);
+  if([8,12,13,14].includes(digits.length))writeField('cpProductCode',digits);updateDetectedProductCode();
+  if([10,13].includes(digits.length))
   if(staged?.source_url)writeField('cpSourceUrl',staged.source_url);
   if(staged?.notes && !document.getElementById('cpDescription').value)writeField('cpDescription',staged.notes);
   saveDrafts();
@@ -880,43 +898,77 @@ async function loadProductCategories(){
     showNotice('Could not load Lightspeed categories: '+e.message);
   }
 }
+let pendingCreateProductPayload=null;
 async function createLightspeedProduct(){
+  const payload=buildCreateProductPayload();
+  if(!payload)return;
+  document.getElementById('createProductResult').innerHTML='<p>Checking for existing product matches…</p>';
+  const queries=[
+    payload.product_code?.code,
+    payload.sku,
+    payload.supplier_sku,
+    payload.name
+  ];
+  const matches=await findProductMatches(queries);
+  if(matches.length){
+    pendingCreateProductPayload=payload;
+    window._orderProductResults=matches;
+    document.getElementById('productMatchHint').textContent='These existing products may match the new item. Choose one, or create the new product anyway without losing your form.';
+    document.getElementById('productMatchSearch').value=payload.product_code?.code||payload.sku||payload.name;
+    document.getElementById('productMatchResults').innerHTML=renderProductMatchRows(matches,{allowCreateAnyway:true});
+    document.getElementById('productMatchModal').style.display='flex';
+    document.getElementById('createProductResult').innerHTML='';
+    return;
+  }
+  pendingCreateProductPayload=payload;
+  await confirmCreateNewProduct();
+}
+function buildCreateProductPayload(){
   const name=document.getElementById('cpName').value.trim();
   const sku=document.getElementById('cpSku').value.trim();
   const cost=document.getElementById('cpCost').value;
   const retail=document.getElementById('cpRetail').value;
   const category=document.getElementById('cpCategory').value;
-  if(!name||!sku||cost===''||retail===''||!category)return showNotice('Name, SKU, cost, retail price, and category are required.');
-  const upc=document.getElementById('cpUpc').value.trim();
+  if(!name||!sku||cost===''||retail===''||!category){
+    showNotice('Name, SKU, cost, retail price, and category are required.');
+    return null;
+  }
+  const productCode=detectProductCodeType(document.getElementById('cpProductCode').value);
   const payload={
     name,sku,supply_price:Number(cost),price_including_tax:Number(retail),product_category_id:category,
     description:document.getElementById('cpDescription').value.trim()||null,
     image_url:document.getElementById('cpImageUrl').value.trim()||null,
     source_url:document.getElementById('cpSourceUrl').value.trim()||null,
-    isbn:document.getElementById('cpIsbn').value.trim()||null,
     local_supplier_id:document.getElementById('cpSupplier').value||null,
     supplier_sku:document.getElementById('cpSupplierSku').value.trim()||null,
     order_channel:document.getElementById('cpOrderChannel').value
   };
-  if(upc) payload.product_codes=[{code:upc}];
+  if(productCode.code){
+    payload.product_code=productCode;
+    payload.product_codes=[{type:productCode.type,code:productCode.code}];
+    if(productCode.type==='ISBN')payload.isbn=productCode.code;
+  }
+  return payload;
+}
+async function confirmCreateNewProduct(){
+  const payload=pendingCreateProductPayload||buildCreateProductPayload();
+  if(!payload)return;
   if(!confirm('Create this product in the connected Lightspeed account? This is a real test write.'))return;
+  closeProductMatchModal();
   try{
     const r=await getJson(api+'/products/create-lightspeed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const p=r.lightspeed||{};
     selectedOrderProduct={
-      id:p.id||null,
-      lightspeed_product_id:p.id||null,
-      local_id:r.local?.id||null,
-      name:p.name||name,
-      sku:p.sku||sku,
-      upc:upc||null,
-      source:'lightspeed'
+      id:p.id||null,lightspeed_product_id:p.id||null,local_id:r.local?.id||null,
+      name:p.name||payload.name,sku:p.sku||payload.sku,
+      upc:payload.product_code?.code||null,source:'lightspeed'
     };
     document.getElementById('manualItemName').value=selectedOrderProduct.name||'';
     document.getElementById('manualSku').value=selectedOrderProduct.sku||'';
     document.getElementById('selectedProduct').textContent=(selectedOrderProduct.name||'Product')+(selectedOrderProduct.sku?' — '+selectedOrderProduct.sku:'');
-    document.getElementById('createProductResult').innerHTML=`<p><b>Created.</b> Lightspeed UUID: <code>${p.id||'—'}</code> &nbsp; SKU: <b>${p.sku||sku}</b> &nbsp; Tag: <b>${r.tag||'Added by SO'}</b></p>`+
+    document.getElementById('createProductResult').innerHTML=`<p><b>Created.</b> Lightspeed UUID: <code>${p.id||'—'}</code> &nbsp; SKU: <b>${p.sku||payload.sku}</b> &nbsp; Tag: <b>${r.tag||'Added by SO'}</b></p>`+
       (r.image_warning?`<p class="danger">Product created, but image warning: ${r.image_warning}</p>`:'');
+    pendingCreateProductPayload=null;
     hideCreateProduct();
     document.getElementById('itemEditor').style.display='block';
     clearProductForm();
