@@ -324,7 +324,6 @@ function showNotice(t,autoHideMs=0){
   n.textContent=t;n.style.display='block';
   if(autoHideMs>0)noticeTimer=setTimeout(()=>{n.style.display='none';n.textContent='';noticeTimer=null},autoHideMs);
 }
-function hideNotice(){const n=document.getElementById('notice');if(noticeTimer)clearTimeout(noticeTimer);noticeTimer=null;n.style.display='none';n.textContent=''}
 function accessKey(){return sessionStorage.getItem('hcSpecialOrdersKey')||''}
 function setAuthState(ok,msg=''){
   const s=document.getElementById('authStatus');
@@ -720,15 +719,6 @@ async function searchOrderProducts(){
   if(!q)return;
   await openProductMatchModal(q);
 }
-async function loadInventory(id,i,prefix){
-  try{
-    const d=await getJson(api+'/products/'+encodeURIComponent(id)+'/inventory');
-    const rows=d.data||[];
-    const levels=rows.map(x=>Number(x.inventory_level??x.quantity??x.current_amount??0)).filter(Number.isFinite);
-    const el=document.getElementById((prefix||'inv-')+i);
-    if(el)el.textContent=levels.length?levels.reduce((a,b)=>a+b,0):'See detail';
-  }catch{}
-}
 async function chooseOrderProduct(i,options){
   options=options||{};
   const matched=window._orderProductResults&&window._orderProductResults[i];
@@ -976,7 +966,6 @@ async function confirmCreateNewProduct(){
     showNotice('New Lightspeed item created. Review the quantity/status, then click Add item to order.',3500);
   }catch(e){showNotice('Product creation failed: '+e.message)}
 }
-function copyCreatedToSearch(sku){document.getElementById('newProductSearch').value=sku;showItemEditor();searchOrderProducts()}
 async function loadPreorders(){try{const c=await getJson(api+'/preorders/campaigns');document.getElementById('preorderCampaign').innerHTML='<option value="">Select preorder campaign…</option>'+c.map(x=>`<option value="${x.id}">${x.name} — ${x.request_count} requests</option>`).join('')}catch(e){}}
 async function loadPreorderCampaign(){
   const id=document.getElementById('preorderCampaign').value;
