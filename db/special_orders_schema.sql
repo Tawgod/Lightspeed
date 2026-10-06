@@ -273,6 +273,22 @@ CREATE TABLE IF NOT EXISTS customer_pickup_events (
 CREATE INDEX IF NOT EXISTS idx_customer_pickup_events_customer
 ON customer_pickup_events (customer_id, occurred_at DESC);
 
+CREATE TABLE IF NOT EXISTS customer_purchase_metrics (
+  customer_id BIGINT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  source TEXT NOT NULL,
+  period_start DATE,
+  period_end DATE,
+  purchase_count INTEGER NOT NULL DEFAULT 0,
+  gross_spend NUMERIC(14,2) NOT NULL DEFAULT 0,
+  last_purchase_at TIMESTAMPTZ,
+  metadata JSONB,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (customer_id, source)
+);
+CREATE INDEX IF NOT EXISTS idx_customer_purchase_metrics_source
+ON customer_purchase_metrics (source, updated_at DESC);
+
+
 ALTER TABLE supplier_orders
   ADD COLUMN IF NOT EXISTS lightspeed_sync_status TEXT NOT NULL DEFAULT 'LOCAL_ONLY',
   ADD COLUMN IF NOT EXISTS sent_at TIMESTAMPTZ,
