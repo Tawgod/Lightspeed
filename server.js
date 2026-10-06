@@ -169,7 +169,11 @@ app.get('/extension', (req, res) => {
 <body style="font-family:Arial,sans-serif;max-width:720px;margin:40px auto;padding:0 20px;line-height:1.5;">
   <h1>Hobby Corner Lightspeed Toolkit</h1>
   <p>Download the current Chrome extension package, then install it as an unpacked extension.</p>
-  <p><a href="/extension/download" style="display:inline-block;padding:12px 18px;background:#222;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;">Download Extension ZIP</a></p>
+  <p style="display:flex;gap:10px;flex-wrap:wrap">
+    <a href="/extension/download" style="display:inline-block;padding:12px 18px;background:#222;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;">Download Extension ZIP</a>
+    <a href="https://special-orders-test-production.up.railway.app/special-orders" target="_blank" rel="noopener"
+       style="display:inline-block;padding:12px 18px;background:#0f766e;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;">Open Special Orders</a>
+  </p>
   <ol>
     <li>Download the ZIP and extract it.</li>
     <li>Open <code>chrome://extensions</code>.</li>
