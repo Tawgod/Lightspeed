@@ -2361,7 +2361,16 @@ export function createSpecialOrdersRouter({
       const localProduct = await upsertLocalProduct(product);
 
       const extraIdentifiers = [];
-      if (body.isbn) extraIdentifiers.push({ type:'ISBN', value:body.isbn, source:'special-order-create' });
+      for (const code of (Array.isArray(body.product_codes) ? body.product_codes : [])) {
+        if (code?.code) extraIdentifiers.push({
+          type:String(code.type || 'OTHER').toUpperCase(),
+          value:code.code,
+          source:'special-order-create'
+        });
+      }
+      if (body.isbn && !extraIdentifiers.some(x => x.type==='ISBN' && x.value===body.isbn)) {
+        extraIdentifiers.push({ type:'ISBN', value:body.isbn, source:'special-order-create' });
+      }
       for (const value of (Array.isArray(body.other_codes) ? body.other_codes : [])) {
         if (value) extraIdentifiers.push({ type:'OTHER', value, source:'special-order-create' });
       }
