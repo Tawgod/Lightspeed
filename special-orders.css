@@ -85,3 +85,23 @@ tbody tr:hover{background:#f2f7fc}
   .pill{background:#263449;color:#dbeafe}
 }
 @media(max-width:760px){table{display:block;overflow-x:auto}.wrap{padding:14px}}
+
+/* Structured form controls */
+.form-grid{display:grid;gap:12px;margin:12px 0}
+.form-grid-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.form-grid-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.field,.field-stack{min-width:0}
+.field{display:flex;flex-direction:column;gap:5px}
+.field>span{font-size:11px;font-weight:750;letter-spacing:.02em;color:var(--muted);text-transform:uppercase}
+.field input,.field select,.field textarea{box-sizing:border-box;width:100%;min-width:0}
+.field small{font-size:11px;color:var(--muted);min-height:14px}
+.field-stack{display:grid;gap:12px;align-content:start}
+.section-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.section-heading h3{margin:0 0 5px}
+.form-note{margin:0;color:var(--muted);font-size:13px}
+.form-actions{margin-top:16px}
+.secondary-button{background:#475569!important;border-color:#475569!important}
+.category-levels{margin-top:8px}
+#categoryBreadcrumb{margin-top:7px}
+@media(max-width:900px){.form-grid-4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.form-grid-4,.form-grid-2{grid-template-columns:1fr}.section-heading{flex-direction:column}}
