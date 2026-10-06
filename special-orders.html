@@ -1202,24 +1202,4 @@ if(accessKey()){
 }else{
   showNotice('Special Orders is locked. Enter the internal access key above and click Unlock.');
 }
-</script></body></html>+Number(x.gross_spend||0).toFixed(2)+' · '+x.sources):'Not synced yet'}</td>
-        <td>${(x.flags||[]).join('; ')||'—'}</td>
-      </tr>`).join('')+'</table>');
-  }catch(e){
-    box.innerHTML='';
-    showNotice('Could not build allocation suggestions: '+e.message);
-  }
-}
-
-async function allocatePreorder(id,method){if(!confirm('Allocate currently available preorder inventory using '+method+'?'))return;try{const d=await getJson(api+'/preorders/products/'+id+'/allocate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({method})});showNotice(`Allocated ${d.newlyAllocated}; ${d.remaining} still available.`);await loadPreorderCampaign()}catch(e){showNotice(e.message)}}
-async function loadAll(){await Promise.allSettled([loadStats(),loadOrders(),loadSuppliers(),loadDepartments(),loadProductCategories(),loadPreorders()])}
-document.addEventListener('input',e=>{if(orderDraftIds.includes(e.target.id)||productDraftIds.includes(e.target.id))saveDrafts()});
-document.addEventListener('change',e=>{if(orderDraftIds.includes(e.target.id)||productDraftIds.includes(e.target.id)||e.target.id==='newSuppliers')saveDrafts()});
-document.getElementById('accessKey').value=accessKey();
-setAuthState(false);
-if(accessKey()){
-  saveKey();
-}else{
-  showNotice('Special Orders is locked. Enter the internal access key above and click Unlock.');
-}
 </script></body></html>
