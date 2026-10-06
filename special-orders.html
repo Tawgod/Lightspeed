@@ -312,6 +312,7 @@ tbody tr:hover{background:#f2f7fc}
     <select id="preorderCampaign" onchange="loadPreorderCampaign()"><option value="">Select preorder campaign…</option></select>
   </div>
   <div id="preorderProducts"></div>
+  <div id="allocationSuggestions" style="margin-top:14px"></div>
 </div>
 <div class="panel">
   <div class="toolbar">
@@ -1160,7 +1161,56 @@ async function createLightspeedProduct(){
 }
 function copyCreatedToSearch(sku){document.getElementById('newProductSearch').value=sku;showItemEditor();searchOrderProducts()}
 async function loadPreorders(){try{const c=await getJson(api+'/preorders/campaigns');document.getElementById('preorderCampaign').innerHTML='<option value="">Select preorder campaign…</option>'+c.map(x=>`<option value="${x.id}">${x.name} — ${x.request_count} requests</option>`).join('')}catch(e){}}
-async function loadPreorderCampaign(){const id=document.getElementById('preorderCampaign').value;if(!id){document.getElementById('preorderProducts').innerHTML='';return}try{const d=await getJson(api+'/preorders/campaigns/'+id);document.getElementById('preorderProducts').innerHTML='<table><tr><th>Product</th><th>Ordered</th><th>Received</th><th>Requested</th><th>Allocated</th><th>Available</th><th></th></tr>'+d.products.map(x=>{const available=Math.max(0,Number(x.received_quantity||0)-Number(x.reserved_floor_quantity||0)-Number(x.allocated_total||0));return `<tr><td>${x.item_description}</td><td>${x.ordered_quantity}</td><td>${x.received_quantity}</td><td>${x.requested_total}</td><td>${x.allocated_total}</td><td>${available}</td><td><button onclick="allocatePreorder(${x.id},'FAIR_SHARE')">Fair share</button> <button onclick="allocatePreorder(${x.id},'QUEUE')">Queue</button></td></tr>`}).join('')+'</table>'}catch(e){showNotice(e.message)}}
+async function loadPreorderCampaign(){
+  const id=document.getElementById('preorderCampaign').value;
+  document.getElementById('allocationSuggestions').innerHTML='';
+  if(!id){document.getElementById('preorderProducts').innerHTML='';return}
+  try{
+    const d=await getJson(api+'/preorders/campaigns/'+id);
+    document.getElementById('preorderProducts').innerHTML='<table><tr><th>Product</th><th>Ordered</th><th>Received</th><th>Requested</th><th>Allocated</th><th>Available</th><th></th></tr>'+
+      d.products.map(x=>{
+        const available=Math.max(0,Number(x.received_quantity||0)-Number(x.reserved_floor_quantity||0)-Number(x.allocated_total||0));
+        return `<tr><td>${x.item_description}</td><td>${x.ordered_quantity}</td><td>${x.received_quantity}</td><td>${x.requested_total}</td><td>${x.allocated_total}</td><td>${available}</td><td><button onclick="showAllocationSuggestions(${x.id},${available})">Suggested</button> <button onclick="allocatePreorder(${x.id},'FAIR_SHARE')">Fair share</button> <button onclick="allocatePreorder(${x.id},'QUEUE')">Queue</button></td></tr>`
+      }).join('')+'</table>';
+  }catch(e){showNotice(e.message)}
+}
+async function showAllocationSuggestions(id,available){
+  const box=document.getElementById('allocationSuggestions');
+  box.innerHTML='<p>Calculating suggested allocation…</p>';
+  try{
+    const d=await getJson(api+'/preorders/products/'+id+'/allocation-suggestions?available_quantity='+encodeURIComponent(available));
+    const rows=d.suggestions||[];
+    box.innerHTML='<h3>Suggested allocation <span class="pill">Advisory only</span></h3>'+
+      '<p style="color:#64748b">Higher scores reward reliable pickup history and purchase history. Nothing is allocated until you choose an allocation action.</p>'+
+      (!rows.length?'<p>No unallocated requests for this product.</p>':
+      '<table><tr><th>Rank</th><th>Customer</th><th>Score</th><th>Suggested Qty</th><th>History</th><th>Purchase History</th><th>Flags</th></tr>'+
+      rows.map((x,i)=>`<tr>
+        <td>${i+1}</td>
+        <td>${x.customer_name||x.discord_handle||'Customer'}</td>
+        <td><b>${x.allocation_score}</b></td>
+        <td>${x.suggested_quantity}</td>
+        <td>${x.picked_up||0} picked up · ${x.late_pickups||0} late · ${x.no_pickups||0} missed</td>
+        <td>${x.sources?((x.purchase_count||0)+' purchases · 
+async function allocatePreorder(id,method){if(!confirm('Allocate currently available preorder inventory using '+method+'?'))return;try{const d=await getJson(api+'/preorders/products/'+id+'/allocate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({method})});showNotice(`Allocated ${d.newlyAllocated}; ${d.remaining} still available.`);await loadPreorderCampaign()}catch(e){showNotice(e.message)}}
+async function loadAll(){await Promise.allSettled([loadStats(),loadOrders(),loadSuppliers(),loadDepartments(),loadProductCategories(),loadPreorders()])}
+document.addEventListener('input',e=>{if(orderDraftIds.includes(e.target.id)||productDraftIds.includes(e.target.id))saveDrafts()});
+document.addEventListener('change',e=>{if(orderDraftIds.includes(e.target.id)||productDraftIds.includes(e.target.id)||e.target.id==='newSuppliers')saveDrafts()});
+document.getElementById('accessKey').value=accessKey();
+setAuthState(false);
+if(accessKey()){
+  saveKey();
+}else{
+  showNotice('Special Orders is locked. Enter the internal access key above and click Unlock.');
+}
+</script></body></html>+Number(x.gross_spend||0).toFixed(2)+' · '+x.sources):'Not synced yet'}</td>
+        <td>${(x.flags||[]).join('; ')||'—'}</td>
+      </tr>`).join('')+'</table>');
+  }catch(e){
+    box.innerHTML='';
+    showNotice('Could not build allocation suggestions: '+e.message);
+  }
+}
+
 async function allocatePreorder(id,method){if(!confirm('Allocate currently available preorder inventory using '+method+'?'))return;try{const d=await getJson(api+'/preorders/products/'+id+'/allocate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({method})});showNotice(`Allocated ${d.newlyAllocated}; ${d.remaining} still available.`);await loadPreorderCampaign()}catch(e){showNotice(e.message)}}
 async function loadAll(){await Promise.allSettled([loadStats(),loadOrders(),loadSuppliers(),loadDepartments(),loadProductCategories(),loadPreorders()])}
 document.addEventListener('input',e=>{if(orderDraftIds.includes(e.target.id)||productDraftIds.includes(e.target.id))saveDrafts()});
