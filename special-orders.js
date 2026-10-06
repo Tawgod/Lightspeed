@@ -388,6 +388,249 @@ export function createSpecialOrdersRouter({
     }
   });
 
+  async function refreshLightspeedPurchaseMetrics(customerId) {
+    const customer = await pool.query(
+      'SELECT id,lightspeed_customer_id FROM customers WHERE id=$1',
+      [customerId]
+    );
+    const row = customer.rows[0];
+    if (!row) throw Object.assign(new Error('Customer not found.'), { status:404 });
+    if (!row.lightspeed_customer_id) {
+      throw Object.assign(new Error('Customer is not linked to a Lightspeed customer yet.'), { status:409 });
+    }
+
+    const pageSize = 1000;
+    let offset = 0;
+    let purchaseCount = 0;
+    let grossSpend = 0;
+    let lastPurchaseAt = null;
+    let oldestPurchaseAt = null;
+
+    while (offset < 5000) {
+      const params = new URLSearchParams({
+        type:'sales',
+        customer_id:String(row.lightspeed_customer_id),
+        state:'closed',
+        page_size:String(pageSize),
+        offset:String(offset),
+        order_by:'date',
+        order_direction:'desc'
+      });
+      const result = await lightspeedVersionedFetch(
+        lightspeedDomain,
+        lightspeedToken,
+        '/search?' + params.toString(),
+        {},
+        '2026-07'
+      );
+      const sales = Array.isArray(result?.data) ? result.data : [];
+      for (const sale of sales) {
+        const total = Number(
+          sale.sale_total ??
+          sale.total_price ??
+          sale.total_price_including_tax ??
+          sale.total ??
+          sale.total_value ??
+          0
+        );
+        if (Number.isFinite(total) && total > 0) grossSpend += total;
+        purchaseCount++;
+
+        const rawDate = sale.date || sale.sale_date || sale.created_at || sale.updated_at || null;
+        const parsed = rawDate ? new Date(rawDate) : null;
+        if (parsed && !Number.isNaN(parsed.getTime())) {
+          if (!lastPurchaseAt || parsed > lastPurchaseAt) lastPurchaseAt = parsed;
+          if (!oldestPurchaseAt || parsed < oldestPurchaseAt) oldestPurchaseAt = parsed;
+        }
+      }
+      if (sales.length < pageSize) break;
+      offset += pageSize;
+    }
+
+    const { rows } = await pool.query(`
+      INSERT INTO customer_purchase_metrics
+        (customer_id,source,period_start,period_end,purchase_count,gross_spend,last_purchase_at,metadata,updated_at)
+      VALUES ($1,'LIGHTSPEED',$2,$3,$4,$5,$6,$7::jsonb,now())
+      ON CONFLICT (customer_id,source) DO UPDATE SET
+        period_start=EXCLUDED.period_start,
+        period_end=EXCLUDED.period_end,
+        purchase_count=EXCLUDED.purchase_count,
+        gross_spend=EXCLUDED.gross_spend,
+        last_purchase_at=EXCLUDED.last_purchase_at,
+        metadata=EXCLUDED.metadata,
+        updated_at=now()
+      RETURNING *
+    `, [
+      customerId,
+      oldestPurchaseAt ? oldestPurchaseAt.toISOString().slice(0,10) : null,
+      lastPurchaseAt ? lastPurchaseAt.toISOString().slice(0,10) : null,
+      purchaseCount,
+      grossSpend.toFixed(2),
+      lastPurchaseAt ? lastPurchaseAt.toISOString() : null,
+      JSON.stringify({ capped_at_sales:5000 })
+    ]);
+    return rows[0];
+  }
+
+  router.post('/customers/:id/purchase-metrics/lightspeed-refresh', requireDb, async (req, res) => {
+    try {
+      res.json(await refreshLightspeedPurchaseMetrics(req.params.id));
+    } catch (error) {
+      res.status(error.status || 502).json({ error:error.message });
+    }
+  });
+
+  router.post('/customers/:id/purchase-metrics', requireDb, async (req, res) => {
+    const source = String(req.body?.source || '').trim().toUpperCase();
+    if (!source || source === 'LIGHTSPEED') {
+      return res.status(400).json({ error:'Use a non-Lightspeed source such as RMS.' });
+    }
+    const purchaseCount = Math.max(0, Number(req.body?.purchase_count || 0));
+    const grossSpend = Math.max(0, Number(req.body?.gross_spend || 0));
+    const { rows } = await pool.query(`
+      INSERT INTO customer_purchase_metrics
+        (customer_id,source,period_start,period_end,purchase_count,gross_spend,last_purchase_at,metadata,updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,now())
+      ON CONFLICT (customer_id,source) DO UPDATE SET
+        period_start=EXCLUDED.period_start,
+        period_end=EXCLUDED.period_end,
+        purchase_count=EXCLUDED.purchase_count,
+        gross_spend=EXCLUDED.gross_spend,
+        last_purchase_at=EXCLUDED.last_purchase_at,
+        metadata=EXCLUDED.metadata,
+        updated_at=now()
+      RETURNING *
+    `, [
+      req.params.id,source,req.body?.period_start||null,req.body?.period_end||null,
+      purchaseCount,grossSpend,req.body?.last_purchase_at||null,
+      JSON.stringify(req.body?.metadata||{})
+    ]);
+    res.json(rows[0]);
+  });
+
+  router.get('/preorders/products/:id/allocation-suggestions', requireDb, async (req, res) => {
+    const product = await pool.query(`
+      SELECT pp.*,pc.name AS campaign_name,pc.allocation_method
+      FROM preorder_products pp
+      JOIN preorder_campaigns pc ON pc.id=pp.preorder_campaign_id
+      WHERE pp.id=$1
+    `, [req.params.id]);
+    if (!product.rows[0]) return res.status(404).json({ error:'Preorder product not found.' });
+
+    const requests = await pool.query(`
+      SELECT
+        pr.id AS request_id,
+        pr.customer_id,
+        pr.requested_quantity,
+        pr.queue_position,
+        pr.requested_at,
+        c.name AS customer_name,
+        c.discord_handle,
+        c.lightspeed_customer_id,
+        COALESCE(hist.picked_up,0)::int AS picked_up,
+        COALESCE(hist.late_pickups,0)::int AS late_pickups,
+        COALESCE(hist.no_pickups,0)::int AS no_pickups,
+        hist.last_no_pickup,
+        COALESCE(pm.purchase_count,0)::int AS purchase_count,
+        COALESCE(pm.gross_spend,0)::numeric AS gross_spend,
+        pm.last_purchase_at,
+        pm.sources,
+        pm.metrics_updated_at
+      FROM preorder_requests pr
+      JOIN customers c ON c.id=pr.customer_id
+      LEFT JOIN preorder_allocations pa ON pa.preorder_request_id=pr.id
+      LEFT JOIN LATERAL (
+        SELECT
+          count(*) FILTER (WHERE event_type='PICKED_UP') AS picked_up,
+          count(*) FILTER (WHERE event_type='LATE_PICKUP') AS late_pickups,
+          count(*) FILTER (WHERE event_type='NO_PICKUP') AS no_pickups,
+          max(occurred_at) FILTER (WHERE event_type='NO_PICKUP') AS last_no_pickup
+        FROM customer_pickup_events
+        WHERE customer_id=pr.customer_id
+      ) hist ON true
+      LEFT JOIN LATERAL (
+        SELECT
+          COALESCE(sum(purchase_count),0) AS purchase_count,
+          COALESCE(sum(gross_spend),0) AS gross_spend,
+          max(last_purchase_at) AS last_purchase_at,
+          string_agg(source,',' ORDER BY source) AS sources,
+          min(updated_at) AS metrics_updated_at
+        FROM customer_purchase_metrics
+        WHERE customer_id=pr.customer_id
+      ) pm ON true
+      WHERE pr.preorder_product_id=$1
+        AND pr.status='REQUESTED'
+        AND pa.id IS NULL
+      ORDER BY COALESCE(pr.queue_position,2147483647),pr.requested_at
+    `, [req.params.id]);
+
+    const now = Date.now();
+    const ranked = requests.rows.map(r => {
+      const spend = Number(r.gross_spend || 0);
+      const purchases = Number(r.purchase_count || 0);
+      const pickedUp = Number(r.picked_up || 0);
+      const late = Number(r.late_pickups || 0);
+      const missed = Number(r.no_pickups || 0);
+      const lastPurchase = r.last_purchase_at ? new Date(r.last_purchase_at).getTime() : 0;
+      const lastMissed = r.last_no_pickup ? new Date(r.last_no_pickup).getTime() : 0;
+
+      const spendPoints = Math.min(25, Math.log10(1 + spend) * 7);
+      const purchasePoints = Math.min(15, Math.sqrt(purchases) * 2.5);
+      const pickupPoints = Math.min(20, pickedUp * 3);
+      const recencyPoints = lastPurchase && (now-lastPurchase) <= 90*86400000 ? 10 :
+                            lastPurchase && (now-lastPurchase) <= 365*86400000 ? 5 : 0;
+      const latePenalty = Math.min(15, late * 4);
+      let missedPenalty = missed * 22;
+      if (lastMissed && (now-lastMissed) <= 365*86400000) missedPenalty += 12;
+      missedPenalty = Math.min(60, missedPenalty);
+
+      const queueBonus = r.queue_position ? Math.max(0, 8 - Math.min(8, Number(r.queue_position)-1)) : 0;
+      const score = Math.max(0, Math.min(100,
+        40 + spendPoints + purchasePoints + pickupPoints + recencyPoints + queueBonus - latePenalty - missedPenalty
+      ));
+
+      return {
+        ...r,
+        gross_spend:Number(spend.toFixed(2)),
+        allocation_score:Number(score.toFixed(1)),
+        score_breakdown:{
+          base:40,
+          spend:Number(spendPoints.toFixed(1)),
+          purchase_frequency:Number(purchasePoints.toFixed(1)),
+          successful_pickups:Number(pickupPoints.toFixed(1)),
+          purchase_recency:recencyPoints,
+          queue_position:Number(queueBonus.toFixed(1)),
+          late_pickup_penalty:-Number(latePenalty.toFixed(1)),
+          no_pickup_penalty:-Number(missedPenalty.toFixed(1))
+        },
+        flags:[
+          ...(missed>0 ? [missed+' prior no-pickup'+(missed===1?'':'s')] : []),
+          ...(late>0 ? [late+' late pickup'+(late===1?'':'s')] : []),
+          ...(!r.sources ? ['purchase history not synced'] : [])
+        ]
+      };
+    }).sort((a,b) =>
+      b.allocation_score-a.allocation_score ||
+      Number(a.queue_position||2147483647)-Number(b.queue_position||2147483647) ||
+      new Date(a.requested_at)-new Date(b.requested_at)
+    );
+
+    let available = Number(req.query.available_quantity ?? product.rows[0].received_quantity ?? 0);
+    available = Math.max(0, available - Number(product.rows[0].reserved_floor_quantity || 0));
+    const suggestions = ranked.map(r => {
+      const qty = Math.min(Number(r.requested_quantity||1),available);
+      available -= qty;
+      return { ...r, suggested_quantity:Math.max(0,qty) };
+    });
+
+    res.json({
+      product:product.rows[0],
+      scoring_version:'v1',
+      advisory_only:true,
+      suggestions
+    });
+  });
+
   router.get('/customers/:id/pickup-history', requireDb, async (req, res) => {
     const { rows } = await pool.query(`
       SELECT e.*,
