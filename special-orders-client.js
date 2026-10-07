@@ -356,7 +356,9 @@ async function saveKey(){
 }
 async function getJson(url,opts={}){
   const headers={...(opts.headers||{}),'x-hobby-corner-key':accessKey()};
-  const r=await fetch(url,{...opts,headers});let d={};try{d=await r.json()}catch{}
+  const fetchOpts={...opts,headers};
+  if(!fetchOpts.method || String(fetchOpts.method).toUpperCase()==='GET')fetchOpts.cache='no-store';
+  const r=await fetch(url,fetchOpts);let d={};try{d=await r.json()}catch{}
   if(r.status===401){
     sessionStorage.removeItem('hcSpecialOrdersKey');
     setAuthState(false,'Special Orders is locked. Enter the internal access key and click Unlock.');
@@ -734,23 +736,26 @@ async function findProductMatches(queries){
   const unique=[...new Set((queries||[]).map(x=>String(x||'').trim()).filter(Boolean))];
   const found=[];
   const seen=new Set();
+  const add=(row,q,exact=false)=>{
+    if(!row)return;
+    const key=String(row.lightspeed_product_id||row.id||row.local_id||row.sku||row.upc||row.name);
+    if(seen.has(key))return;
+    seen.add(key);
+    found.push({...row,_match_query:q,_exact:Boolean(exact)});
+  };
   for(const q of unique){
-    try{
-      const exact=await getJson(api+'/products/exact?q='+encodeURIComponent(q));
-      if(exact){
-        const key=String(exact.lightspeed_product_id||exact.id||exact.local_id||exact.sku||exact.name);
-        if(!seen.has(key)){seen.add(key);found.push({...exact,_match_query:q,_exact:true})}
-      }
-      const rows=await getJson(api+'/products/search?q='+encodeURIComponent(q));
-      for(const row of rows||[]){
-        const key=String(row.lightspeed_product_id||row.id||row.local_id||row.sku||row.name);
-        if(seen.has(key))continue;
-        seen.add(key);
-        found.push({...row,_match_query:q,_exact:false});
-      }
-    }catch(e){
-      console.warn('Product match query failed',q,e);
-    }
+    const encoded=encodeURIComponent(q);
+    const calls=await Promise.allSettled([
+      getJson(api+'/products/exact?q='+encoded),
+      getJson(api+'/products/search?q='+encoded),
+      getJson(api+'/products/potential-matches?q='+encoded)
+    ]);
+    const exact=calls[0].status==='fulfilled'?calls[0].value:null;
+    add(exact,q,true);
+    const searchRows=calls[1].status==='fulfilled'&&Array.isArray(calls[1].value)?calls[1].value:[];
+    searchRows.forEach(row=>add(row,q,false));
+    const fuzzyRows=calls[2].status==='fulfilled'&&Array.isArray(calls[2].value)?calls[2].value:[];
+    fuzzyRows.forEach(row=>add(row,q,false));
   }
   return found.slice(0,25);
 }
