@@ -866,8 +866,8 @@ function createProductFromMatchSearch(){
   else if(!looksLikeCode(q) && q)writeField('cpName',q);
   if(existingSku)writeField('cpSku',existingSku);
   else if(looksLikeCode(q) && q)writeField('cpSku',q);
-  if([8,12,13,14].includes(digits.length))writeField('cpProductCode',digits);updateDetectedProductCode();
-  if([10,13].includes(digits.length))
+  if([8,10,12,13,14].includes(digits.length))writeField('cpProductCode',digits);
+  updateDetectedProductCode();
   if(staged?.source_url)writeField('cpSourceUrl',staged.source_url);
   if(staged?.notes && !document.getElementById('cpDescription').value)writeField('cpDescription',staged.notes);
   saveDrafts();
@@ -987,26 +987,56 @@ let pendingCreateProductPayload=null;
 async function createLightspeedProduct(){
   const payload=buildCreateProductPayload();
   if(!payload)return;
-  document.getElementById('createProductResult').innerHTML='<p>Checking for existing product matches…</p>';
+
+  pendingCreateProductPayload=payload;
+  const result=document.getElementById('createProductResult');
+  result.innerHTML='<p>Checking for existing product matches…</p>'+
+    '<div class="toolbar"><button type="button" onclick="confirmCreateNewProduct()">Create without waiting</button></div>';
+
   const queries=[
     payload.product_code?.code,
     payload.sku,
     payload.supplier_sku,
     payload.name
-  ];
-  const matches=await findProductMatches(queries);
+  ].filter(Boolean);
+
+  let matches=[];
+  let timedOut=false;
+  try{
+    const outcome=await Promise.race([
+      findProductMatches(queries).then(rows=>({rows})),
+      new Promise(resolve=>setTimeout(()=>resolve({rows:[],timeout:true}),4500))
+    ]);
+    matches=outcome.rows||[];
+    timedOut=Boolean(outcome.timeout);
+  }catch(e){
+    console.warn('Pre-create product match check failed',e);
+  }
+
   if(matches.length){
-    pendingCreateProductPayload=payload;
     window._orderProductResults=matches;
-    document.getElementById('productMatchHint').textContent='These existing products may match the new item. Choose one, or create the new product anyway without losing your form.';
+    document.getElementById('productMatchHint').textContent=
+      'These existing products may match the new item. Choose one, or create the new product anyway without losing your form.';
     document.getElementById('productMatchSearch').value=payload.product_code?.code||payload.sku||payload.name;
     document.getElementById('productMatchResults').innerHTML=renderProductMatchRows(matches,{allowCreateAnyway:true});
     document.getElementById('productMatchModal').style.display='flex';
-    document.getElementById('createProductResult').innerHTML='';
+    result.innerHTML='';
     return;
   }
-  pendingCreateProductPayload=payload;
-  await confirmCreateNewProduct();
+
+  if(timedOut){
+    result.innerHTML='<p>Match check is taking longer than expected. You can create the item now or search again.</p>'+
+      '<div class="toolbar"><button type="button" onclick="confirmCreateNewProduct()">Create new item</button>'+
+      '<button type="button" class="secondary-button" onclick="retryCreateProductMatchCheck()">Check matches again</button></div>';
+    return;
+  }
+
+  result.innerHTML='<p>No likely existing product matches were found.</p>'+
+    '<div class="toolbar"><button type="button" onclick="confirmCreateNewProduct()">Create new item</button>'+
+    '<button type="button" class="secondary-button" onclick="retryCreateProductMatchCheck()">Check matches again</button></div>';
+}
+async function retryCreateProductMatchCheck(){
+  await createLightspeedProduct();
 }
 function buildCreateProductPayload(){
   const name=document.getElementById('cpName').value.trim();
