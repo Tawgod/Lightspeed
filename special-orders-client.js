@@ -1111,14 +1111,15 @@ async function confirmCreateNewProduct(){
     document.getElementById('manualItemName').value=selectedOrderProduct.name||'';
     document.getElementById('manualSku').value=selectedOrderProduct.sku||'';
     document.getElementById('selectedProduct').textContent=(selectedOrderProduct.name||'Product')+(selectedOrderProduct.sku?' — '+selectedOrderProduct.sku:'');
-    document.getElementById('createProductResult').innerHTML=`<p><b>Created.</b> Lightspeed UUID: <code>${p.id||'—'}</code> &nbsp; SKU: <b>${p.sku||payload.sku}</b> &nbsp; Tag: <b>${r.tag||'Added by SO'}</b></p>`+
-      (r.image_warning?`<p class="danger">Product created, but image warning: ${r.image_warning}</p>`:'');
+    const createdMessage='Item created in Lightspeed — '+(p.name||payload.name)+' — SKU: '+(p.sku||payload.sku)+' — ID: '+(p.id||'—');
     pendingCreateProductPayload=null;
-    hideCreateProduct();
     document.getElementById('itemEditor').style.display='block';
     clearProductForm();
+    hideCreateProduct();
     saveDrafts();
-    showNotice('New Lightspeed item created. Review the quantity/status, then click Add item to order.',3500);
+    showNotice(createdMessage+'\nReview the quantity/status, then click Add item to order.');
+    const selected=document.getElementById('selectedProduct');
+    if(selected)selected.textContent=createdMessage;
   }catch(e){showNotice('Product creation failed: '+e.message)}
 }
 async function loadPreorders(){try{const c=await getJson(api+'/preorders/campaigns');document.getElementById('preorderCampaign').innerHTML='<option value="">Select preorder campaign…</option>'+c.map(x=>`<option value="${x.id}">${x.name} — ${x.request_count} requests</option>`).join('')}catch(e){}}
