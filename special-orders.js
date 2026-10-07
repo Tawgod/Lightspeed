@@ -2011,7 +2011,16 @@ export function createSpecialOrdersRouter({
   });
 
   registerSpecialOrderProductRoutes(router, {
-    pool,
+    pool: {
+      query: (...args) => {
+        if (!pool) throw Object.assign(new Error('Special-order database is not configured yet.'), { status:503 });
+        return pool.query(...args);
+      },
+      connect: (...args) => {
+        if (!pool) throw Object.assign(new Error('Special-order database is not configured yet.'), { status:503 });
+        return pool.connect(...args);
+      }
+    },
     requireDb,
     lightspeedDomain,
     lightspeedToken,
