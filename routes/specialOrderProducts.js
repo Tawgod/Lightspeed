@@ -105,6 +105,139 @@ export function registerSpecialOrderProductRoutes(router, deps) {
     }
   });
 
+  router.post('/products/match-local', requireDb, async (req, res) => {
+    res.set('Cache-Control','no-store');
+    const body=req.body||{};
+    const identifiers=[
+      body.product_code,
+      body.sku,
+      body.supplier_sku
+    ].map(v=>String(v||'').trim()).filter(Boolean);
+    const normalized=identifiers.map(v=>v.toUpperCase().replace(/[^A-Z0-9-]/g,''));
+    const digits=identifiers.map(v=>v.replace(/\D/g,'')).filter(Boolean);
+    const name=String(body.name||'').trim();
+    const description=String(body.description||'').trim();
+    const supplierId=body.supplier_id||null;
+
+    const exactResult=await pool.query(`
+      SELECT DISTINCT
+        p.id AS local_id,p.lightspeed_product_id,p.name,p.sku,p.upc,p.description,p.brand,
+        sp.supplier_id,sp.supplier_sku,sp.supplier_description,sp.manufacturer_text,sp.supply_price,
+        s.name AS supplier_name
+      FROM products p
+      LEFT JOIN product_identifiers pi ON pi.product_id=p.id
+      LEFT JOIN supplier_products sp
+        ON sp.product_id=p.id
+       AND ($1::bigint IS NULL OR sp.supplier_id=$1::bigint)
+      LEFT JOIN suppliers s ON s.id=sp.supplier_id
+      WHERE
+        (cardinality($2::text[])>0 AND lower(coalesce(p.sku,'')) = ANY(
+          SELECT lower(x) FROM unnest($2::text[]) x
+        ))
+        OR (cardinality($3::text[])>0 AND regexp_replace(coalesce(p.upc,''),'\\D','','g') = ANY($3::text[]))
+        OR (cardinality($4::text[])>0 AND pi.normalized_value = ANY($4::text[]))
+        OR (cardinality($2::text[])>0 AND lower(coalesce(sp.supplier_sku,'')) = ANY(
+          SELECT lower(x) FROM unnest($2::text[]) x
+        ))
+      LIMIT 25
+    `,[supplierId,identifiers,digits,normalized]);
+
+    if(exactResult.rows.length){
+      return res.json({stage:'exact',matches:exactResult.rows.map(x=>({...x,score:100,reasons:['exact identifier']}))});
+    }
+
+    const fuzzyQueries=[name,description].filter(Boolean);
+    const queryText=fuzzyQueries.join(' ').trim();
+    if(!queryText)return res.json({stage:'local',matches:[]});
+
+    const tokens=matchTokens(queryText).slice(0,10);
+    const patterns=tokens.map(t=>`%${t}%`);
+    const fuzzyResult=await pool.query(`
+      SELECT DISTINCT
+        p.id AS local_id,p.lightspeed_product_id,p.name,p.sku,p.upc,p.description,p.brand,
+        sp.supplier_id,sp.supplier_sku,sp.supplier_description,sp.manufacturer_text,sp.supply_price,
+        s.name AS supplier_name
+      FROM products p
+      LEFT JOIN supplier_products sp
+        ON sp.product_id=p.id
+       AND ($1::bigint IS NULL OR sp.supplier_id=$1::bigint)
+      LEFT JOIN suppliers s ON s.id=sp.supplier_id
+      WHERE
+        lower(p.name) LIKE lower($2)
+        OR lower(coalesce(p.description,'')) LIKE lower($2)
+        OR lower(coalesce(sp.supplier_description,'')) LIKE lower($2)
+        OR EXISTS (
+          SELECT 1 FROM unnest($3::text[]) pat
+          WHERE lower(p.name) LIKE pat
+             OR lower(coalesce(p.description,'')) LIKE pat
+             OR lower(coalesce(sp.supplier_description,'')) LIKE pat
+             OR lower(coalesce(p.brand,'')) LIKE pat
+             OR lower(coalesce(sp.manufacturer_text,'')) LIKE pat
+        )
+      LIMIT 120
+    `,[supplierId,`%${name||queryText}%`,patterns]);
+
+    const scored=fuzzyResult.rows
+      .map(row=>({...row,...scorePotentialMatch(queryText,row)}))
+      .filter(row=>row.score>=18)
+      .sort((a,b)=>b.score-a.score||String(a.name).localeCompare(String(b.name)))
+      .slice(0,25);
+
+    res.json({stage:'local',matches:scored});
+  });
+
+  router.post('/products/match-remote', async (req, res) => {
+    res.set('Cache-Control','no-store');
+    const body=req.body||{};
+    const identifiers=[
+      body.product_code,
+      body.sku,
+      body.supplier_sku
+    ].map(v=>String(v||'').trim()).filter(Boolean);
+    const name=String(body.name||'').trim();
+    const requests=[];
+
+    const primaryIdentifier=identifiers[0]||null;
+    if(primaryIdentifier){
+      requests.push(
+        lightspeedVersionedFetch(
+          lightspeedDomain,
+          lightspeedToken,
+          '/products?sku='+encodeURIComponent(primaryIdentifier.toLowerCase()),
+          {},
+          '2026-07'
+        )
+      );
+    }
+    if(name){
+      requests.push(
+        lightspeedVersionedFetch(
+          lightspeedDomain,
+          lightspeedToken,
+          '/products?name='+encodeURIComponent(name),
+          {},
+          '2026-07'
+        )
+      );
+    }
+
+    const results=await Promise.allSettled(requests);
+    const seen=new Set();
+    const matches=[];
+    for(const result of results){
+      if(result.status!=='fulfilled')continue;
+      const rows=Array.isArray(result.value?.data)?result.value.data:[];
+      for(const p of rows){
+        if(!p?.id||seen.has(p.id))continue;
+        seen.add(p.id);
+        matches.push({...p,source:'lightspeed'});
+        if(matches.length>=25)break;
+      }
+      if(matches.length>=25)break;
+    }
+    res.json({stage:'remote',matches});
+  });
+
   router.get('/products/potential-matches', requireDb, async (req, res) => {
     res.set('Cache-Control','no-store');
     const q = String(req.query.q || '').trim();
