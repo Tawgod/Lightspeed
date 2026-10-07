@@ -1080,7 +1080,7 @@ function buildCreateProductPayload(){
   }
   const productCode=detectProductCodeType(document.getElementById('cpProductCode').value);
   const payload={
-    name,sku,supply_price:Number(cost),price_including_tax:Number(retail),product_category_id:category,
+    name,sku,supply_price:Number(cost),price_excluding_tax:Number(retail),product_category_id:category,
     description:document.getElementById('cpDescription').value.trim()||null,
     image_url:document.getElementById('cpImageUrl').value.trim()||null,
     source_url:document.getElementById('cpSourceUrl').value.trim()||null,
