@@ -211,7 +211,7 @@ async function quickAddItem(){
   if(!value)return;
   input.disabled=true;
   try{
-    const matches=await findProductMatches([value]);
+    const matches=await findProductMatches({name:value,sku:looksLikeCode(value)?value:null,product_code:onlyDigits(value)?value:null});
     const exact=matches.find(x=>x._exact);
     if(exact){
       selectedOrderProduct=exact;
@@ -732,30 +732,53 @@ function updateDetectedProductCode(){
   if(!field||!label)return;
   label.textContent=detectProductCodeType(field.value).label;
 }
-async function findProductMatches(queries){
-  const unique=[...new Set((queries||[]).map(x=>String(x||'').trim()).filter(Boolean))];
-  const found=[];
-  const seen=new Set();
-  const add=(row,q,exact=false)=>{
-    if(!row)return;
+function addUniqueProductMatches(target,rows,meta={}){
+  const seen=new Set(target.map(x=>String(x.lightspeed_product_id||x.id||x.local_id||x.sku||x.upc||x.name)));
+  for(const row of rows||[]){
     const key=String(row.lightspeed_product_id||row.id||row.local_id||row.sku||row.upc||row.name);
-    if(seen.has(key))return;
+    if(!key||seen.has(key))continue;
     seen.add(key);
-    found.push({...row,_match_query:q,_exact:Boolean(exact)});
+    target.push({...row,...meta});
+  }
+  return target;
+}
+function currentProductMatchInput(){
+  const productCode=detectProductCodeType(document.getElementById('cpProductCode')?.value||'');
+  return {
+    product_code:productCode.code||null,
+    sku:document.getElementById('cpSku')?.value.trim()||null,
+    supplier_sku:document.getElementById('cpSupplierSku')?.value.trim()||null,
+    supplier_id:document.getElementById('cpSupplier')?.value||null,
+    name:document.getElementById('cpName')?.value.trim()||null,
+    description:document.getElementById('cpDescription')?.value.trim()||null
   };
-  for(const q of unique){
-    const encoded=encodeURIComponent(q);
-    const calls=await Promise.allSettled([
-      getJson(api+'/products/exact?q='+encoded),
-      getJson(api+'/products/search?q='+encoded),
-      getJson(api+'/products/potential-matches?q='+encoded)
-    ]);
-    const exact=calls[0].status==='fulfilled'?calls[0].value:null;
-    add(exact,q,true);
-    const searchRows=calls[1].status==='fulfilled'&&Array.isArray(calls[1].value)?calls[1].value:[];
-    searchRows.forEach(row=>add(row,q,false));
-    const fuzzyRows=calls[2].status==='fulfilled'&&Array.isArray(calls[2].value)?calls[2].value:[];
-    fuzzyRows.forEach(row=>add(row,q,false));
+}
+async function findProductMatches(input,{includeRemote=true,onLocal=null,onRemote=null}={}){
+  const payload=Array.isArray(input)
+    ? {name:(input||[]).map(x=>String(x||'').trim()).filter(Boolean).join(' ')}
+    : (input||{});
+  const found=[];
+
+  try{
+    const local=await getJson(api+'/products/match-local',{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)
+    });
+    addUniqueProductMatches(found,local.matches||[],{_match_stage:local.stage||'local',_exact:local.stage==='exact'});
+    if(onLocal)onLocal(found.slice());
+    if(local.stage==='exact'||!includeRemote)return found.slice(0,25);
+  }catch(e){
+    console.warn('Local product match failed',e);
+  }
+
+  if(!includeRemote)return found.slice(0,25);
+  try{
+    const remote=await getJson(api+'/products/match-remote',{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)
+    });
+    addUniqueProductMatches(found,remote.matches||[],{_match_stage:'remote',_exact:false});
+    if(onRemote)onRemote(found.slice());
+  }catch(e){
+    console.warn('Remote product match failed',e);
   }
   return found.slice(0,25);
 }
@@ -801,7 +824,7 @@ async function runProductMatchSearch(){
   const box=document.getElementById('productMatchResults');
   if(!q){box.innerHTML='<p>Enter an identifier or product name.</p>';return}
   box.innerHTML='<p>Searching products…</p>';
-  const rows=await findProductMatches([q]);
+  const rows=await findProductMatches({name:q,sku:looksLikeCode(q)?q:null,product_code:onlyDigits(q)?q:null});
   window._orderProductResults=rows;
   if(rows.length===1 && rows[0]._exact){
     await chooseOrderProduct(0,{closeModal:true,exact:true});
@@ -990,47 +1013,54 @@ async function createLightspeedProduct(){
 
   pendingCreateProductPayload=payload;
   const result=document.getElementById('createProductResult');
-  result.innerHTML='<p>Checking for existing product matches…</p>'+
-    '<div class="toolbar"><button type="button" onclick="confirmCreateNewProduct()">Create without waiting</button></div>';
+  result.innerHTML='<p>Checking exact identifiers and local matches…</p>'+
+    '<div class="toolbar"><button type="button" onclick="confirmCreateNewProduct()">Create new item anyway</button></div>';
 
-  const queries=[
-    payload.product_code?.code,
-    payload.sku,
-    payload.supplier_sku,
-    payload.name
-  ].filter(Boolean);
-
-  let matches=[];
-  let timedOut=false;
-  try{
-    const outcome=await Promise.race([
-      findProductMatches(queries).then(rows=>({rows})),
-      new Promise(resolve=>setTimeout(()=>resolve({rows:[],timeout:true}),4500))
-    ]);
-    matches=outcome.rows||[];
-    timedOut=Boolean(outcome.timeout);
-  }catch(e){
-    console.warn('Pre-create product match check failed',e);
-  }
+  const matchInput=currentProductMatchInput();
+  let localShown=false;
+  const matches=await findProductMatches(matchInput,{
+    includeRemote:true,
+    onLocal:(rows)=>{
+      localShown=true;
+      if(rows.length){
+        window._orderProductResults=rows;
+        document.getElementById('productMatchHint').textContent=
+          rows.some(x=>x._exact)
+            ? 'An exact local identifier match was found.'
+            : 'Possible local matches found. Lightspeed is being checked for additional matches.';
+        document.getElementById('productMatchResults').innerHTML=renderProductMatchRows(rows,{allowCreateAnyway:true});
+        document.getElementById('productMatchModal').style.display='flex';
+        result.innerHTML='';
+      }else{
+        result.innerHTML='<p>No local match found. Checking Lightspeed for additional matches…</p>'+
+          '<div class="toolbar"><button type="button" onclick="confirmCreateNewProduct()">Create new item anyway</button></div>';
+      }
+    },
+    onRemote:(rows)=>{
+      if(rows.length){
+        window._orderProductResults=rows;
+        document.getElementById('productMatchHint').textContent=
+          'Possible product matches. Local results are shown first, with additional Lightspeed results added afterward.';
+        document.getElementById('productMatchResults').innerHTML=renderProductMatchRows(rows,{allowCreateAnyway:true});
+        document.getElementById('productMatchModal').style.display='flex';
+        result.innerHTML='';
+      }
+    }
+  });
 
   if(matches.length){
     window._orderProductResults=matches;
     document.getElementById('productMatchHint').textContent=
-      'These existing products may match the new item. Choose one, or create the new product anyway without losing your form.';
-    document.getElementById('productMatchSearch').value=payload.product_code?.code||payload.sku||payload.name;
+      matches.some(x=>x._exact)
+        ? 'An exact identifier match was found. Use the existing item unless this is intentionally a different product.'
+        : 'Possible product matches. You can use one of these or create the new product anyway.';
     document.getElementById('productMatchResults').innerHTML=renderProductMatchRows(matches,{allowCreateAnyway:true});
     document.getElementById('productMatchModal').style.display='flex';
     result.innerHTML='';
     return;
   }
 
-  if(timedOut){
-    result.innerHTML='<p>Match check is taking longer than expected. You can create the item now or search again.</p>'+
-      '<div class="toolbar"><button type="button" onclick="confirmCreateNewProduct()">Create new item</button>'+
-      '<button type="button" class="secondary-button" onclick="retryCreateProductMatchCheck()">Check matches again</button></div>';
-    return;
-  }
-
+  if(!localShown)result.innerHTML='';
   result.innerHTML='<p>No likely existing product matches were found.</p>'+
     '<div class="toolbar"><button type="button" onclick="confirmCreateNewProduct()">Create new item</button>'+
     '<button type="button" class="secondary-button" onclick="retryCreateProductMatchCheck()">Check matches again</button></div>';
