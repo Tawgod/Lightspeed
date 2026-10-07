@@ -106,6 +106,7 @@ export function registerSpecialOrderProductRoutes(router, deps) {
   });
 
   router.get('/products/potential-matches', requireDb, async (req, res) => {
+    res.set('Cache-Control','no-store');
     const q = String(req.query.q || '').trim();
     const supplierId = req.query.supplier_id || null;
     if (!q) return res.json([]);
@@ -156,6 +157,7 @@ export function registerSpecialOrderProductRoutes(router, deps) {
   });
 
   router.get('/products/exact', async (req, res) => {
+    res.set('Cache-Control','no-store');
     const q = String(req.query.q || '').trim();
     if (!q) return res.json(null);
 
@@ -237,6 +239,7 @@ export function registerSpecialOrderProductRoutes(router, deps) {
   });
 
   router.get('/products/search', async (req, res) => {
+    res.set('Cache-Control','no-store');
     const q = String(req.query.q || '').trim();
     if (!q) return res.json([]);
 
@@ -349,6 +352,30 @@ export function registerSpecialOrderProductRoutes(router, deps) {
     if (missing.length) return res.status(400).json({ error: `Missing required fields: ${missing.join(', ')}` });
 
     try {
+      if (pool) {
+        const codes = (Array.isArray(body.product_codes) ? body.product_codes : [])
+          .map(x => String(x?.code || '').trim()).filter(Boolean);
+        const normalizedCodes = codes.map(x => x.toUpperCase().replace(/[^A-Z0-9-]/g,''));
+        const digitCodes = codes.map(x => x.replace(/\D/g,'')).filter(Boolean);
+        const duplicate = await pool.query(`
+          SELECT DISTINCT p.id AS local_id,p.lightspeed_product_id,p.name,p.sku,p.upc
+          FROM products p
+          LEFT JOIN product_identifiers pi ON pi.product_id=p.id
+          LEFT JOIN supplier_products sp ON sp.product_id=p.id
+          WHERE lower(coalesce(p.sku,''))=lower($1)
+             OR lower(coalesce(sp.supplier_sku,''))=lower($2)
+             OR ($3::text[] <> '{}'::text[] AND pi.normalized_value = ANY($3::text[]))
+             OR ($4::text[] <> '{}'::text[] AND regexp_replace(coalesce(p.upc,''),'\\D','','g') = ANY($4::text[]))
+          LIMIT 10
+        `, [String(body.sku||''),String(body.supplier_sku||''),normalizedCodes,digitCodes]);
+        if (duplicate.rows.length) {
+          return res.status(409).json({
+            error:'An existing product already matches this SKU, supplier code, or product code.',
+            matches:duplicate.rows
+          });
+        }
+      }
+
       const allowed = [
         'name','description','sku','product_codes','is_active','price_including_tax','price_excluding_tax',
         'supply_price','supplier_id','supplier_code','product_suppliers','product_type_id','product_category_id',
