@@ -509,8 +509,15 @@ export function registerSpecialOrderProductRoutes(router, deps) {
         }
       }
 
+      // Hobby Corner's Lightspeed account is tax-exclusive. Normalize stale/older
+      // clients that may still submit price_including_tax.
+      if (body.price_excluding_tax === undefined && body.price_including_tax !== undefined) {
+        body.price_excluding_tax = body.price_including_tax;
+      }
+      delete body.price_including_tax;
+
       const allowed = [
-        'name','description','sku','product_codes','is_active','price_including_tax','price_excluding_tax',
+        'name','description','sku','product_codes','is_active','price_excluding_tax',
         'supply_price','supplier_id','supplier_code','product_suppliers','product_type_id','product_category_id',
         'brand_id','tag_ids','inventory','weight','weight_unit','length','width','height','dimensions_unit'
       ];
@@ -579,6 +586,11 @@ export function registerSpecialOrderProductRoutes(router, deps) {
           imageWarning = imageError.message;
         }
       }
+      console.log('[special-orders] Lightspeed product created', {
+        id:product?.id || null,
+        sku:product?.sku || body.sku || null,
+        name:product?.name || body.name || null
+      });
       res.status(201).json({
         lightspeed: product,
         local: localProduct,
