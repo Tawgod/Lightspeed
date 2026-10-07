@@ -2006,7 +2006,11 @@ export function createSpecialOrdersRouter({
       res.json({ product:product.rows[0], identifiers:ids.rows });
     } catch(error) {
       await client.query('ROLLBACK');
-      re  registerSpecialOrderProductRoutes(router, {
+      res.status(400).json({error:error.message});
+    } finally { client.release(); }
+  });
+
+  registerSpecialOrderProductRoutes(router, {
     pool,
     requireDb,
     lightspeedDomain,
@@ -2021,10 +2025,6 @@ export function createSpecialOrdersRouter({
     upsertProductIdentifiers,
     matchTokens,
     scorePotentialMatch
-  });
-) {
-      res.status(error.status || 502).json({ error: error.message });
-    }
   });
 
   return router;
