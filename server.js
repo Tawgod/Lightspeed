@@ -49,10 +49,12 @@ app.get('/special-orders', (req, res) => {
 });
 
 app.get('/special-orders.css', (req, res) => {
+  res.set('Cache-Control','no-store');
   res.type('text/css').sendFile(path.join(__dirname, 'special-orders.css'));
 });
 
 app.get('/special-orders-client.js', (req, res) => {
+  res.set('Cache-Control','no-store');
   res.type('application/javascript').sendFile(path.join(__dirname, 'special-orders-client.js'));
 });
 
