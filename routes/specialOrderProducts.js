@@ -456,7 +456,16 @@ export function registerSpecialOrderProductRoutes(router, deps) {
         local_supplier_ids: localSupplierIds
       });
     } catch (error) {
-      res.status(error.status || 502).json({ error: error.message });
+      console.error('[special-orders] Lightspeed product create failed', {
+        status:error.status || 502,
+        message:error.message,
+        sku:req.body?.sku || null,
+        product_codes:req.body?.product_codes || []
+      });
+      res.status(error.status || 502).json({
+        error:error.message,
+        lightspeed_status:error.status || null
+      });
     }
   });
 
