@@ -455,7 +455,97 @@ document.getElementById('newSupplier').innerHTML='<option value="">Supplier load
 showNotice('Could not load suppliers: '+e.message)}}
 async function loadDepartments(){try{const d=await getJson(api+'/departments');document.getElementById('departmentSelect').innerHTML='<option value="">Source by department…</option>'+d.map(x=>`<option value="${x.id}">${x.name} (${x.supplier_count})</option>`).join('');document.getElementById('newDepartment').innerHTML='<option value="">Sourcing department…</option>'+d.map(x=>`<option value="${x.id}">${x.name}</option>`).join('')}catch(e){}}
 async function loadDepartment(){const id=document.getElementById('departmentSelect').value;if(!id){document.getElementById('departmentResults').innerHTML='';return}try{const r=await getJson(api+'/departments/'+id+'/suppliers');document.getElementById('departmentResults').innerHTML='<h3>Possible suppliers for this department</h3><p style="color:#6b7280">These are sourcing possibilities even when the product is not currently linked to that supplier in Lightspeed.</p>'+(!r.length?'<p>No suppliers are tagged for this department yet.</p>':'<table><tr><th>Supplier</th><th>Typical cadence</th><th>Known product link?</th><th>Supplier SKU</th><th>Cost</th></tr>'+r.map(x=>`<tr><td>${x.name}</td><td>${x.order_frequency||'—'}</td><td>${x.exact_product_mapping?'Yes':'Possible source'}</td><td>${x.supplier_sku||'—'}</td><td>${x.supply_price||'—'}</td></tr>`).join('')+'</table>')}catch(e){showNotice(e.message)}}
-async function loadSupplier(){const id=document.getElementById('supplierSelect').value;if(!id){document.getElementById('supplierResults').innerHTML='';return}try{const r=await getJson(api+'/suppliers/'+id+'/orderable');document.getElementById('supplierResults').innerHTML='<h3>Items ready for this supplier</h3>'+(!r.length?'<p>Nothing currently waiting.</p>':'<table><tr><th>Item</th><th>Supplier SKU</th><th>Needed</th><th>Customers</th><th>Cost</th></tr>'+r.map(x=>`<tr><td>${x.name}</td><td>${x.supplier_sku||'—'}</td><td>${x.qty_needed}</td><td>${x.waiting_orders}</td><td>${x.supply_price||'—'}</td></tr>`).join('')+'</table>')}catch(e){showNotice(e.message)}}
+async function loadSupplier(){
+  const id=document.getElementById('supplierSelect').value;
+  const box=document.getElementById('supplierResults');
+  if(!id){box.innerHTML='';window._supplierOrderable=[];return}
+  box.innerHTML='<p>Loading supplier order needs…</p>';
+  try{
+    window._supplierOrderable=await getJson(api+'/suppliers/'+id+'/orderable');
+    renderSupplierOrderBuilder();
+  }catch(e){showNotice(e.message)}
+}
+function renderSupplierOrderBuilder(){
+  const rows=window._supplierOrderable||[];
+  const box=document.getElementById('supplierResults');
+  const supplier=document.getElementById('supplierSelect').selectedOptions[0]?.textContent||'Supplier';
+  if(!rows.length){
+    box.innerHTML='<h3>Supplier Order Builder — '+supplier+'</h3><p>Nothing is currently waiting to be ordered from this supplier.</p>';
+    return;
+  }
+  let html='<div class="section-heading"><div><h3>Supplier Order Builder — '+supplier+'</h3>';
+  html+='<p class="form-note">Builds a local draft PO. It will not send anything to Lightspeed while setup mode is active.</p></div><span class="pill">Draft only</span></div>';
+  html+='<div class="form-grid form-grid-2"><label class="field"><span>Supplier order / reference #</span><input id="supplierOrderNumber" placeholder="Optional"></label><label class="field"><span>PO notes</span><input id="supplierOrderNotes" placeholder="Optional notes for this order"></label></div>';
+  html+='<table><tr><th>Order?</th><th>Item</th><th>Supplier SKU</th><th>SO Needed</th><th>Customers</th><th>Floor Add</th><th>Total Qty</th><th>Unit Cost</th><th>Est. Total</th></tr>';
+  rows.forEach((x,i)=>{
+    const needed=Math.max(0,Number(x.qty_needed||0));
+    const cost=Number(x.supply_price||0);
+    html+='<tr><td><input id="poInclude-'+i+'" type="checkbox" checked onchange="updateSupplierOrderTotals()"></td>';
+    html+='<td>'+(x.name||'—')+'</td><td>'+(x.supplier_sku||'—')+'</td><td>'+needed+'</td><td>'+(x.waiting_orders||0)+'</td>';
+    html+='<td><input id="poFloor-'+i+'" type="number" min="0" value="0" style="width:74px" oninput="updateSupplierOrderTotals()"></td>';
+    html+='<td id="poQty-'+i+'">'+needed+'</td><td>'+(cost?'$'+cost.toFixed(2):'—')+'</td><td id="poTotal-'+i+'">'+(cost?'$'+(needed*cost).toFixed(2):'—')+'</td></tr>';
+  });
+  html+='</table><div class="toolbar" style="margin-top:12px;justify-content:flex-end"><strong id="supplierOrderGrandTotal">Estimated total: —</strong><button type="button" onclick="createSupplierOrderDraft()">Save draft supplier order</button></div><div id="supplierOrderDraftResult"></div>';
+  box.innerHTML=html;
+  updateSupplierOrderTotals();
+}
+function supplierOrderDraftLines(){
+  const rows=window._supplierOrderable||[];
+  return rows.map((x,i)=>{
+    const include=document.getElementById('poInclude-'+i)?.checked;
+    const specialQty=Math.max(0,Number(x.qty_needed||0));
+    const floorQty=Math.max(0,Number(document.getElementById('poFloor-'+i)?.value||0));
+    return {
+      include,product_id:x.product_id,quantity:specialQty+floorQty,
+      unit_cost:x.supply_price==null?null:Number(x.supply_price),
+      special_order_quantity:specialQty,floor_quantity:floorQty,
+      placeholder_name:x.name||null,placeholder_sku:x.supplier_sku||x.sku||null
+    };
+  }).filter(x=>x.include&&x.quantity>0);
+}
+function updateSupplierOrderTotals(){
+  const rows=window._supplierOrderable||[];
+  let grand=0;
+  rows.forEach((x,i)=>{
+    const include=document.getElementById('poInclude-'+i)?.checked!==false;
+    const needed=Math.max(0,Number(x.qty_needed||0));
+    const floor=Math.max(0,Number(document.getElementById('poFloor-'+i)?.value||0));
+    const qty=needed+floor;
+    const cost=Number(x.supply_price||0);
+    const line=include?qty*cost:0;
+    const qtyEl=document.getElementById('poQty-'+i);
+    const totalEl=document.getElementById('poTotal-'+i);
+    if(qtyEl)qtyEl.textContent=include?qty:'—';
+    if(totalEl)totalEl.textContent=include&&cost?'$'+line.toFixed(2):'—';
+    grand+=line;
+  });
+  const el=document.getElementById('supplierOrderGrandTotal');
+  if(el)el.textContent='Estimated total: $'+grand.toFixed(2);
+}
+async function createSupplierOrderDraft(){
+  const supplierId=document.getElementById('supplierSelect').value;
+  if(!supplierId)return showNotice('Choose a supplier first.');
+  const items=supplierOrderDraftLines();
+  if(!items.length)return showNotice('Select at least one item for the supplier order.');
+  const payload={
+    supplier_id:supplierId,
+    supplier_order_number:document.getElementById('supplierOrderNumber')?.value.trim()||null,
+    notes:document.getElementById('supplierOrderNotes')?.value.trim()||null,
+    created_by:'SPECIAL_ORDERS_UI',items
+  };
+  if(!confirm('Save this as a local draft supplier order? Nothing will be sent to Lightspeed.'))return;
+  try{
+    const created=await getJson(api+'/supplier-orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const id=created.order?.id;
+    const detail=id?await getJson(api+'/supplier-orders/'+encodeURIComponent(id)):null;
+    const result=document.getElementById('supplierOrderDraftResult');
+    if(result){
+      const count=(detail?.items||[]).length;
+      result.innerHTML='<div class="notice" style="display:block;background:var(--green-soft);color:var(--green);border-color:#bbdfc6"><b>Draft supplier order #'+(id||'—')+' saved.</b> '+count+' line'+(count===1?'':'s')+'. Local only; nothing was sent to Lightspeed.</div>';
+    }
+    showNotice('Draft supplier order saved.',2200);
+  }catch(e){showNotice('Could not save supplier order: '+e.message)}
+}
 async function searchCustomers(){const q=document.getElementById('customerSearch').value.trim();if(!q)return;try{const r=await getJson(api+'/customers/search?q='+encodeURIComponent(q));document.getElementById('customerResults').innerHTML=!r.length?'<p>No Lightspeed customer found.</p>':'<table><tr><th>Name</th><th>Phone</th><th>Discord</th><th>Email</th><th></th></tr>'+r.map((x,i)=>`<tr><td>${[x.first_name,x.last_name].filter(Boolean).join(' ')||x.company_name||'Unnamed'}</td><td>${x.special_orders_phone||x.mobile||x.phone||'—'}</td><td>${x.discord_handle||'—'}</td><td>${x.email||'—'}</td><td><button onclick="chooseCustomer(${i})">Use</button></td></tr>`).join('')+'</table>';window._customerResults=r}catch(e){showNotice(e.message)}}
 async function chooseCustomer(i){
   selectedCustomer=window._customerResults[i];
