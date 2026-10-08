@@ -535,8 +535,27 @@ export function registerSpecialOrderProductRoutes(router, deps) {
           [body.local_supplier_id]
         );
         const supplier=supplierResult.rows[0];
-        if (supplier?.lightspeed_supplier_id) {
-          body.supplier_id=supplier.lightspeed_supplier_id;
+        let lightspeedSupplierId=supplier?.lightspeed_supplier_id || null;
+        if (!lightspeedSupplierId && supplier?.name) {
+          try {
+            const listed=await lightspeedVersionedFetch(
+              lightspeedDomain,lightspeedToken,'/suppliers?page_size=1000',{},'2026-04'
+            );
+            const rows=Array.isArray(listed?.data)?listed.data:(Array.isArray(listed)?listed:[]);
+            const exact=rows.find(x=>String(x?.name||'').trim().toLowerCase()===supplier.name.trim().toLowerCase());
+            if (exact?.id) {
+              lightspeedSupplierId=exact.id;
+              await pool.query(
+                'UPDATE suppliers SET lightspeed_supplier_id=$1,updated_at=now() WHERE id=$2',
+                [exact.id,supplier.id]
+              );
+            }
+          } catch(error) {
+            console.warn('[special-orders] supplier Lightspeed ID lookup warning:',error.message);
+          }
+        }
+        if (lightspeedSupplierId) {
+          body.supplier_id=lightspeedSupplierId;
           if (body.supplier_sku) body.supplier_code=body.supplier_sku;
         }
       }
