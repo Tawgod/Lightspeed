@@ -350,14 +350,18 @@ export function registerSpecialOrderProductRoutes(router, deps) {
        AND ($1::bigint IS NULL OR sp.supplier_id=$1::bigint)
       LEFT JOIN suppliers s ON s.id=sp.supplier_id
       WHERE
-        (cardinality($2::text[])>0 AND lower(coalesce(p.sku,'')) = ANY(
-          SELECT lower(x) FROM unnest($2::text[]) x
-        ))
-        OR (cardinality($3::text[])>0 AND regexp_replace(coalesce(p.upc,''),'\\D','','g') = ANY($3::text[]))
-        OR (cardinality($4::text[])>0 AND pi.normalized_value = ANY($4::text[]))
-        OR (cardinality($2::text[])>0 AND lower(coalesce(sp.supplier_sku,'')) = ANY(
-          SELECT lower(x) FROM unnest($2::text[]) x
-        ))
+        coalesce(p.lightspeed_reconcile_status,'UNKNOWN') NOT IN ('MISSING','MISSING_REFERENCED','UUID_CONFLICT')
+        AND lower(trim(coalesce(p.name,''))) <> 'unnamed product'
+        AND (
+          (cardinality($2::text[])>0 AND lower(coalesce(p.sku,'')) = ANY(
+            SELECT lower(x) FROM unnest($2::text[]) x
+          ))
+          OR (cardinality($3::text[])>0 AND regexp_replace(coalesce(p.upc,''),'\\D','','g') = ANY($3::text[]))
+          OR (cardinality($4::text[])>0 AND pi.normalized_value = ANY($4::text[]))
+          OR (cardinality($2::text[])>0 AND lower(coalesce(sp.supplier_sku,'')) = ANY(
+            SELECT lower(x) FROM unnest($2::text[]) x
+          ))
+        )
       LIMIT 25
     `,[supplierId,identifiers,digits,normalized]);
 
@@ -382,16 +386,20 @@ export function registerSpecialOrderProductRoutes(router, deps) {
        AND ($1::bigint IS NULL OR sp.supplier_id=$1::bigint)
       LEFT JOIN suppliers s ON s.id=sp.supplier_id
       WHERE
-        lower(p.name) LIKE lower($2)
-        OR lower(coalesce(p.description,'')) LIKE lower($2)
-        OR lower(coalesce(sp.supplier_description,'')) LIKE lower($2)
-        OR EXISTS (
-          SELECT 1 FROM unnest($3::text[]) pat
-          WHERE lower(p.name) LIKE pat
-             OR lower(coalesce(p.description,'')) LIKE pat
-             OR lower(coalesce(sp.supplier_description,'')) LIKE pat
-             OR lower(coalesce(p.brand,'')) LIKE pat
-             OR lower(coalesce(sp.manufacturer_text,'')) LIKE pat
+        coalesce(p.lightspeed_reconcile_status,'UNKNOWN') NOT IN ('MISSING','MISSING_REFERENCED','UUID_CONFLICT')
+        AND lower(trim(coalesce(p.name,''))) <> 'unnamed product'
+        AND (
+          lower(p.name) LIKE lower($2)
+          OR lower(coalesce(p.description,'')) LIKE lower($2)
+          OR lower(coalesce(sp.supplier_description,'')) LIKE lower($2)
+          OR EXISTS (
+            SELECT 1 FROM unnest($3::text[]) pat
+            WHERE lower(p.name) LIKE pat
+               OR lower(coalesce(p.description,'')) LIKE pat
+               OR lower(coalesce(sp.supplier_description,'')) LIKE pat
+               OR lower(coalesce(p.brand,'')) LIKE pat
+               OR lower(coalesce(sp.manufacturer_text,'')) LIKE pat
+          )
         )
       LIMIT 120
     `,[supplierId,`%${name||queryText}%`,patterns]);
@@ -480,21 +488,25 @@ export function registerSpecialOrderProductRoutes(router, deps) {
       LEFT JOIN suppliers s ON s.id=sp.supplier_id
       LEFT JOIN product_identifiers pi ON pi.product_id=p.id
       WHERE
-        lower(coalesce(p.sku,''))=lower($2)
-        OR p.upc=$2
-        OR lower(coalesce(sp.supplier_sku,''))=lower($2)
-        OR pi.normalized_value=upper(regexp_replace($2,'[^A-Za-z0-9-]','','g'))
-        OR pi.normalized_value=regexp_replace($2,'\\D','','g')
-        OR lower(p.name) LIKE lower($3)
-        OR lower(coalesce(p.description,'')) LIKE lower($3)
-        OR lower(coalesce(sp.supplier_description,'')) LIKE lower($3)
-        OR EXISTS (
-          SELECT 1 FROM unnest($4::text[]) pat
-          WHERE lower(p.name) LIKE pat
-             OR lower(coalesce(p.description,'')) LIKE pat
-             OR lower(coalesce(sp.supplier_description,'')) LIKE pat
-             OR lower(coalesce(p.brand,'')) LIKE pat
-             OR lower(coalesce(sp.manufacturer_text,'')) LIKE pat
+        coalesce(p.lightspeed_reconcile_status,'UNKNOWN') NOT IN ('MISSING','MISSING_REFERENCED','UUID_CONFLICT')
+        AND lower(trim(coalesce(p.name,''))) <> 'unnamed product'
+        AND (
+          lower(coalesce(p.sku,''))=lower($2)
+          OR p.upc=$2
+          OR lower(coalesce(sp.supplier_sku,''))=lower($2)
+          OR pi.normalized_value=upper(regexp_replace($2,'[^A-Za-z0-9-]','','g'))
+          OR pi.normalized_value=regexp_replace($2,'\\D','','g')
+          OR lower(p.name) LIKE lower($3)
+          OR lower(coalesce(p.description,'')) LIKE lower($3)
+          OR lower(coalesce(sp.supplier_description,'')) LIKE lower($3)
+          OR EXISTS (
+            SELECT 1 FROM unnest($4::text[]) pat
+            WHERE lower(p.name) LIKE pat
+               OR lower(coalesce(p.description,'')) LIKE pat
+               OR lower(coalesce(sp.supplier_description,'')) LIKE pat
+               OR lower(coalesce(p.brand,'')) LIKE pat
+               OR lower(coalesce(sp.manufacturer_text,'')) LIKE pat
+          )
         )
       LIMIT 150
     `, params);
@@ -522,11 +534,15 @@ export function registerSpecialOrderProductRoutes(router, deps) {
         FROM products p
         LEFT JOIN product_identifiers pi ON pi.product_id=p.id
         LEFT JOIN supplier_products sp ON sp.product_id=p.id
-        WHERE lower(coalesce(p.sku,''))=lower($1)
+        WHERE coalesce(p.lightspeed_reconcile_status,'UNKNOWN') NOT IN ('MISSING','MISSING_REFERENCED','UUID_CONFLICT')
+          AND lower(trim(coalesce(p.name,''))) <> 'unnamed product'
+          AND (
+             lower(coalesce(p.sku,''))=lower($1)
            OR ($2 <> '' AND regexp_replace(coalesce(p.upc,''),'\\D','','g')=$2)
            OR ($3 <> '' AND pi.normalized_value=$3)
            OR ($2 <> '' AND pi.normalized_value=$2)
            OR lower(coalesce(sp.supplier_sku,''))=lower($1)
+          )
         ORDER BY p.updated_at DESC
         LIMIT 1
       `, [q, digits, normalizedCode]);
@@ -613,13 +629,17 @@ export function registerSpecialOrderProductRoutes(router, deps) {
         FROM products p
         LEFT JOIN product_identifiers pi ON pi.product_id=p.id
         LEFT JOIN supplier_products sp ON sp.product_id=p.id
-        WHERE lower(coalesce(p.sku,''))=lower($1)
+        WHERE coalesce(p.lightspeed_reconcile_status,'UNKNOWN') NOT IN ('MISSING','MISSING_REFERENCED','UUID_CONFLICT')
+          AND lower(trim(coalesce(p.name,''))) <> 'unnamed product'
+          AND (
+             lower(coalesce(p.sku,''))=lower($1)
            OR ($3 <> '' AND regexp_replace(coalesce(p.upc,''),'\\D','','g')=$3)
            OR ($4 <> '' AND pi.normalized_value=$4)
            OR ($3 <> '' AND pi.normalized_value=$3)
            OR lower(coalesce(sp.supplier_sku,''))=lower($1)
            OR lower(p.name) LIKE lower($2)
            OR lower(coalesce(p.description,'')) LIKE lower($2)
+          )
         ORDER BY rank,p.name
         LIMIT 25
       `, [q, `%${q}%`, digits, normalizedCode]);
@@ -714,10 +734,14 @@ export function registerSpecialOrderProductRoutes(router, deps) {
           FROM products p
           LEFT JOIN product_identifiers pi ON pi.product_id=p.id
           LEFT JOIN supplier_products sp ON sp.product_id=p.id
-          WHERE lower(coalesce(p.sku,''))=lower($1)
+          WHERE coalesce(p.lightspeed_reconcile_status,'UNKNOWN') NOT IN ('MISSING','MISSING_REFERENCED','UUID_CONFLICT')
+            AND lower(trim(coalesce(p.name,''))) <> 'unnamed product'
+            AND (
+               lower(coalesce(p.sku,''))=lower($1)
              OR lower(coalesce(sp.supplier_sku,''))=lower($2)
              OR ($3::text[] <> '{}'::text[] AND pi.normalized_value = ANY($3::text[]))
              OR ($4::text[] <> '{}'::text[] AND regexp_replace(coalesce(p.upc,''),'\\D','','g') = ANY($4::text[]))
+            )
           LIMIT 10
         `, [String(body.sku||''),String(body.supplier_sku||''),normalizedCodes,digitCodes]);
         if (duplicate.rows.length) {
