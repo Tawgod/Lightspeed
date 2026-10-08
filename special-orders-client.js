@@ -1187,7 +1187,48 @@ async function showAllocationSuggestions(id,available){
 }
 
 async function allocatePreorder(id,method){if(!confirm('Allocate currently available preorder inventory using '+method+'?'))return;try{const d=await getJson(api+'/preorders/products/'+id+'/allocate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({method})});showNotice(`Allocated ${d.newlyAllocated}; ${d.remaining} still available.`);await loadPreorderCampaign()}catch(e){showNotice(e.message)}}
-async function loadAll(){await Promise.allSettled([loadStats(),loadOrders(),loadSuppliers(),loadBrands(),loadDepartments(),loadProductCategories(),loadPreorders()])}
+async function loadProductReconcileStatus(){
+  const box=document.getElementById('reconcileStatus');
+  if(!box)return;
+  try{
+    const d=await getJson(api+'/reconcile/products/status');
+    const r=d.latest;
+    if(!r){
+      box.textContent='No reconciliation has run yet.';
+      return;
+    }
+    box.textContent='Last run: '+new Date(r.created_at).toLocaleString()+
+      ' · checked '+r.checked_count+
+      ' · matched '+r.matched_count+
+      ' · repaired '+r.repaired_count+
+      ' · flagged '+r.flagged_count+
+      ' · deleted '+r.deleted_count+
+      ' · protected '+r.protected_count+
+      ' · conflicts '+r.conflict_count+
+      ' · errors '+r.error_count;
+  }catch(e){box.textContent='Reconciliation status unavailable: '+e.message}
+}
+async function runProductReconciliation(){
+  const box=document.getElementById('reconcileStatus');
+  if(box)box.textContent='Reconciling Railway products and UUIDs with Lightspeed…';
+  try{
+    const r=await getJson(api+'/reconcile/products',{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({limit:250,apply:true})
+    });
+    if(r.busy){
+      if(box)box.textContent='A reconciliation is already running.';
+      return;
+    }
+    if(box)box.textContent='Finished · checked '+r.checked+' · matched '+r.matched+
+      ' · repaired '+r.repaired+' · flagged '+r.flagged+' · deleted '+r.deleted+
+      ' · protected '+r.protected+' · conflicts '+r.conflicts+' · errors '+r.errors.length;
+    showNotice('Product reconciliation complete.',2200);
+  }catch(e){
+    if(box)box.textContent='Reconciliation failed: '+e.message;
+    showNotice('Reconciliation failed: '+e.message);
+  }
+}
+async function loadAll(){await Promise.allSettled([loadStats(),loadOrders(),loadSuppliers(),loadBrands(),loadDepartments(),loadProductCategories(),loadPreorders(),loadProductReconcileStatus()])}
 document.addEventListener('input',e=>{if(orderDraftIds.includes(e.target.id)||productDraftIds.includes(e.target.id))saveDrafts()});
 document.addEventListener('change',e=>{if(orderDraftIds.includes(e.target.id)||productDraftIds.includes(e.target.id)||e.target.id==='newSuppliers')saveDrafts()});
 document.getElementById('accessKey').value=accessKey();
