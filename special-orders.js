@@ -200,7 +200,15 @@ async function lightspeedFetch(domain, token, endpoint, options = {}) {
 }
 
 async function upsertLocalProduct(product) {
-  if (!pool || !product) return null;
+  if (!pool || !product || !product.id) return null;
+  const productName=String(product.name || '').trim();
+  if (!productName) {
+    console.warn('[special-orders] skipped partial Lightspeed product upsert with no name', {
+      id:product.id,
+      sku:product.sku || null
+    });
+    return null;
+  }
   const codes = Array.isArray(product.product_codes) ? product.product_codes : [];
   const upc = codes.find(c => c?.code)?.code || product.upc || null;
   const result = await pool.query(
@@ -211,7 +219,7 @@ async function upsertLocalProduct(product) {
        description=EXCLUDED.description, is_active=EXCLUDED.is_active,
        last_lightspeed_sync_at=now(), updated_at=now()
      RETURNING *`,
-    [product.id, product.name || 'Unnamed product', product.sku || null, upc,
+    [product.id, productName, product.sku || null, upc,
      product.description || null, product.is_active !== false]
   );
   return result.rows[0];
