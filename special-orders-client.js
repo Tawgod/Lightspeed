@@ -187,7 +187,7 @@ function renderStagedItems(){
   if(!stagedItems.length){el.innerHTML='<p style="color:#6b7280">No items added yet.</p>';return}
   el.innerHTML='<table><tr><th>Item</th><th>SKU</th><th>Qty</th><th>Status</th><th>Supplier</th><th>Details</th><th></th></tr>'+
     stagedItems.map((x,i)=>`<tr>
-      <td>${x.requested_name||x.name||'—'}</td>
+      <td>${x.needs_details && x.requested_name==='Unknown item' ? 'Unknown item — needs details' : (x.requested_name||x.name||'—')}</td>
       <td>${x.requested_sku||'—'}</td>
       <td><input type="number" min="1" value="${x.quantity||1}" style="width:64px" onchange="updateStagedQty(${i},this.value)"></td>
       <td><span class="pill">${x.status||'OOS'}</span></td>
@@ -231,7 +231,9 @@ async function quickAddItem(){
     }
     const codeLike=looksLikeCode(value);
     stagedItems.push({
-      product_id:null,lightspeed_product_id:null,requested_name:value,requested_sku:codeLike?value:null,
+      product_id:null,lightspeed_product_id:null,
+      requested_name:codeLike?'Unknown item':value,
+      requested_sku:codeLike?value:null,
       quantity:1,status:'OOS',sourcing_department_id:null,preferred_supplier_id:null,preferred_supplier_name:null,
       supplier_ids:[],supplier_needed:false,notes:null,crowdfunding_note:null,source_url:null,
       placeholder_product:true,needs_details:true,quick_add:true
