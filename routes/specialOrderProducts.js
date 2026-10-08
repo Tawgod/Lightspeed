@@ -226,7 +226,10 @@ export function registerSpecialOrderProductRoutes(router, deps) {
           continue;
         }
 
-        if(apply && missCount>=2){
+        const isPartialPlaceholder = !String(local.name||'').trim() ||
+          String(local.name||'').trim().toLowerCase()==='unnamed product';
+
+        if(apply && (isPartialPlaceholder || missCount>=2)){
           await pool.query('DELETE FROM products WHERE id=$1',[local.id]);
           summary.deleted++;
         }else{
@@ -269,7 +272,21 @@ export function registerSpecialOrderProductRoutes(router, deps) {
     }
   });
 
-  router.get('/reconcile/products/status', requireDb, async (req,res)=>{
+  router.post('/reconcile/products/:sku', requireDb, async (req,res)=>{
+    try {
+      const result=await reconcileLocalProducts({
+        limit:25,
+        sku:req.params.sku,
+        apply:true,
+        source:'manual-sku'
+      });
+      res.json(result);
+    } catch(error) {
+      res.status(error.status||500).json({error:error.message});
+    }
+  });
+
+    router.get('/reconcile/products/status', requireDb, async (req,res)=>{
     const latest=await pool.query('SELECT * FROM product_reconcile_runs ORDER BY created_at DESC LIMIT 1');
     const pending=await pool.query(`
       SELECT lightspeed_reconcile_status,count(*)::int AS count
