@@ -251,6 +251,17 @@
   </div>
 </div>
 <div class="panel">
+  <div class="section-heading">
+    <div>
+      <h2 style="margin:0">Product Reconciliation</h2>
+      <p class="form-note">Compares Railway product/UUID records with Lightspeed. Repairs UUIDs by SKU, flags first misses, and only removes unreferenced products after a second confirmed miss.</p>
+    </div>
+    <button type="button" onclick="runProductReconciliation()">Run reconciliation now</button>
+  </div>
+  <div id="reconcileStatus" class="form-note">No reconciliation status loaded yet.</div>
+</div>
+
+<div class="panel">
   <div class="toolbar">
     <input id="productSearch" placeholder="Search Lightspeed by SKU or exact name…" size="38">
     <button onclick="searchProducts()">Search products</button>
