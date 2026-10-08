@@ -189,19 +189,26 @@
       <label class="field"><span>Product name *</span><input id="cpName" placeholder="Product name"></label>
       <label class="field"><span>SKU *</span><input id="cpSku" placeholder="SKU"></label>
       <label class="field"><span>UPC / EAN / ISBN</span><input id="cpProductCode" placeholder="Scan or enter code" inputmode="text" oninput="updateDetectedProductCode()"><small id="cpProductCodeType">Type will be detected automatically</small></label>
-      <label class="field"><span>Supplier item #</span><input id="cpSupplierSku" placeholder="Supplier code"></label>
+      <label class="field"><span>Brand</span><select id="cpBrand"><option value="">Optional</option></select></label>
     </div>
 
     <div class="form-grid form-grid-4">
       <label class="field"><span>Cost *</span><input id="cpCost" type="number" step="0.01" min="0" placeholder="0.00"></label>
       <label class="field"><span>Retail price *</span><input id="cpRetail" type="number" step="0.01" min="0" placeholder="0.00"></label>
       <label class="field"><span>Primary supplier</span><select id="cpSupplier"><option value="">Optional</option></select></label>
+      <label class="field"><span>Supplier item #</span><input id="cpSupplierSku" placeholder="Supplier code"></label>
+    </div>
+
+    <div class="compact-product-meta">
+      <label class="field"><span>Weight</span><div class="compact-pair"><input id="cpWeight" type="number" min="0" step="0.01" placeholder="0"><select id="cpWeightUnit"><option value="LB">lb</option><option value="OZ">oz</option><option value="KG">kg</option><option value="G">g</option></select></div></label>
+      <label class="field"><span>Dimensions</span><div class="dimension-row"><input id="cpLength" type="number" min="0" step="0.01" placeholder="L"><span>×</span><input id="cpWidth" type="number" min="0" step="0.01" placeholder="W"><span>×</span><input id="cpHeight" type="number" min="0" step="0.01" placeholder="H"><select id="cpDimensionsUnit"><option value="IN">in</option><option value="CM">cm</option><option value="MM">mm</option></select></div></label>
       <label class="field"><span>Order channel</span><select id="cpOrderChannel">
         <option value="TRADE">Trade / normal supplier order</option>
         <option value="WEB_ONLY">Web only</option>
         <option value="DIRECT">Direct</option>
         <option value="CROWDFUNDING">Crowdfunding</option>
       </select></label>
+      <label class="field reorder-field"><span>Follow-up</span><label class="inline-check"><input id="cpReorderSetupNeeded" type="checkbox"> Reorder setup needed</label></label>
     </div>
 
     <div class="field">
