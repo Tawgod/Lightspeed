@@ -11,8 +11,9 @@ const orderDraftIds=[
   'newDepartment','newSupplier','supplierNeeded','newNotes','crowdfundingNote','sourceUrl'
 ];
 const productDraftIds=[
-  'cpName','cpSku','cpProductCode','cpCost','cpRetail','cpCategorySearch','cpSupplier',
-  'cpSupplierSku','cpDescription','cpSourceUrl','cpImageUrl','cpOrderChannel'
+  'cpName','cpSku','cpProductCode','cpBrand','cpCost','cpRetail','cpCategorySearch','cpSupplier',
+  'cpSupplierSku','cpWeight','cpWeightUnit','cpLength','cpWidth','cpHeight','cpDimensionsUnit',
+  'cpReorderSetupNeeded','cpDescription','cpSourceUrl','cpImageUrl','cpOrderChannel'
 ];
 
 function readField(id){
@@ -150,6 +151,9 @@ function clearProductForm(){
   productDraftIds.forEach(id=>writeField(id,''));
   writeField('cpCategory','');
   writeField('cpOrderChannel','TRADE');
+  writeField('cpWeightUnit','LB');
+  writeField('cpDimensionsUnit','IN');
+  writeField('cpReorderSetupNeeded',false);
   document.getElementById('categoryBreadcrumb').textContent='No category selected';
   document.getElementById('categoryMatches').innerHTML='';
   document.getElementById('createProductResult').innerHTML='';
@@ -445,6 +449,12 @@ async function rankSuppliersForProduct(product,preferredValue=null,otherValues=[
   renderItemSupplierOptions(allSuppliers,preferredValue,otherValues);
   return allSuppliers;
 }
+async function loadBrands(){try{
+  const rows=await getJson(api+'/brands');
+  document.getElementById('cpBrand').innerHTML='<option value="">Optional</option>'+rows.map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
+}catch(e){
+  document.getElementById('cpBrand').innerHTML='<option value="">Brand load failed</option>';
+}}
 async function loadSuppliers(){try{
   const s=await getJson(api+'/suppliers');
   allSuppliers=s;
@@ -1081,13 +1091,26 @@ function buildCreateProductPayload(){
   const productCode=detectProductCodeType(document.getElementById('cpProductCode').value);
   const payload={
     name,sku,supply_price:Number(cost),price_excluding_tax:Number(retail),product_category_id:category,
+    brand_id:document.getElementById('cpBrand').value||null,
     description:document.getElementById('cpDescription').value.trim()||null,
     image_url:document.getElementById('cpImageUrl').value.trim()||null,
     source_url:document.getElementById('cpSourceUrl').value.trim()||null,
     local_supplier_id:document.getElementById('cpSupplier').value||null,
     supplier_sku:document.getElementById('cpSupplierSku').value.trim()||null,
-    order_channel:document.getElementById('cpOrderChannel').value
+    order_channel:document.getElementById('cpOrderChannel').value,
+    reorder_setup_needed:Boolean(document.getElementById('cpReorderSetupNeeded').checked)
   };
+  const weight=document.getElementById('cpWeight').value;
+  const length=document.getElementById('cpLength').value;
+  const width=document.getElementById('cpWidth').value;
+  const height=document.getElementById('cpHeight').value;
+  if(weight!==''){payload.weight=Number(weight);payload.weight_unit=document.getElementById('cpWeightUnit').value}
+  if(length!==''||width!==''||height!==''){
+    if(length!=='')payload.length=Number(length);
+    if(width!=='')payload.width=Number(width);
+    if(height!=='')payload.height=Number(height);
+    payload.dimensions_unit=document.getElementById('cpDimensionsUnit').value;
+  }
   if(productCode.code){
     payload.product_code=productCode;
     payload.product_codes=[{type:productCode.type,code:productCode.code}];
@@ -1115,9 +1138,11 @@ async function confirmCreateNewProduct(){
     pendingCreateProductPayload=null;
     document.getElementById('itemEditor').style.display='block';
     clearProductForm();
+    localStorage.removeItem(PRODUCT_DRAFT_KEY);
     hideCreateProduct();
     saveDrafts();
-    showNotice(createdMessage+'\nReview the quantity/status, then click Add item to order.');
+    localStorage.removeItem(PRODUCT_DRAFT_KEY);
+    showNotice(createdMessage+'\nThe new-item form has been cleared. Review the quantity/status, then click Add item to order.');
     const selected=document.getElementById('selectedProduct');
     if(selected)selected.textContent=createdMessage;
   }catch(e){showNotice('Product creation failed: '+e.message)}
@@ -1162,7 +1187,7 @@ async function showAllocationSuggestions(id,available){
 }
 
 async function allocatePreorder(id,method){if(!confirm('Allocate currently available preorder inventory using '+method+'?'))return;try{const d=await getJson(api+'/preorders/products/'+id+'/allocate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({method})});showNotice(`Allocated ${d.newlyAllocated}; ${d.remaining} still available.`);await loadPreorderCampaign()}catch(e){showNotice(e.message)}}
-async function loadAll(){await Promise.allSettled([loadStats(),loadOrders(),loadSuppliers(),loadDepartments(),loadProductCategories(),loadPreorders()])}
+async function loadAll(){await Promise.allSettled([loadStats(),loadOrders(),loadSuppliers(),loadBrands(),loadDepartments(),loadProductCategories(),loadPreorders()])}
 document.addEventListener('input',e=>{if(orderDraftIds.includes(e.target.id)||productDraftIds.includes(e.target.id))saveDrafts()});
 document.addEventListener('change',e=>{if(orderDraftIds.includes(e.target.id)||productDraftIds.includes(e.target.id)||e.target.id==='newSuppliers')saveDrafts()});
 document.getElementById('accessKey').value=accessKey();
