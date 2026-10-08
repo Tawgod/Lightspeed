@@ -105,3 +105,12 @@ tbody tr:hover{background:#f2f7fc}
 #categoryBreadcrumb{margin-top:7px}
 @media(max-width:900px){.form-grid-4{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.form-grid-4,.form-grid-2{grid-template-columns:1fr}.section-heading{flex-direction:column}}
+
+.compact-product-meta{display:grid;grid-template-columns:.8fr 1.65fr 1fr 1fr;gap:12px;align-items:end;margin:12px 0}
+.compact-pair,.dimension-row{display:flex;align-items:center;gap:5px}
+.compact-pair input{min-width:0;flex:1}.compact-pair select{width:72px}
+.dimension-row input{min-width:0;width:58px;flex:1}.dimension-row select{width:68px}.dimension-row span{font-size:12px;color:var(--muted)}
+.inline-check{display:flex;align-items:center;gap:7px;min-height:38px;font-size:13px;font-weight:600;text-transform:none!important;color:var(--text)!important}
+.inline-check input{width:auto!important}
+@media(max-width:900px){.compact-product-meta{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.compact-product-meta{grid-template-columns:1fr}}
