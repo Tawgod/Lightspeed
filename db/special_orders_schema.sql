@@ -370,3 +370,28 @@ ON product_identifiers (product_id);
 
 ALTER TABLE products
   ADD COLUMN IF NOT EXISTS reorder_setup_needed BOOLEAN NOT NULL DEFAULT false;
+
+
+ALTER TABLE products
+  ADD COLUMN IF NOT EXISTS lightspeed_reconcile_status TEXT NOT NULL DEFAULT 'UNKNOWN',
+  ADD COLUMN IF NOT EXISTS last_reconciled_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS lightspeed_missing_count INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS lightspeed_missing_since TIMESTAMPTZ;
+
+CREATE INDEX IF NOT EXISTS idx_products_reconcile
+ON products (last_reconciled_at, lightspeed_reconcile_status);
+
+CREATE TABLE IF NOT EXISTS product_reconcile_runs (
+  id BIGSERIAL PRIMARY KEY,
+  source TEXT NOT NULL,
+  checked_count INTEGER NOT NULL DEFAULT 0,
+  matched_count INTEGER NOT NULL DEFAULT 0,
+  repaired_count INTEGER NOT NULL DEFAULT 0,
+  flagged_count INTEGER NOT NULL DEFAULT 0,
+  deleted_count INTEGER NOT NULL DEFAULT 0,
+  protected_count INTEGER NOT NULL DEFAULT 0,
+  conflict_count INTEGER NOT NULL DEFAULT 0,
+  error_count INTEGER NOT NULL DEFAULT 0,
+  details JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
