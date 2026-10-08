@@ -105,6 +105,195 @@ export function registerSpecialOrderProductRoutes(router, deps) {
     }
   });
 
+  async function reconcileLocalProducts({limit=250,sku=null,apply=true,source='manual'}={}) {
+    const lockKey=781091;
+    const lock=await pool.query('SELECT pg_try_advisory_lock($1) AS locked',[lockKey]);
+    if(!lock.rows[0]?.locked) return {busy:true,checked:0,matched:0,repaired:0,flagged:0,deleted:0,protected:0,conflicts:0,errors:[]};
+
+    const summary={busy:false,checked:0,matched:0,repaired:0,flagged:0,deleted:0,protected:0,conflicts:0,errors:[]};
+    try {
+      const args=[];
+      let where="(p.lightspeed_product_id IS NOT NULL OR EXISTS (SELECT 1 FROM product_identifiers pi WHERE pi.product_id=p.id AND pi.identifier_type='LIGHTSPEED_UUID'))";
+      if(sku){
+        args.push(String(sku));
+        where+=" AND lower(coalesce(p.sku,''))=lower($"+args.length+")";
+      }
+      args.push(Math.max(1,Math.min(Number(limit)||250,500)));
+      const rows=await pool.query(`
+        SELECT p.id,p.name,p.sku,p.lightspeed_product_id,p.lightspeed_missing_count,
+               (SELECT pi.identifier_value
+                FROM product_identifiers pi
+                WHERE pi.product_id=p.id AND pi.identifier_type='LIGHTSPEED_UUID'
+                ORDER BY pi.is_primary DESC,pi.updated_at DESC LIMIT 1) AS mapped_uuid
+        FROM products p
+        WHERE ${where}
+        ORDER BY CASE WHEN p.lightspeed_reconcile_status LIKE 'MISSING%' THEN 0 ELSE 1 END,
+                 p.last_reconciled_at NULLS FIRST,p.id
+        LIMIT ${args.length}
+      `,args);
+
+      for(const local of rows.rows){
+        summary.checked++;
+        let uuid=local.lightspeed_product_id||local.mapped_uuid||null;
+        let remote=null;
+
+        if(uuid){
+          try {
+            const r=await lightspeedVersionedFetch(lightspeedDomain,lightspeedToken,'/products/'+encodeURIComponent(uuid),{},'2026-07');
+            remote=r?.data||r;
+          } catch(error) {
+            if(Number(error.status)!==404){
+              summary.errors.push({sku:local.sku,id:local.id,error:error.message});
+              continue;
+            }
+          }
+        }
+
+        if(!remote && local.sku){
+          try {
+            const r=await lightspeedVersionedFetch(
+              lightspeedDomain,lightspeedToken,'/products?sku='+encodeURIComponent(String(local.sku).toLowerCase()),{},'2026-07'
+            );
+            const candidates=Array.isArray(r?.data)?r.data:[];
+            remote=candidates.find(x=>String(x?.sku||'').trim().toLowerCase()===String(local.sku).trim().toLowerCase())||null;
+          } catch(error) {
+            summary.errors.push({sku:local.sku,id:local.id,error:error.message});
+            continue;
+          }
+        }
+
+        if(remote?.id){
+          const conflict=await pool.query(
+            'SELECT id,sku FROM products WHERE lightspeed_product_id=$1 AND id<>$2 LIMIT 1',
+            [remote.id,local.id]
+          );
+          if(conflict.rows[0]){
+            summary.conflicts++;
+            await pool.query(`
+              UPDATE products SET lightspeed_reconcile_status='UUID_CONFLICT',last_reconciled_at=now()
+              WHERE id=$1
+            `,[local.id]);
+            continue;
+          }
+
+          if(String(uuid||'')!==String(remote.id)){
+            summary.repaired++;
+            await pool.query(
+              'UPDATE products SET lightspeed_product_id=$1,updated_at=now() WHERE id=$2',
+              [remote.id,local.id]
+            );
+          } else {
+            summary.matched++;
+          }
+
+          await pool.query(`
+            INSERT INTO product_identifiers
+              (product_id,identifier_type,identifier_value,normalized_value,source,is_primary,updated_at)
+            VALUES ($1,'LIGHTSPEED_UUID',$2,$2,'reconciliation',true,now())
+            ON CONFLICT (identifier_type, normalized_value, (COALESCE(supplier_id,0)))
+            DO UPDATE SET product_id=EXCLUDED.product_id,identifier_value=EXCLUDED.identifier_value,
+                          source='reconciliation',is_primary=true,updated_at=now()
+          `,[local.id,String(remote.id)]);
+
+          await pool.query(`
+            UPDATE products
+            SET lightspeed_reconcile_status=$2,last_reconciled_at=now(),
+                lightspeed_missing_count=0,lightspeed_missing_since=NULL
+            WHERE id=$1
+          `,[local.id,String(uuid||'')===String(remote.id)?'MATCHED':'REPAIRED']);
+          continue;
+        }
+
+        const refs=await pool.query(`
+          SELECT
+            (SELECT count(*) FROM special_order_items x WHERE x.product_id=$1)::int AS special_orders,
+            (SELECT count(*) FROM supplier_order_items x WHERE x.product_id=$1)::int AS supplier_orders,
+            (SELECT count(*) FROM inventory_allocations x WHERE x.product_id=$1)::int AS allocations,
+            (SELECT count(*) FROM preorder_products x WHERE x.product_id=$1)::int AS preorders,
+            (SELECT count(*) FROM receiving_events x WHERE x.product_id=$1)::int AS receiving
+        `,[local.id]);
+        const referenceCount=Object.values(refs.rows[0]||{}).reduce((n,v)=>n+Number(v||0),0);
+        const missCount=Number(local.lightspeed_missing_count||0)+1;
+
+        if(referenceCount>0){
+          summary.protected++;
+          await pool.query(`
+            UPDATE products SET lightspeed_reconcile_status='MISSING_REFERENCED',
+              last_reconciled_at=now(),lightspeed_missing_count=$2,
+              lightspeed_missing_since=COALESCE(lightspeed_missing_since,now())
+            WHERE id=$1
+          `,[local.id,missCount]);
+          continue;
+        }
+
+        if(apply && missCount>=2){
+          await pool.query('DELETE FROM products WHERE id=$1',[local.id]);
+          summary.deleted++;
+        }else{
+          summary.flagged++;
+          await pool.query(`
+            UPDATE products SET lightspeed_reconcile_status='MISSING',
+              last_reconciled_at=now(),lightspeed_missing_count=$2,
+              lightspeed_missing_since=COALESCE(lightspeed_missing_since,now())
+            WHERE id=$1
+          `,[local.id,missCount]);
+        }
+      }
+
+      await pool.query(`
+        INSERT INTO product_reconcile_runs
+          (source,checked_count,matched_count,repaired_count,flagged_count,deleted_count,
+           protected_count,conflict_count,error_count,details)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)
+      `,[
+        source,summary.checked,summary.matched,summary.repaired,summary.flagged,summary.deleted,
+        summary.protected,summary.conflicts,summary.errors.length,JSON.stringify({sku:sku||null,errors:summary.errors.slice(0,50)})
+      ]);
+      return summary;
+    } finally {
+      await pool.query('SELECT pg_advisory_unlock($1)',[lockKey]).catch(()=>{});
+    }
+  }
+
+  router.post('/reconcile/products', requireDb, async (req,res)=>{
+    try {
+      const result=await reconcileLocalProducts({
+        limit:req.body?.limit||250,
+        sku:req.body?.sku||null,
+        apply:req.body?.apply!==false,
+        source:'manual'
+      });
+      res.json(result);
+    } catch(error) {
+      res.status(error.status||500).json({error:error.message});
+    }
+  });
+
+  router.get('/reconcile/products/status', requireDb, async (req,res)=>{
+    const latest=await pool.query('SELECT * FROM product_reconcile_runs ORDER BY created_at DESC LIMIT 1');
+    const pending=await pool.query(`
+      SELECT lightspeed_reconcile_status,count(*)::int AS count
+      FROM products
+      WHERE lightspeed_reconcile_status<>'MATCHED'
+      GROUP BY lightspeed_reconcile_status
+      ORDER BY lightspeed_reconcile_status
+    `);
+    res.json({latest:latest.rows[0]||null,pending:pending.rows});
+  });
+
+  // Twice-daily conservative cleanup. Advisory locking makes this safe across replicas.
+  setTimeout(()=>{
+    reconcileLocalProducts({limit:250,apply:true,source:'scheduled'}).catch(
+      e=>console.error('[special-orders] scheduled product reconciliation failed',e)
+    );
+  },120000);
+  const reconcileTimer=setInterval(()=>{
+    reconcileLocalProducts({limit:250,apply:true,source:'scheduled'}).catch(
+      e=>console.error('[special-orders] scheduled product reconciliation failed',e)
+    );
+  },12*60*60*1000);
+  if(reconcileTimer.unref)reconcileTimer.unref();
+
   router.get('/brands', async (req, res) => {
     res.set('Cache-Control','no-store');
     try {
