@@ -366,3 +366,7 @@ CREATE INDEX IF NOT EXISTS idx_product_identifiers_value
 ON product_identifiers (normalized_value);
 CREATE INDEX IF NOT EXISTS idx_product_identifiers_product
 ON product_identifiers (product_id);
+
+
+ALTER TABLE products
+  ADD COLUMN IF NOT EXISTS reorder_setup_needed BOOLEAN NOT NULL DEFAULT false;
