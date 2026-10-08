@@ -105,7 +105,20 @@ export function registerSpecialOrderProductRoutes(router, deps) {
     }
   });
 
-  router.post('/products/match-local', requireDb, async (req, res) => {
+  router.get('/brands', async (req, res) => {
+    res.set('Cache-Control','no-store');
+    try {
+      const result=await lightspeedVersionedFetch(
+        lightspeedDomain,lightspeedToken,'/brands?page_size=1000',{},'2026-04'
+      );
+      const rows=Array.isArray(result?.data)?result.data:(Array.isArray(result)?result:[]);
+      res.json(rows.map(x=>({id:x.id,name:x.name})).filter(x=>x.id&&x.name).sort((a,b)=>a.name.localeCompare(b.name)));
+    } catch(error) {
+      res.status(error.status||502).json({error:error.message});
+    }
+  });
+
+    router.post('/products/match-local', requireDb, async (req, res) => {
     res.set('Cache-Control','no-store');
     const body=req.body||{};
     const identifiers=[
@@ -516,6 +529,18 @@ export function registerSpecialOrderProductRoutes(router, deps) {
       }
       delete body.price_including_tax;
 
+      if (body.local_supplier_id) {
+        const supplierResult=await pool.query(
+          'SELECT id,name,lightspeed_supplier_id FROM suppliers WHERE id=$1',
+          [body.local_supplier_id]
+        );
+        const supplier=supplierResult.rows[0];
+        if (supplier?.lightspeed_supplier_id) {
+          body.supplier_id=supplier.lightspeed_supplier_id;
+          if (body.supplier_sku) body.supplier_code=body.supplier_sku;
+        }
+      }
+
       const allowed = [
         'name','description','sku','product_codes','is_active','price_excluding_tax',
         'supply_price','supplier_id','supplier_code','product_suppliers','product_type_id','product_category_id',
@@ -533,6 +558,12 @@ export function registerSpecialOrderProductRoutes(router, deps) {
       });
       const product = result?.data || result;
       const localProduct = await upsertLocalProduct(product);
+      if (localProduct && body.reorder_setup_needed !== undefined) {
+        await pool.query(
+          'UPDATE products SET reorder_setup_needed=$1,updated_at=now() WHERE id=$2',
+          [Boolean(body.reorder_setup_needed),localProduct.id]
+        );
+      }
 
       const extraIdentifiers = [];
       for (const code of (Array.isArray(body.product_codes) ? body.product_codes : [])) {
