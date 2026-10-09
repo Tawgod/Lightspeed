@@ -895,6 +895,138 @@ export function createSpecialOrdersRouter({
     return {...parsed,source_url:input.toString(),http_status:response.status,html_bytes:Buffer.byteLength(html)};
   }
 
+
+  let graphTokenCache={token:null,expiresAt:0};
+
+  async function getGraphAppToken(){
+    const tenant=String(process.env.MS_GRAPH_TENANT_ID||'').trim();
+    const clientId=String(process.env.MS_GRAPH_CLIENT_ID||'').trim();
+    const clientSecret=String(process.env.MS_GRAPH_CLIENT_SECRET||'').trim();
+    if(!tenant||!clientId||!clientSecret){
+      throw Object.assign(new Error('Microsoft Graph app credentials are not configured.'),{status:503});
+    }
+    if(graphTokenCache.token && Date.now()<graphTokenCache.expiresAt-60000) return graphTokenCache.token;
+    const body=new URLSearchParams({
+      client_id:clientId,
+      client_secret:clientSecret,
+      scope:'https://graph.microsoft.com/.default',
+      grant_type:'client_credentials'
+    });
+    const response=await fetch('https://login.microsoftonline.com/'+encodeURIComponent(tenant)+'/oauth2/v2.0/token',{
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded','Accept':'application/json'},
+      body
+    });
+    const text=await response.text();
+    let data={};try{data=text?JSON.parse(text):{}}catch{}
+    if(!response.ok||!data.access_token){
+      throw Object.assign(new Error('Microsoft Graph authentication failed: '+(data.error_description||data.error||response.statusText)),{status:502});
+    }
+    graphTokenCache={
+      token:data.access_token,
+      expiresAt:Date.now()+Math.max(300,Number(data.expires_in||3600))*1000
+    };
+    return data.access_token;
+  }
+
+  async function graphGet(pathname){
+    const token=await getGraphAppToken();
+    const response=await fetch('https://graph.microsoft.com/v1.0'+pathname,{
+      headers:{'Authorization':'Bearer '+token,'Accept':'application/json'}
+    });
+    const text=await response.text();
+    let data={};try{data=text?JSON.parse(text):{}}catch{}
+    if(!response.ok){
+      const msg=data?.error?.message||data?.error_description||response.statusText;
+      throw Object.assign(new Error('Microsoft Graph request failed: '+msg),{status:response.status===403?403:502});
+    }
+    return data;
+  }
+
+  async function listGraphMailFolders(mailbox){
+    const encoded=encodeURIComponent(mailbox);
+    const folders=[];
+    let url='/users/'+encoded+'/mailFolders?$top=100&$select=id,displayName,parentFolderId,childFolderCount,totalItemCount';
+    while(url){
+      const data=await graphGet(url);
+      for(const row of data.value||[])folders.push(row);
+      const next=data['@odata.nextLink'];
+      url=next?next.replace(/^https:\/\/graph\.microsoft\.com\/v1\.0/i,''):null;
+    }
+    return folders;
+  }
+
+  async function findGraphFolderByPath(mailbox,pathText){
+    const parts=String(pathText||'Inbox/Games/Games Workshop').split('/').map(x=>x.trim()).filter(Boolean);
+    if(!parts.length)throw Object.assign(new Error('GW mail folder path is empty.'),{status:400});
+    let parentId=null;
+    for(let i=0;i<parts.length;i++){
+      const name=parts[i];
+      let data;
+      if(i===0 && /^inbox$/i.test(name)){
+        data=await graphGet('/users/'+encodeURIComponent(mailbox)+'/mailFolders/inbox?$select=id,displayName,parentFolderId,childFolderCount,totalItemCount');
+        parentId=data.id;
+        continue;
+      }
+      const base=parentId
+        ? '/users/'+encodeURIComponent(mailbox)+'/mailFolders/'+encodeURIComponent(parentId)+'/childFolders'
+        : '/users/'+encodeURIComponent(mailbox)+'/mailFolders';
+      const children=await graphGet(base+'?$top=100&$select=id,displayName,parentFolderId,childFolderCount,totalItemCount');
+      const match=(children.value||[]).find(x=>String(x.displayName||'').localeCompare(name,undefined,{sensitivity:'accent'})===0);
+      if(!match)throw Object.assign(new Error('Mailbox folder not found: '+parts.slice(0,i+1).join('/')),{status:404});
+      parentId=match.id;
+    }
+    return parentId;
+  }
+
+  function extractGwEmailMetadata(message){
+    const body=String(message?.body?.content||'');
+    const text=gwHtmlText(body);
+    const formMatch=body.match(/\[Want\s*Number\s*Form\]\(([\s\S]*?)\)/i) ||
+      body.match(/href=["']([^"']+)["'][^>]*>\s*Want\s*Number\s*Form\s*</i);
+    const formUrl=formMatch?String(formMatch[1]||'').replace(/\s+/g,'').replace(/&amp;/g,'&'):null;
+    const due=(text.match(/Want Number Form will be due\s+(.+?)(?:\.|We will only accept)/i)||[])[1] ||
+      (text.match(/Submissions for this form will be due on\s+(.+?)(?:\.|To ensure)/i)||[])[1] || null;
+    const preorder=(text.match(/PRE-ORDER DATE\s+([0-9/]+)/i)||[])[1]||null;
+    const release=(text.match(/RELEASE DATE\s+([0-9/]+)/i)||[])[1]||null;
+    return {form_url:formUrl,due_text:due,preorder_date:preorder,release_date:release};
+  }
+
+  router.get('/preorders/gw/graph-test', requireDb, async (req,res)=>{
+    try{
+      const mailbox=String(process.env.GW_MAILBOX_ADDRESS||req.query.mailbox||'').trim();
+      if(!mailbox)return res.status(400).json({error:'Set GW_MAILBOX_ADDRESS or provide ?mailbox=.'});
+      const folderPath=String(process.env.GW_MAIL_FOLDER||'Inbox/Games/Games Workshop').trim();
+      const folderId=await findGraphFolderByPath(mailbox,folderPath);
+      const data=await graphGet(
+        '/users/'+encodeURIComponent(mailbox)+'/mailFolders/'+encodeURIComponent(folderId)+
+        '/messages?$top=12&$orderby=receivedDateTime%20desc&$select=id,subject,receivedDateTime,from,bodyPreview,body,webLink'
+      );
+      const messages=(data.value||[])
+        .filter(m=>String(m.from?.emailAddress?.address||'').toLowerCase()==='info@info.games-workshop.com')
+        .map(m=>({
+          id:m.id,
+          subject:m.subject,
+          received_at:m.receivedDateTime,
+          sender:m.from?.emailAddress?.address||null,
+          web_link:m.webLink||null,
+          ...extractGwEmailMetadata(m)
+        }));
+      res.set('Cache-Control','no-store');
+      res.json({
+        ok:true,
+        mailbox,
+        folder_path:folderPath,
+        folder_id:folderId,
+        matching_messages:messages.length,
+        messages
+      });
+    }catch(error){
+      console.error('[special-orders] GW Graph test failed:',error);
+      res.status(error.status||500).json({error:error.message});
+    }
+  });
+
   router.post('/preorders/gw/scrape-preview', requireDb, async (req,res)=>{
     try{
       const preview=await fetchGwFormPreview(req.body?.source_url);
