@@ -994,8 +994,10 @@ export function createSpecialOrdersRouter({
 
   router.get('/preorders/gw/graph-test', requireDb, async (req,res)=>{
     try{
-      const mailbox=String(process.env.GW_MAILBOX_ADDRESS||req.query.mailbox||'').trim();
-      if(!mailbox)return res.status(400).json({error:'Set GW_MAILBOX_ADDRESS or provide ?mailbox=.'});
+      const mailboxUserId=String(process.env.GW_MAILBOX_USER_ID||'').trim();
+      const mailboxAddress=String(process.env.GW_MAILBOX_ADDRESS||req.query.mailbox||'').trim();
+      const mailbox=mailboxUserId||mailboxAddress;
+      if(!mailbox)return res.status(400).json({error:'Set GW_MAILBOX_USER_ID (preferred) or GW_MAILBOX_ADDRESS.'});
       const folderPath=String(process.env.GW_MAIL_FOLDER||'Inbox/Games/Games Workshop').trim();
       const folderId=await findGraphFolderByPath(mailbox,folderPath);
       const data=await graphGet(
@@ -1015,7 +1017,23 @@ export function createSpecialOrdersRouter({
       res.set('Cache-Control','no-store');
       res.json({
         ok:true,
-        mailbox,
+        mailbox_reference:mailboxUserId?'user_id':'address',
+        mailbox:mailboxUserId?'configured Entra user object ID':mailboxAddress,
+        credential_expiration:(()=>{
+          const raw=String(process.env.MS_GRAPH_CLIENT_SECRET_EXPIRES_AT||'').trim();
+          if(!raw)return {configured:false};
+          const t=Date.parse(raw);
+          if(Number.isNaN(t))return {configured:true,valid:false,value:raw};
+          const days=Math.ceil((t-Date.now())/86400000);
+          return {
+            configured:true,
+            valid:true,
+            expires_at:new Date(t).toISOString(),
+            days_remaining:days,
+            warning:days<=60,
+            critical:days<=14
+          };
+        })(),
         folder_path:folderPath,
         folder_id:folderId,
         matching_messages:messages.length,
