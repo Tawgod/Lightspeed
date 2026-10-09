@@ -1248,6 +1248,59 @@ async function loadGwCampaigns(){
     if(status)status.textContent='GW campaigns unavailable: '+e.message;
   }
 }
+
+async function scrapeGwFormPreview(){
+  const url=document.getElementById('gwFormUrl').value.trim();
+  const box=document.getElementById('gwScrapePreview');
+  if(!url)return showNotice('Paste the GW Want Number Form URL first.');
+  box.textContent='Scraping GW form…';
+  try{
+    const d=await getJson(api+'/preorders/gw/scrape-preview',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({source_url:url})
+    });
+    box.replaceChildren();
+
+    const summary=document.createElement('div');
+    summary.className='form-note';
+    summary.textContent=(d.title||'GW form')+
+      ' · '+d.counts.items+' item candidate(s)'+
+      ' · '+d.counts.ready+' ready'+
+      ' · '+d.counts.review+' review'+
+      ' · '+d.counts.filtered+' filtered'+
+      ' · '+d.counts.images+' image(s)';
+    box.appendChild(summary);
+
+    if(!d.items.length){
+      const p=document.createElement('p');
+      p.textContent='No product candidates were extracted. Questions found: '+d.counts.questions+'.';
+      box.appendChild(p);
+      return;
+    }
+
+    const table=document.createElement('table');
+    const head=document.createElement('tr');
+    for(const label of ['Item','Disposition','Pack','Reason']){
+      const th=document.createElement('th');th.textContent=label;head.appendChild(th);
+    }
+    table.appendChild(head);
+
+    for(const item of d.items.slice(0,120)){
+      const tr=document.createElement('tr');
+      const name=document.createElement('td');name.textContent=item.name||'—';
+      const disp=document.createElement('td');disp.textContent=item.disposition||'REVIEW';
+      const pack=document.createElement('td');pack.textContent=item.case_pack_size||'—';
+      const reason=document.createElement('td');reason.textContent=(item.reasons||[]).join('; ')||'—';
+      tr.append(name,disp,pack,reason);
+      table.appendChild(tr);
+    }
+    box.appendChild(table);
+  }catch(e){
+    box.textContent='Scrape failed: '+e.message;
+  }
+}
+
 async function createGwCampaign(){
   const name=document.getElementById('gwCampaignName').value.trim();
   const sourceFormUrl=document.getElementById('gwFormUrl').value.trim();
