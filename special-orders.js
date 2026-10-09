@@ -685,6 +685,12 @@ export function createSpecialOrdersRouter({
   });
 
   router.get('/preorders/campaigns', requireDb, async (req, res) => {
+    const params=[];
+    const where=[];
+    if(req.query.type){
+      params.push(String(req.query.type).toUpperCase());
+      where.push(`pc.campaign_type=${params.length}`);
+    }
     const { rows } = await pool.query(`
       SELECT pc.*,
              count(DISTINCT pp.id)::int AS product_count,
@@ -692,10 +698,157 @@ export function createSpecialOrdersRouter({
       FROM preorder_campaigns pc
       LEFT JOIN preorder_products pp ON pp.preorder_campaign_id=pc.id
       LEFT JOIN preorder_requests pr ON pr.preorder_product_id=pp.id
+      ${where.length?'WHERE '+where.join(' AND '):''}
       GROUP BY pc.id
-      ORDER BY COALESCE(pc.release_date, DATE '9999-12-31'), pc.created_at DESC
-    `);
+      ORDER BY COALESCE(pc.order_due_at,pc.release_date::timestamptz,TIMESTAMPTZ '9999-12-31'), pc.created_at DESC
+    `,params);
     res.json(rows);
+  });
+
+  router.post('/preorders/gw/campaigns', requireDb, async (req,res)=>{
+    const body=req.body||{};
+    const name=String(body.name||'').trim();
+    const formUrl=String(body.source_form_url||'').trim();
+    const dueAt=body.order_due_at||null;
+    if(!name||!formUrl||!dueAt)return res.status(400).json({error:'name, source_form_url, and order_due_at are required.'});
+    try{
+      const u=new URL(formUrl);
+      if(u.protocol!=='https:'||u.hostname!=='docs.google.com'||!u.pathname.includes('/forms/')){
+        return res.status(400).json({error:'source_form_url must be a Google Forms URL.'});
+      }
+    }catch{
+      return res.status(400).json({error:'source_form_url must be a valid URL.'});
+    }
+    const due=new Date(dueAt);
+    if(Number.isNaN(due.getTime()))return res.status(400).json({error:'order_due_at is invalid.'});
+    const autoMinutes=Math.max(5,Math.min(120,Number(body.auto_submit_minutes_before||15)));
+    const {rows}=await pool.query(`
+      INSERT INTO preorder_campaigns
+        (name,game,campaign_type,order_due_at,release_date,status,allocation_method,
+         source_form_url,external_submission_status,auto_submit_enabled,auto_submit_minutes_before,notes)
+      VALUES ($1,'Games Workshop','GW_WEEKLY',$2,$3,'OPEN','QUEUE',$4,'NOT_SUBMITTED',$5,$6,$7)
+      RETURNING *
+    `,[
+      name,due.toISOString(),body.release_date||null,formUrl,
+      Boolean(body.auto_submit_enabled),autoMinutes,body.notes||null
+    ]);
+    res.status(201).json(rows[0]);
+  });
+
+  router.patch('/preorders/gw/products/:id', requireDb, async (req,res)=>{
+    const qty=Math.max(0,Math.floor(Number(req.body?.store_order_quantity||0)));
+    const {rows}=await pool.query(`
+      UPDATE preorder_products pp
+      SET store_order_quantity=$1
+      FROM preorder_campaigns pc
+      WHERE pp.id=$2 AND pc.id=pp.preorder_campaign_id AND pc.campaign_type='GW_WEEKLY'
+      RETURNING pp.*
+    `,[qty,req.params.id]);
+    if(!rows[0])return res.status(404).json({error:'GW preorder product not found.'});
+    res.json(rows[0]);
+  });
+
+  router.post('/preorders/gw/campaigns/:id/mark-submitted', requireDb, async (req,res)=>{
+    const client=await pool.connect();
+    try{
+      await client.query('BEGIN');
+      const campaignResult=await client.query(
+        "SELECT * FROM preorder_campaigns WHERE id=$1 AND campaign_type='GW_WEEKLY' FOR UPDATE",
+        [req.params.id]
+      );
+      const campaign=campaignResult.rows[0];
+      if(!campaign){
+        await client.query('ROLLBACK');
+        return res.status(404).json({error:'GW preorder campaign not found.'});
+      }
+      if(campaign.external_submission_status==='SUBMITTED'){
+        await client.query('ROLLBACK');
+        return res.status(409).json({error:'This GW campaign is already recorded as submitted.'});
+      }
+
+      const products=await client.query(`
+        SELECT pp.id,pp.item_description,pp.sku,pp.msrp,pp.store_order_quantity,
+               COALESCE(sum(pr.requested_quantity),0)::int AS requested_total
+        FROM preorder_products pp
+        LEFT JOIN preorder_requests pr ON pr.preorder_product_id=pp.id
+        WHERE pp.preorder_campaign_id=$1
+        GROUP BY pp.id
+        ORDER BY pp.item_description
+      `,[campaign.id]);
+
+      for(const p of products.rows){
+        const submitted=Math.max(0,Number(p.requested_total||0)+Number(p.store_order_quantity||0));
+        await client.query(`
+          UPDATE preorder_products
+          SET submitted_quantity=$1,ordered_quantity=$1,
+              submitted_value=CASE WHEN msrp IS NULL THEN NULL ELSE $1*msrp END
+          WHERE id=$2
+        `,[submitted,p.id]);
+      }
+
+      await client.query(`
+        UPDATE preorder_campaigns
+        SET external_submission_status='SUBMITTED',submitted_at=now(),status='ORDERED',updated_at=now()
+        WHERE id=$1
+      `,[campaign.id]);
+
+      const totalUnits=products.rows.reduce((n,p)=>n+Number(p.requested_total||0)+Number(p.store_order_quantity||0),0);
+      const staffMessage='GW preorder submitted: '+campaign.name+
+        ' | '+totalUnits+' total unit(s) | '+products.rows.length+' product(s).';
+      await client.query(`
+        INSERT INTO notifications (preorder_campaign_id,channel,status,message)
+        VALUES ($1,'DISCORD_GW_STAFF_SUBMITTED','PENDING',$2)
+      `,[campaign.id,staffMessage]);
+
+      const customers=await client.query(`
+        SELECT c.id AS customer_id,c.name,c.discord_user_id,
+               json_agg(json_build_object(
+                 'item',pp.item_description,'sku',pp.sku,'qty',pr.requested_quantity
+               ) ORDER BY pp.item_description) AS items
+        FROM preorder_requests pr
+        JOIN preorder_products pp ON pp.id=pr.preorder_product_id
+        JOIN customers c ON c.id=pr.customer_id
+        WHERE pp.preorder_campaign_id=$1 AND pr.status IN ('REQUESTED','ALLOCATED')
+        GROUP BY c.id,c.name,c.discord_user_id
+        ORDER BY c.name
+      `,[campaign.id]);
+
+      let queued=0,suppressed=0;
+      for(const row of customers.rows){
+        const items=Array.isArray(row.items)?row.items:[];
+        const lines=items.map(x=>'- '+x.item+(x.sku?' ('+x.sku+')':'')+' x'+x.qty);
+        const message='Your Hobby Corner GW preorder for '+campaign.name+':\n'+lines.join('\n')+
+          '\n\nThe store order has been submitted. We will contact you again when items arrive.';
+        if(row.discord_user_id){
+          await client.query(`
+            INSERT INTO notifications
+              (preorder_campaign_id,customer_id,channel,recipient,status,message)
+            VALUES ($1,$2,'DISCORD_GW_ORDER_SUMMARY',$3,'PENDING',$4)
+          `,[campaign.id,row.customer_id,String(row.discord_user_id),message]);
+          queued++;
+        }else{
+          await client.query(`
+            INSERT INTO notifications
+              (preorder_campaign_id,customer_id,channel,status,message,suppression_reason,suppressed_at)
+            VALUES ($1,$2,'DISCORD_GW_ORDER_SUMMARY','SUPPRESSED',$3,'Customer has no linked Discord user ID',now())
+          `,[campaign.id,row.customer_id,message]);
+          suppressed++;
+        }
+      }
+
+      await client.query('COMMIT');
+      res.json({
+        campaign_id:campaign.id,
+        submitted_products:products.rows.length,
+        total_units:totalUnits,
+        customer_summaries:queued,
+        customer_summaries_suppressed:suppressed,
+        staff_notification_queued:true
+      });
+    }catch(error){
+      await client.query('ROLLBACK');
+      res.status(400).json({error:error.message});
+    }finally{client.release()}
   });
 
   router.get('/preorders/campaigns/:id', requireDb, async (req, res) => {
