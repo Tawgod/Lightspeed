@@ -271,6 +271,27 @@
   <div id="productResults"></div><div id="supplierResults"></div><div id="departmentResults"></div>
 </div>
 <div class="panel">
+  <div class="section-heading">
+    <div>
+      <h2 style="margin:0">GW Weekly Preorders</h2>
+      <p class="form-note">Create the weekly GW campaign from the form link and cutoff. Automatic form submission remains safety-disabled until the submission fields are verified.</p>
+    </div>
+  </div>
+  <div class="form-grid form-grid-4">
+    <label class="field"><span>Campaign name</span><input id="gwCampaignName" placeholder="GW — week of 10/11"></label>
+    <label class="field"><span>GW form URL</span><input id="gwFormUrl" placeholder="Paste weekly Google Form link"></label>
+    <label class="field"><span>Order cutoff</span><input id="gwOrderDue" type="datetime-local"></label>
+    <label class="field"><span>Release date</span><input id="gwReleaseDate" type="date"></label>
+  </div>
+  <div class="toolbar">
+    <label><input id="gwAutoSubmit" type="checkbox"> Auto-submit 15 minutes before cutoff after submission testing is enabled</label>
+    <button type="button" onclick="createGwCampaign()">Create GW campaign</button>
+    <select id="gwCampaignSelect" onchange="loadGwCampaign()"><option value="">Select GW campaign…</option></select>
+  </div>
+  <div id="gwCampaignStatus" class="form-note"></div>
+</div>
+
+<div class="panel">
   <h2>Preorder Allocations</h2>
   <div class="toolbar">
     <select id="preorderCampaign" onchange="loadPreorderCampaign()"><option value="">Select preorder campaign…</option></select>
