@@ -705,6 +705,207 @@ export function createSpecialOrdersRouter({
     res.json(rows);
   });
 
+
+  function gwHtmlText(value=''){
+    return String(value)
+      .replace(/<br\s*\/?>/gi,' ')
+      .replace(/&nbsp;/gi,' ')
+      .replace(/&amp;/gi,'&')
+      .replace(/&quot;/gi,'"')
+      .replace(/&#39;|&apos;/gi,"'")
+      .replace(/&lt;/gi,'<')
+      .replace(/&gt;/gi,'>')
+      .replace(/<[^>]+>/g,' ')
+      .replace(/\s+/g,' ')
+      .trim();
+  }
+
+  function classifyGwListing(name='',description=''){
+    const text=(String(name)+' '+String(description)).replace(/\s+/g,' ').trim();
+    const lower=text.toLowerCase();
+    const reasons=[];
+    let disposition='POST_AS_IS';
+    let casePackSize=null;
+
+    const frenchStrong=/\b(french|français|francais|version française|version francaise)\b/i.test(text);
+    const quebecStrong=/\b(qu[eé]bec\s*only|only\s+(?:in|for)\s+qu[eé]bec|qu[eé]bec\s+exclusive)\b/i.test(text);
+    const regionalStrong=/\b(canada\s*only|canadian\s*exclusive|not\s+available\s+in\s+(?:the\s+)?u\.?s\.?a?\.?)\b/i.test(text);
+    if(frenchStrong){disposition='DO_NOT_POST';reasons.push('French-language product');}
+    if(quebecStrong){disposition='DO_NOT_POST';reasons.push('Québec-only product');}
+    if(regionalStrong){disposition='DO_NOT_POST';reasons.push('Regional product not intended for US posting');}
+
+    const packMatch=text.match(/\(\s*x\s*(\d+)\s*\)|\b(\d+)\s*[- ]?pack\b|\bpack\s+of\s+(\d+)\b|\bcase\s+of\s+(\d+)\b/i);
+    if(packMatch){
+      casePackSize=Number(packMatch[1]||packMatch[2]||packMatch[3]||packMatch[4]||0)||null;
+      if(disposition!=='DO_NOT_POST'){
+        disposition='REVIEW';
+        reasons.push('Possible case pack'+(casePackSize?' x'+casePackSize:''));
+      }
+    }
+
+    if(/\b(stockist|assortment|display|rack|range\s+set|launch\s+set|paint\s+range)\b/i.test(lower) && disposition!=='DO_NOT_POST'){
+      disposition='REVIEW';
+      reasons.push('Possible retailer assortment / launch product');
+    }
+
+    return {disposition,case_pack_size:casePackSize,reasons};
+  }
+
+  function walkGwFormData(node,out,seen,depth=0){
+    if(depth>14||node==null)return;
+    if(Array.isArray(node)){
+      // Google Forms question records commonly contain numeric id, title, type and nested entry/options.
+      const id=(typeof node[0]==='number'||typeof node[0]==='string')?node[0]:null;
+      const title=typeof node[1]==='string'?gwHtmlText(node[1]):'';
+      const desc=typeof node[2]==='string'?gwHtmlText(node[2]):'';
+      const type=typeof node[3]==='number'?node[3]:null;
+      if(id!=null && title && type!=null && Array.isArray(node[4]) && title.length<500){
+        const key=String(id)+'|'+title;
+        if(!seen.has(key)){
+          const options=[];
+          const collect=(x,d=0)=>{
+            if(d>6||x==null)return;
+            if(Array.isArray(x)){
+              // Option tuples are usually [label,...].
+              if(typeof x[0]==='string'){
+                const label=gwHtmlText(x[0]);
+                if(label && label.length<300 && !options.includes(label)) options.push(label);
+              }
+              for(const y of x)collect(y,d+1);
+            }
+          };
+          collect(node[4]);
+          out.push({id:String(id),title,description:desc,type,options:options.slice(0,200)});
+          seen.add(key);
+        }
+      }
+      for(const child of node)walkGwFormData(child,out,seen,depth+1);
+    }else if(typeof node==='object'){
+      for(const value of Object.values(node))walkGwFormData(value,out,seen,depth+1);
+    }
+  }
+
+  function parseGwGoogleForm(html,finalUrl){
+    const titleMatch=html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+    const formTitle=titleMatch?gwHtmlText(titleMatch[1]).replace(/\s*-\s*Google Forms\s*$/i,''):'GW Want Number Form';
+    let publicData=null;
+    const marker='FB_PUBLIC_LOAD_DATA_';
+    const start=html.indexOf(marker);
+    if(start>=0){
+      const eq=html.indexOf('=',start);
+      if(eq>=0){
+        let pos=eq+1,level=0,inString=false,escape=false,end=-1,started=false;
+        for(;pos<html.length;pos++){
+          const ch=html[pos];
+          if(inString){
+            if(escape){escape=false;continue}
+            if(ch==='\\\\'){escape=true;continue}
+            if(ch==='"')inString=false;
+            continue;
+          }
+          if(ch==='"'){inString=true;continue}
+          if(ch==='['||ch==='{'){level++;started=true}
+          else if(ch===']'||ch==='}'){level--;if(started&&level===0){end=pos+1;break}}
+        }
+        if(end>eq){
+          const raw=html.slice(eq+1,end).trim();
+          try{publicData=JSON.parse(raw)}catch{}
+        }
+      }
+    }
+
+    const questions=[];
+    if(publicData)walkGwFormData(publicData,questions,new Set());
+
+    const imageUrls=[...new Set(
+      [...html.matchAll(/https:\/\/[^"'<>\\\s)]+(?:png|jpe?g|webp)(?:\?[^"'<>\\\s)]*)?/gi)]
+        .map(m=>m[0].replace(/&amp;/g,'&'))
+        .filter(u=>!/googleusercontent\.com\/.*(?:logo|icon)|gstatic\.com/i.test(u))
+    )].slice(0,250);
+
+    const itemCandidates=[];
+    for(const q of questions){
+      const title=q.title||'';
+      const description=q.description||'';
+      const cls=classifyGwListing(title,description);
+      // Keep questions with product-like options/titles; exclude common account/contact fields.
+      const accountField=/^(name|email|email address|cuid|account|store|phone|comments?|notes?)\b/i.test(title);
+      if(accountField)continue;
+      if(q.options.length){
+        for(const option of q.options){
+          const opt=gwHtmlText(option);
+          if(!opt||/^(yes|no|other|none|n\/a)$/i.test(opt))continue;
+          const c=classifyGwListing(opt,description);
+          itemCandidates.push({
+            source_question_id:q.id,
+            name:opt,
+            description,
+            ...c
+          });
+        }
+      }else if(/\$|sku|product|warhammer|codex|battle|paint|brush|set|pack|box|kit/i.test(title+' '+description)){
+        itemCandidates.push({source_question_id:q.id,name:title,description,...cls});
+      }
+    }
+
+    const dedup=[];
+    const names=new Set();
+    for(const item of itemCandidates){
+      const k=item.name.toLowerCase().replace(/\s+/g,' ').trim();
+      if(!k||names.has(k))continue;
+      names.add(k);dedup.push(item);
+    }
+
+    return {
+      title:formTitle,
+      final_url:finalUrl,
+      questions,
+      images:imageUrls,
+      items:dedup,
+      counts:{
+        questions:questions.length,
+        images:imageUrls.length,
+        items:dedup.length,
+        ready:dedup.filter(x=>x.disposition==='POST_AS_IS').length,
+        review:dedup.filter(x=>x.disposition==='REVIEW').length,
+        filtered:dedup.filter(x=>x.disposition==='DO_NOT_POST').length
+      }
+    };
+  }
+
+  async function fetchGwFormPreview(sourceUrl){
+    let input;
+    try{input=new URL(String(sourceUrl||'').trim())}
+    catch{throw Object.assign(new Error('Enter a valid GW Want Number Form URL.'),{status:400})}
+    const allowedHost=/^(?:info\.games-workshop\.com|docs\.google\.com)$/i.test(input.hostname);
+    if(input.protocol!=='https:'||!allowedHost){
+      throw Object.assign(new Error('GW scrape accepts only Games Workshop tracking links or Google Forms URLs.'),{status:400});
+    }
+    const response=await fetch(input.toString(),{
+      redirect:'follow',
+      headers:{
+        'User-Agent':'Mozilla/5.0 HobbyCorner-GW-Preorder-Scraper/1.0',
+        'Accept':'text/html,application/xhtml+xml'
+      }
+    });
+    if(!response.ok)throw Object.assign(new Error('GW form fetch failed: '+response.status+' '+response.statusText),{status:502});
+    const html=await response.text();
+    if(html.length>8*1024*1024)throw Object.assign(new Error('GW form response was unexpectedly large.'),{status:502});
+    const parsed=parseGwGoogleForm(html,response.url||input.toString());
+    return {...parsed,source_url:input.toString(),http_status:response.status,html_bytes:Buffer.byteLength(html)};
+  }
+
+  router.post('/preorders/gw/scrape-preview', requireDb, async (req,res)=>{
+    try{
+      const preview=await fetchGwFormPreview(req.body?.source_url);
+      res.set('Cache-Control','no-store');
+      res.json(preview);
+    }catch(error){
+      console.error('[special-orders] GW scrape preview failed:',error);
+      res.status(error.status||500).json({error:error.message});
+    }
+  });
+
   router.post('/preorders/gw/campaigns', requireDb, async (req,res)=>{
     const body=req.body||{};
     const name=String(body.name||'').trim();
