@@ -1003,6 +1003,57 @@ export function createSpecialOrdersRouter({
     return {form_url:formUrl,due_text:due,preorder_date:preorder,release_date:release};
   }
 
+
+  async function getLatestGwFormEmail(){
+    const mailboxUserId=String(process.env.GW_MAILBOX_USER_ID||'').trim();
+    const mailboxAddress=String(process.env.GW_MAILBOX_ADDRESS||'').trim();
+    const mailbox=mailboxUserId||mailboxAddress;
+    if(!mailbox)throw Object.assign(new Error('Set GW_MAILBOX_USER_ID (preferred) or GW_MAILBOX_ADDRESS.'),{status:400});
+    const folderPath=String(process.env.GW_MAIL_FOLDER||'Inbox/Games/Games Workshop').trim();
+    const folderId=await findGraphFolderByPath(mailbox,folderPath);
+    const data=await graphGet(
+      '/users/'+encodeURIComponent(mailbox)+'/mailFolders/'+encodeURIComponent(folderId)+
+      '/messages?$top=25&$orderby=receivedDateTime%20desc&$select=id,subject,receivedDateTime,from,bodyPreview,body,webLink'
+    );
+    const candidates=(data.value||[])
+      .filter(m=>String(m.from?.emailAddress?.address||'').toLowerCase()==='info@info.games-workshop.com')
+      .map(m=>({...m,metadata:extractGwEmailMetadata(m)}))
+      .filter(m=>m.metadata.form_url && m.metadata.release_date);
+    if(!candidates.length){
+      throw Object.assign(new Error('No recent Games Workshop Want Number Form email was found.'),{status:404});
+    }
+    return {
+      mailbox_reference:mailboxUserId?'user_id':'address',
+      folder_path:folderPath,
+      message:candidates[0]
+    };
+  }
+
+  router.get('/preorders/gw/sync-preview', requireDb, async (req,res)=>{
+    try{
+      const latest=await getLatestGwFormEmail();
+      const m=latest.message;
+      const scrape=await fetchGwFormPreview(m.metadata.form_url);
+      res.set('Cache-Control','no-store');
+      res.json({
+        ok:true,
+        mailbox_reference:latest.mailbox_reference,
+        folder_path:latest.folder_path,
+        email:{
+          id:m.id,
+          subject:m.subject,
+          received_at:m.receivedDateTime,
+          web_link:m.webLink||null,
+          ...m.metadata
+        },
+        scrape
+      });
+    }catch(error){
+      console.error('[special-orders] GW email sync preview failed:',error);
+      res.status(error.status||500).json({error:error.message});
+    }
+  });
+
   router.get('/preorders/gw/graph-test', requireDb, async (req,res)=>{
     try{
       const mailboxUserId=String(process.env.GW_MAILBOX_USER_ID||'').trim();
