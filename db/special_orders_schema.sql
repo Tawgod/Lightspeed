@@ -418,3 +418,17 @@ ALTER TABLE preorder_products
 ALTER TABLE notifications
   ADD COLUMN IF NOT EXISTS preorder_campaign_id BIGINT REFERENCES preorder_campaigns(id) ON DELETE CASCADE,
   ADD COLUMN IF NOT EXISTS preorder_request_id BIGINT REFERENCES preorder_requests(id) ON DELETE CASCADE;
+
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_gw_staff_submission
+ON notifications (preorder_campaign_id, channel)
+WHERE preorder_campaign_id IS NOT NULL
+  AND channel='DISCORD_GW_STAFF_SUBMITTED'
+  AND status IN ('PENDING','QUEUED','SENT');
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_gw_customer_summary
+ON notifications (preorder_campaign_id, customer_id, channel)
+WHERE preorder_campaign_id IS NOT NULL
+  AND customer_id IS NOT NULL
+  AND channel='DISCORD_GW_ORDER_SUMMARY'
+  AND status IN ('PENDING','QUEUED','SENT');
