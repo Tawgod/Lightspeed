@@ -395,3 +395,26 @@ CREATE TABLE IF NOT EXISTS product_reconcile_runs (
   details JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+
+ALTER TABLE preorder_campaigns
+  ADD COLUMN IF NOT EXISTS campaign_type TEXT NOT NULL DEFAULT 'GENERAL',
+  ADD COLUMN IF NOT EXISTS source_form_url TEXT,
+  ADD COLUMN IF NOT EXISTS source_email_message_id TEXT,
+  ADD COLUMN IF NOT EXISTS external_submission_status TEXT NOT NULL DEFAULT 'NOT_SUBMITTED',
+  ADD COLUMN IF NOT EXISTS external_submission_reference TEXT,
+  ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS auto_submit_enabled BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS auto_submit_minutes_before INTEGER NOT NULL DEFAULT 15,
+  ADD COLUMN IF NOT EXISTS discord_published_at TIMESTAMPTZ;
+
+ALTER TABLE preorder_products
+  ADD COLUMN IF NOT EXISTS external_entry_id TEXT,
+  ADD COLUMN IF NOT EXISTS store_order_quantity INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS submitted_quantity INTEGER,
+  ADD COLUMN IF NOT EXISTS submitted_value NUMERIC(12,2),
+  ADD COLUMN IF NOT EXISTS discord_notes TEXT;
+
+ALTER TABLE notifications
+  ADD COLUMN IF NOT EXISTS preorder_campaign_id BIGINT REFERENCES preorder_campaigns(id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS preorder_request_id BIGINT REFERENCES preorder_requests(id) ON DELETE CASCADE;
