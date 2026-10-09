@@ -929,6 +929,17 @@ export function createSpecialOrdersRouter({
     return data.access_token;
   }
 
+
+  function decodeJwtPayload(token){
+    try{
+      const part=String(token||'').split('.')[1];
+      if(!part)return {};
+      const normalized=part.replace(/-/g,'+').replace(/_/g,'/');
+      const padded=normalized+'='.repeat((4-normalized.length%4)%4);
+      return JSON.parse(Buffer.from(padded,'base64').toString('utf8'));
+    }catch{return {}}
+  }
+
   async function graphGet(pathname){
     const token=await getGraphAppToken();
     const response=await fetch('https://graph.microsoft.com/v1.0'+pathname,{
@@ -999,11 +1010,38 @@ export function createSpecialOrdersRouter({
       const mailbox=mailboxUserId||mailboxAddress;
       if(!mailbox)return res.status(400).json({error:'Set GW_MAILBOX_USER_ID (preferred) or GW_MAILBOX_ADDRESS.'});
       const folderPath=String(process.env.GW_MAIL_FOLDER||'Inbox/Games/Games Workshop').trim();
-      const folderId=await findGraphFolderByPath(mailbox,folderPath);
-      const data=await graphGet(
-        '/users/'+encodeURIComponent(mailbox)+'/mailFolders/'+encodeURIComponent(folderId)+
-        '/messages?$top=12&$orderby=receivedDateTime%20desc&$select=id,subject,receivedDateTime,from,bodyPreview,body,webLink'
-      );
+      const token=await getGraphAppToken();
+      const tokenPayload=decodeJwtPayload(token);
+      const tokenRoles=Array.isArray(tokenPayload.roles)?tokenPayload.roles:[];
+      let folderId;
+      try{
+        folderId=await findGraphFolderByPath(mailbox,folderPath);
+      }catch(error){
+        return res.status(error.status||500).json({
+          error:error.message,
+          stage:'resolve_mail_folder',
+          token_roles:tokenRoles,
+          has_mail_read:tokenRoles.includes('Mail.Read'),
+          mailbox_reference:mailboxUserId?'user_id':'address',
+          folder_path:folderPath
+        });
+      }
+      let data;
+      try{
+        data=await graphGet(
+          '/users/'+encodeURIComponent(mailbox)+'/mailFolders/'+encodeURIComponent(folderId)+
+          '/messages?$top=12&$orderby=receivedDateTime%20desc&$select=id,subject,receivedDateTime,from,bodyPreview,body,webLink'
+        );
+      }catch(error){
+        return res.status(error.status||500).json({
+          error:error.message,
+          stage:'list_messages',
+          token_roles:tokenRoles,
+          has_mail_read:tokenRoles.includes('Mail.Read'),
+          mailbox_reference:mailboxUserId?'user_id':'address',
+          folder_path:folderPath
+        });
+      }
       const messages=(data.value||[])
         .filter(m=>String(m.from?.emailAddress?.address||'').toLowerCase()==='info@info.games-workshop.com')
         .map(m=>({
@@ -1017,6 +1055,8 @@ export function createSpecialOrdersRouter({
       res.set('Cache-Control','no-store');
       res.json({
         ok:true,
+        token_roles:tokenRoles,
+        has_mail_read:tokenRoles.includes('Mail.Read'),
         mailbox_reference:mailboxUserId?'user_id':'address',
         mailbox:mailboxUserId?'configured Entra user object ID':mailboxAddress,
         credential_expiration:(()=>{
