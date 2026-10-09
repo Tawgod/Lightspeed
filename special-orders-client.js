@@ -1249,6 +1249,65 @@ async function loadGwCampaigns(){
   }
 }
 
+
+async function testGwGraphMailbox(){
+  const status=document.getElementById('gwCampaignStatus');
+  const box=document.getElementById('gwScrapePreview');
+  status.textContent='Testing Microsoft Graph mailbox access…';
+  box.replaceChildren();
+  try{
+    const d=await getJson(api+'/preorders/gw/graph-test');
+    const exp=d.credential_expiration||{};
+    const lines=[
+      'Graph mailbox access: OK',
+      'Mailbox reference: '+(d.mailbox_reference||'unknown'),
+      'Folder: '+(d.folder_path||'—'),
+      'Matching GW messages: '+Number(d.matching_messages||0)
+    ];
+    if(exp.configured&&exp.valid){
+      lines.push('Graph secret expires: '+new Date(exp.expires_at).toLocaleDateString()+' ('+exp.days_remaining+' days remaining)');
+    }else if(exp.configured){
+      lines.push('Graph secret expiration value could not be parsed.');
+    }else{
+      lines.push('Graph secret expiration tracking is not configured.');
+    }
+    status.textContent=lines.join(' · ');
+
+    const msgs=Array.isArray(d.messages)?d.messages:[];
+    if(!msgs.length){
+      const p=document.createElement('p');
+      p.textContent='Graph connected successfully, but no matching Games Workshop messages were returned from this folder.';
+      box.appendChild(p);
+      return;
+    }
+    const table=document.createElement('table');
+    const head=document.createElement('tr');
+    for(const label of ['Received','Subject','Form','Cutoff','Preorder','Release']){
+      const th=document.createElement('th'); th.textContent=label; head.appendChild(th);
+    }
+    table.appendChild(head);
+    for(const m of msgs){
+      const tr=document.createElement('tr');
+      const vals=[
+        m.received_at?new Date(m.received_at).toLocaleString():'—',
+        m.subject||'—',
+        m.form_url?'Found':'—',
+        m.due_text||'—',
+        m.preorder_date||'—',
+        m.release_date||'—'
+      ];
+      for(const v of vals){const td=document.createElement('td');td.textContent=v;tr.appendChild(td)}
+      table.appendChild(tr);
+    }
+    box.appendChild(table);
+  }catch(e){
+    status.textContent='Graph mailbox test failed: '+e.message;
+    const p=document.createElement('p');
+    p.textContent='No mailbox changes were made.';
+    box.appendChild(p);
+  }
+}
+
 async function scrapeGwFormPreview(){
   const url=document.getElementById('gwFormUrl').value.trim();
   const box=document.getElementById('gwScrapePreview');
