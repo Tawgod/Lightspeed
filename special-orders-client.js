@@ -370,7 +370,13 @@ async function getJson(url,opts={}){
     setAuthState(false,'Special Orders is locked. Enter the internal access key and click Unlock.');
     throw new Error('Access key missing or incorrect.');
   }
-  if(!r.ok)throw new Error(d.error||r.statusText);return d
+  if(!r.ok){
+    const err=new Error(d.error||r.statusText);
+    err.details=d;
+    err.status=r.status;
+    throw err;
+  }
+  return d
 }
 async function importWorkbook(){
   const f=document.getElementById('legacyWorkbook').files[0];if(!f)return showNotice('Choose the HC Special Orders workbook first.');
@@ -1301,7 +1307,13 @@ async function testGwGraphMailbox(){
     }
     box.appendChild(table);
   }catch(e){
-    status.textContent='Graph mailbox test failed: '+e.message;
+    const d=e.details||{};
+    const bits=['Graph mailbox test failed: '+e.message];
+    if(d.stage)bits.push('Stage: '+d.stage);
+    if(typeof d.has_mail_read==='boolean')bits.push('Token Mail.Read: '+(d.has_mail_read?'YES':'NO'));
+    if(Array.isArray(d.token_roles)&&d.token_roles.length)bits.push('Token roles: '+d.token_roles.join(', '));
+    if(d.mailbox_reference)bits.push('Mailbox reference: '+d.mailbox_reference);
+    status.textContent=bits.join(' · ');
     const p=document.createElement('p');
     p.textContent='No mailbox changes were made.';
     box.appendChild(p);
