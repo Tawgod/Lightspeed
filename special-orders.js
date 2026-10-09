@@ -1022,7 +1022,11 @@ export function createSpecialOrdersRouter({
         credential_expiration:(()=>{
           const raw=String(process.env.MS_GRAPH_CLIENT_SECRET_EXPIRES_AT||'').trim();
           if(!raw)return {configured:false};
-          const t=Date.parse(raw);
+          let t=Date.parse(raw);
+          if(Number.isNaN(t)){
+            const m=raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+            if(m)t=Date.UTC(Number(m[3]),Number(m[1])-1,Number(m[2]),23,59,59);
+          }
           if(Number.isNaN(t))return {configured:true,valid:false,value:raw};
           const days=Math.ceil((t-Date.now())/86400000);
           return {
