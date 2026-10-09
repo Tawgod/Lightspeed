@@ -432,3 +432,19 @@ WHERE preorder_campaign_id IS NOT NULL
   AND customer_id IS NOT NULL
   AND channel='DISCORD_GW_ORDER_SUMMARY'
   AND status IN ('PENDING','QUEUED','SENT');
+
+
+ALTER TABLE preorder_products
+  ADD COLUMN IF NOT EXISTS image_url TEXT,
+  ADD COLUMN IF NOT EXISTS source_image_url TEXT,
+  ADD COLUMN IF NOT EXISTS gw_post_disposition TEXT NOT NULL DEFAULT 'REVIEW',
+  ADD COLUMN IF NOT EXISTS gw_case_pack_size INTEGER,
+  ADD COLUMN IF NOT EXISTS gw_single_item_name TEXT,
+  ADD COLUMN IF NOT EXISTS gw_single_msrp NUMERIC(12,2),
+  ADD COLUMN IF NOT EXISTS gw_review_note TEXT,
+  ADD COLUMN IF NOT EXISTS gw_reviewed_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS gw_reviewed_by TEXT;
+
+ALTER TABLE preorder_products
+  ADD CONSTRAINT preorder_products_gw_post_disposition_chk
+  CHECK (gw_post_disposition IN ('REVIEW','POST_AS_IS','SPLIT_TO_SINGLES','DO_NOT_POST'));
