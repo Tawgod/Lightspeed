@@ -10,6 +10,7 @@ import { createOrderSplitRouter } from './routes/orderSplit.js';
 import { createOrderSplitExecuteRouter } from './routes/orderSplitExecute.js';
 import { createDepositConversionRouter } from './routes/depositConversion.js';
 import { createWorkOrderCombineRouter } from './routes/workOrderCombine.js';
+import { createSpecialOrdersRouter, initializeSpecialOrdersDb } from './special-orders.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -155,6 +156,30 @@ app.use('/api/order-split', createDepositConversionRouter({
 app.use('/api/work-orders', createWorkOrderCombineRouter({
   domain: LIGHTSPEED_DOMAIN,
   token: LIGHTSPEED_TOKEN
+}));
+
+app.get('/special-orders', (req, res) => {
+  res.sendFile(path.join(__dirname, 'special-orders.html'));
+});
+
+app.get('/special-orders.css', (req, res) => {
+  res.set('Cache-Control','no-store');
+  res.type('text/css').sendFile(path.join(__dirname, 'special-orders.css'));
+});
+
+app.get('/special-orders-client.js', (req, res) => {
+  res.set('Cache-Control','no-store');
+  res.type('application/javascript').sendFile(path.join(__dirname, 'special-orders-client.js'));
+});
+
+app.use('/api/special-orders', createSpecialOrdersRouter({
+  lightspeedDomain: LIGHTSPEED_DOMAIN,
+  lightspeedToken: LIGHTSPEED_TOKEN,
+  adminKey: process.env.SPECIAL_ORDERS_ADMIN_KEY,
+  liveMode: process.env.SPECIAL_ORDERS_LIVE_MODE === 'true',
+  allowMigration: process.env.SPECIAL_ORDERS_ALLOW_MIGRATION === 'true',
+  allowProductWrites: process.env.SPECIAL_ORDERS_ALLOW_PRODUCT_WRITES === 'true',
+  lightspeedOutletId: process.env.LIGHTSPEED_OUTLET_ID || null
 }));
 
 
@@ -767,6 +792,22 @@ app.post('/api/labels/generate', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 8080;
-ensureTemplatesExist().then(() => {
+
+async function startServer() {
+  try {
+    await ensureTemplatesExist();
+  } catch (error) {
+    console.error('[startup] template initialization failed:', error);
+  }
+
+  try {
+    const dbReady = await initializeSpecialOrdersDb();
+    console.log('[special-orders] database initialization result:', dbReady);
+  } catch (error) {
+    console.error('[special-orders] database initialization failed:', error);
+  }
+
   app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
-});
+}
+
+startServer();

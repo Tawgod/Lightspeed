@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hobby Corner Special Orders</title>
+<link rel="stylesheet" href="/special-orders.css">
+</head>
+<body><div class="wrap">
+  <div class="toolbar" style="justify-content:flex-end;margin-bottom:10px">
+    <a href="https://lightspeed-api-production-c087.up.railway.app/extension" target="_blank" rel="noopener"
+       style="display:inline-block;padding:9px 12px;border-radius:8px;background:#1f3a5f;color:#fff;text-decoration:none;font-weight:700">
+      Open Lightspeed Toolkit
+    </a>
+  </div>
+<h1>Special Orders</h1><div class="sub">Hobby Corner order, supplier, and fulfillment control center</div>
+<div id="notice" class="notice"></div>
+<div class="panel">
+  <div class="toolbar">
+    <input id="accessKey" type="password" placeholder="Internal access key" size="24">
+    <button id="unlockButton" onclick="saveKey()">Unlock</button>
+    <span id="authStatus" class="pill">Locked</span>
+    <input id="legacyWorkbook" type="file" accept=".xlsx" style="max-width:260px">
+    <button onclick="importWorkbook()">Import legacy workbook</button>
+  </div>
+  <div style="font-size:12px;color:#6b7280">The workbook is uploaded directly to the private database importer; customer data is not stored in GitHub.</div>
+</div>
+<div class="cards">
+  <div class="card"><div class="value" id="open">—</div><div class="label">Open items</div></div>
+  <div class="card"><div class="value" id="needs_ordering">—</div><div class="label">Needs ordering</div></div>
+  <div class="card"><div class="value" id="ordered_over_7_days">—</div><div class="label">Ordered &gt; 7 days</div></div>
+  <div class="card"><div class="value" id="backordered">—</div><div class="label">Backordered</div></div>
+  <div class="card"><div class="value" id="preorder">—</div><div class="label">Preorders</div></div>
+  <div class="card"><div class="value" id="ready_or_held">—</div><div class="label">Received / held</div></div>
+</div>
+<div class="panel">
+  <h2>New Special Order</h2>
+
+  <h3>1. Customer</h3>
+  <div class="toolbar">
+    <input id="customerSearch" placeholder="Customer name, phone, or email" size="30">
+    <button onclick="searchCustomers()">Find customer</button>
+    <button type="button" onclick="showNewCustomer()">New customer</button>
+    <span id="selectedCustomer" class="pill">No customer selected</span>
+  </div>
+  <div id="customerResults"></div>
+
+  <div id="newCustomerPanel" style="display:none;border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin:12px 0">
+    <h3>New Lightspeed Customer</h3>
+    <div class="toolbar">
+      <input id="ncFirstName" placeholder="First name *" size="20">
+      <input id="ncLastName" placeholder="Last name *" size="20">
+      <input id="ncPhone" placeholder="Phone" size="20">
+      <input id="ncEmail" type="email" placeholder="Email" size="28">
+    </div>
+    <div class="toolbar">
+      <input id="ncDiscord" placeholder="Discord handle" size="22">
+      <input id="ncNotes" placeholder="Customer note (Special Orders)" size="44">
+      <button type="button" onclick="createNewCustomer()">Create & use customer</button>
+      <button type="button" onclick="hideNewCustomer()">Cancel</button>
+    </div>
+  </div>
+
+  <div id="customerProfile" style="display:none;border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin:12px 0">
+    <div class="toolbar">
+      <div id="customerSummary" style="flex:1;color:#334155"></div>
+      <button type="button" onclick="openCustomerModal()">Update customer</button>
+    </div>
+    <div class="toolbar">
+      <input id="orderNotes" placeholder="Pickup note / alternate pickup person for this order" size="52">
+    </div>
+  </div>
+
+  <div id="customerModal" style="display:none;position:fixed;inset:0;background:#0008;z-index:1000;align-items:center;justify-content:center;padding:20px">
+    <div style="background:var(--panel);color:var(--text);width:min(760px,96vw);max-height:90vh;overflow:auto;border-radius:12px;border:1px solid var(--border);padding:18px;box-shadow:0 20px 60px #0005">
+      <div class="toolbar" style="justify-content:space-between">
+        <h2 style="margin:0">Update customer</h2>
+        <button type="button" onclick="closeCustomerModal()">Close</button>
+      </div>
+      <div class="toolbar">
+        <input id="customerFirstName" placeholder="First name" size="20">
+        <input id="customerLastName" placeholder="Last name" size="20">
+        <input id="customerCompany" placeholder="Company" size="24">
+      </div>
+      <div class="toolbar">
+        <input id="customerPhone" placeholder="Phone number" size="20">
+        <input id="customerEmail" type="email" placeholder="Email" size="28">
+        <input id="customerDiscord" placeholder="Discord handle" size="22">
+      </div>
+      <div class="toolbar">
+        <input id="customerPostcode" placeholder="ZIP / postal code" size="14" inputmode="numeric" autocomplete="postal-code" oninput="lookupCustomerZip(this.value)">
+        <span id="customerZipStatus" style="font-size:12px;color:var(--muted)"></span>
+      </div>
+      <div class="toolbar">
+        <input id="customerAddress1" placeholder="Address line 1" size="34" autocomplete="address-line1">
+        <input id="customerAddress2" placeholder="Address line 2" size="24" autocomplete="address-line2">
+        <button type="button" onclick="verifyCustomerAddress()">Verify address</button>
+      </div>
+      <div id="customerAddressVerify" style="display:none;background:var(--green-soft);color:var(--green);border:1px solid #bbdfc6;border-radius:8px;padding:10px;margin-bottom:10px"></div>
+      <div class="toolbar">
+        <input id="customerCity" placeholder="City" size="22" autocomplete="address-level2">
+        <input id="customerState" placeholder="State" size="12" autocomplete="address-level1">
+        <input id="customerCountry" placeholder="Country code" value="US" size="10" autocomplete="country">
+      </div>
+      <div class="toolbar">
+        <input id="customerNotes" placeholder="Customer note (Special Orders)" size="52">
+      </div>
+      <div class="toolbar">
+        <label><input id="syncCustomerLightspeed" type="checkbox"> Update this contact information in Lightspeed too</label>
+      </div>
+      <div class="toolbar">
+        <button type="button" onclick="updateCustomerProfile()">Save customer changes</button>
+        <button type="button" onclick="closeCustomerModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <h3>2. Items</h3>
+  <div class="toolbar" style="background:#fff7ed;border:1px solid #fed7aa;border-radius:9px;padding:10px">
+    <input id="quickAddItem" placeholder="Quick add SKU, UPC, or item name…" size="38" onkeydown="if(event.key==='Enter'){event.preventDefault();quickAddItem()}">
+    <button type="button" onclick="quickAddItem()">Quick Add</button>
+    <span style="font-size:12px;color:#9a3412">Adds it to the order now; finish details later.</span>
+  </div>
+  <div class="toolbar">
+    <button type="button" onclick="showItemEditor()">Add / search item</button>
+    <button type="button" onclick="showCreateProduct()">New item</button>
+  </div>
+
+  <div id="itemEditor" style="display:none;border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin:12px 0">
+    <div class="toolbar">
+      <input id="newProductSearch" placeholder="SKU, UPC, or description/name" size="36">
+      <button onclick="searchOrderProducts()">Find item</button>
+      <span id="selectedProduct" class="pill">No product selected</span>
+    </div>
+    <div id="newProductResults"></div>
+    <div class="toolbar">
+      <input id="manualItemName" placeholder="Item name" size="32">
+      <input id="manualSku" placeholder="SKU / supplier item #">
+      <input id="orderQty" type="number" value="1" min="1" style="width:70px">
+      <select id="newStatus">
+        <option value="OOS">OOS — needs ordering</option>
+        <option value="PREORDER">Preorder</option>
+        <option value="READY_TO_ORDER">Ready to order</option>
+        <option value="ORDERED">Ordered</option>
+        <option value="BACKORDERED">Backordered</option>
+      </select>
+      <select id="newDepartment"><option value="">Sourcing department…</option></select>
+      <select id="newSupplier"><option value="">Preferred supplier (optional)…</option></select>
+      <select id="newSuppliers" multiple size="4" title="Other possible suppliers"></select>
+      <label><input id="supplierNeeded" type="checkbox"> Supplier unknown / needs sourcing</label>
+    </div>
+    <div class="toolbar">
+      <input id="newNotes" placeholder="Item notes" size="38">
+      <input id="crowdfundingNote" placeholder="Crowdfunded / future availability note" size="32">
+      <input id="sourceUrl" placeholder="Supplier / product page URL" size="32">
+      <button id="addItemButton" type="button" onclick="addCurrentItem()">Add item to order</button>
+      <button type="button" onclick="clearCurrentItem()">Cancel item</button>
+    </div>
+  </div>
+
+  <div id="productMatchModal" style="display:none;position:fixed;inset:0;background:#0008;z-index:1100;align-items:center;justify-content:center;padding:20px">
+    <div style="background:var(--panel);color:var(--text);width:min(980px,96vw);max-height:88vh;overflow:auto;border-radius:12px;border:1px solid var(--border);padding:18px;box-shadow:0 20px 60px #0007">
+      <div class="toolbar" style="justify-content:space-between">
+        <div>
+          <h2 style="margin:0">Match item to an existing product</h2>
+          <div id="productMatchHint" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
+        </div>
+        <button type="button" onclick="closeProductMatchModal()">Close</button>
+      </div>
+      <div class="toolbar">
+        <input id="productMatchSearch" placeholder="SKU, UPC, ISBN, supplier code, custom number, or product name" size="52"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();runProductMatchSearch()}">
+        <button type="button" onclick="runProductMatchSearch()">Search</button>
+        <button type="button" onclick="createProductFromMatchSearch()">Create new item</button>
+      </div>
+      <div id="productMatchResults"></div>
+    </div>
+  </div>
+
+  <div id="createProductPanel" style="display:none;border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin:12px 0">
+    <div class="section-heading">
+      <div>
+        <h3>Create New Lightspeed Item <span class="pill">Test write enabled</span></h3>
+        <p class="form-note">Only use this when the correct item does not already exist. It will be tagged <b>Added by SO</b>.</p>
+      </div>
+      <button type="button" class="secondary-button" onclick="clearProductForm()">Clear form</button>
+    </div>
+
+    <div class="form-grid form-grid-4">
+      <label class="field"><span>Product name *</span><input id="cpName" placeholder="Product name"></label>
+      <label class="field"><span>SKU *</span><input id="cpSku" placeholder="SKU"></label>
+      <label class="field"><span>UPC / EAN / ISBN</span><input id="cpProductCode" placeholder="Scan or enter code" inputmode="text" oninput="updateDetectedProductCode()"><small id="cpProductCodeType">Type will be detected automatically</small></label>
+      <label class="field"><span>Brand</span><select id="cpBrand"><option value="">Optional</option></select></label>
+    </div>
+
+    <div class="form-grid form-grid-4">
+      <label class="field"><span>Cost *</span><input id="cpCost" type="number" step="0.01" min="0" placeholder="0.00"></label>
+      <label class="field"><span>Retail price *</span><input id="cpRetail" type="number" step="0.01" min="0" placeholder="0.00"></label>
+      <label class="field"><span>Primary supplier</span><select id="cpSupplier"><option value="">Optional</option></select></label>
+      <label class="field"><span>Supplier item #</span><input id="cpSupplierSku" placeholder="Supplier code"></label>
+    </div>
+
+    <div class="compact-product-meta">
+      <label class="field"><span>Weight</span><div class="compact-pair"><input id="cpWeight" type="number" min="0" step="0.01" placeholder="0"><select id="cpWeightUnit"><option value="LB">lb</option><option value="OZ">oz</option><option value="KG">kg</option><option value="G">g</option></select></div></label>
+      <label class="field"><span>Dimensions</span><div class="dimension-row"><input id="cpLength" type="number" min="0" step="0.01" placeholder="L"><span>×</span><input id="cpWidth" type="number" min="0" step="0.01" placeholder="W"><span>×</span><input id="cpHeight" type="number" min="0" step="0.01" placeholder="H"><select id="cpDimensionsUnit"><option value="IN">in</option><option value="CM">cm</option><option value="MM">mm</option></select></div></label>
+      <label class="field"><span>Order channel</span><select id="cpOrderChannel">
+        <option value="TRADE">Trade / normal supplier order</option>
+        <option value="WEB_ONLY">Web only</option>
+        <option value="DIRECT">Direct</option>
+        <option value="CROWDFUNDING">Crowdfunding</option>
+      </select></label>
+      <label class="field reorder-field"><span>Follow-up</span><label class="inline-check"><input id="cpReorderSetupNeeded" type="checkbox"> Reorder setup needed</label></label>
+    </div>
+
+    <div class="field">
+      <span>Category *</span>
+      <div id="categoryPicker">
+        <input id="cpCategorySearch" placeholder="Type to filter categories…" oninput="filterCategoryMatches()">
+        <input id="cpCategory" type="hidden">
+        <div id="categoryBreadcrumb" class="pill">No category selected</div>
+        <div id="categoryLevels" class="toolbar category-levels"></div>
+        <div id="categoryMatches"></div>
+      </div>
+    </div>
+
+    <div class="form-grid form-grid-2">
+      <label class="field"><span>Description</span><textarea id="cpDescription" placeholder="Full item description" rows="4"></textarea></label>
+      <div class="field-stack">
+        <label class="field"><span>Distributor / manufacturer URL</span><input id="cpSourceUrl" placeholder="https://…"></label>
+        <label class="field"><span>Image URL</span><input id="cpImageUrl" placeholder="https://…"></label>
+      </div>
+    </div>
+
+    <div class="toolbar form-actions">
+      <button type="button" onclick="createLightspeedProduct()">Check matches & create item</button>
+      <button type="button" class="secondary-button" onclick="hideCreateProduct()">Cancel</button>
+      <button type="button" class="secondary-button" onclick="clearProductForm()">Clear form</button>
+    </div>
+    <div id="createProductResult"></div>
+  </div>
+
+  <h3>3. Items added to this order</h3>
+  <div id="stagedItems"><p style="color:#6b7280">No items added yet.</p></div>
+  <div class="toolbar" style="margin-top:12px">
+    <button type="button" onclick="showItemEditor()">Add additional item</button>
+  </div>
+
+  <h3>4. Save</h3>
+  <div class="toolbar">
+    <button onclick="createOrder()">Save special order</button>
+    <button type="button" onclick="clearOrderForm()">Clear entire order</button>
+  </div>
+</div>
+<div class="panel">
+  <div class="section-heading">
+    <div>
+      <h2 style="margin:0">Product Reconciliation</h2>
+      <p class="form-note">Compares Railway product/UUID records with Lightspeed. Repairs UUIDs by SKU, flags first misses, and only removes unreferenced products after a second confirmed miss.</p>
+    </div>
+    <button type="button" onclick="runProductReconciliation()">Run reconciliation now</button>
+  </div>
+  <div id="reconcileStatus" class="form-note">No reconciliation status loaded yet.</div>
+</div>
+
+<div class="panel">
+  <div class="toolbar">
+    <input id="productSearch" placeholder="Search Lightspeed by SKU or exact name…" size="38">
+    <button onclick="searchProducts()">Search products</button>
+    <select id="supplierSelect" onchange="loadSupplier()"><option value="">Order a supplier…</option></select>
+    <select id="departmentSelect" onchange="loadDepartment()"><option value="">Source by department…</option></select>
+  </div>
+  <div id="productResults"></div><div id="supplierResults"></div><div id="departmentResults"></div>
+</div>
+<div class="panel">
+  <div class="section-heading">
+    <div>
+      <h2 style="margin:0">GW Weekly Preorders</h2>
+      <p class="form-note">Create the weekly GW campaign from the form link and cutoff. Automatic form submission remains safety-disabled until the submission fields are verified.</p>
+    </div>
+  </div>
+  <div class="form-grid form-grid-4">
+    <label class="field"><span>Campaign name</span><input id="gwCampaignName" placeholder="GW — week of 10/11"></label>
+    <label class="field"><span>GW form URL</span><input id="gwFormUrl" placeholder="Paste weekly Google Form link"></label>
+    <label class="field"><span>Order cutoff</span><input id="gwOrderDue" type="datetime-local"></label>
+    <label class="field"><span>Release date</span><input id="gwReleaseDate" type="date"></label>
+  </div>
+  <div class="toolbar">
+    <label><input id="gwAutoSubmit" type="checkbox"> Auto-submit 15 minutes before cutoff after submission testing is enabled</label>
+    <button type="button" onclick="testGwGraphMailbox()">Test Outlook/Graph</button>
+    <button type="button" onclick="syncLatestGwEmail()">Sync latest GW email</button>
+    <button type="button" onclick="scrapeGwFormPreview()">Scrape preview</button>
+    <button type="button" onclick="createGwCampaign()">Create GW campaign</button>
+    <select id="gwCampaignSelect" onchange="loadGwCampaign()"><option value="">Select GW campaign…</option></select>
+  </div>
+  <div id="gwCampaignStatus" class="form-note"></div>
+  <div id="gwScrapePreview"></div>
+</div>
+
+<div class="panel">
+  <h2>Preorder Allocations</h2>
+  <div class="toolbar">
+    <select id="preorderCampaign" onchange="loadPreorderCampaign()"><option value="">Select preorder campaign…</option></select>
+  </div>
+  <div id="preorderProducts"></div>
+  <div id="allocationSuggestions" style="margin-top:14px"></div>
+</div>
+<div class="panel">
+  <div class="toolbar">
+    <select id="statusFilter" onchange="loadOrders()">
+      <option value="">All open/recent items</option><option>PREORDER</option><option>OOS</option>
+      <option>READY_TO_ORDER</option><option>ORDERED</option><option>BACKORDERED</option>
+      <option>RECEIVED</option><option>HELD</option><option>CUSTOMER_NOTIFIED</option>
+    </select>
+    <label><input type="checkbox" id="attention" onchange="loadOrders()"> ordered &gt; 7 days only</label>
+  </div>
+  <table><thead><tr><th>Customer</th><th>Item</th><th>SKU</th><th>Qty</th><th>Status</th><th>Supplier</th><th>Age</th><th>Notes</th><th></th></tr></thead>
+  <tbody id="orders"></tbody></table>
+</div>
+</div>
+<script src="/special-orders-client.js"></script></body></html>
