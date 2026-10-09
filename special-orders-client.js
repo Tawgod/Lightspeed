@@ -1256,6 +1256,65 @@ async function loadGwCampaigns(){
 }
 
 
+
+async function syncLatestGwEmail(){
+  const status=document.getElementById('gwCampaignStatus');
+  const box=document.getElementById('gwScrapePreview');
+  status.textContent='Finding latest GW Want Number Form email and scraping it…';
+  box.replaceChildren();
+  try{
+    const d=await getJson(api+'/preorders/gw/sync-preview');
+    const email=d.email||{};
+    const scrape=d.scrape||{};
+    if(email.form_url)document.getElementById('gwFormUrl').value=email.form_url;
+    if(email.release_date)document.getElementById('gwReleaseDate').value=email.release_date.split('/').reverse().join('-');
+    if(email.release_date){
+      document.getElementById('gwCampaignName').value='GW Release '+email.release_date;
+    }
+    status.textContent=[
+      'Latest GW email found',
+      email.subject||'—',
+      email.received_at?new Date(email.received_at).toLocaleString():'—',
+      email.due_text?'Cutoff: '+email.due_text:'Cutoff not parsed',
+      'Scraped '+Number(scrape.counts?.items||0)+' item candidate(s)'
+    ].join(' · ');
+
+    const summary=document.createElement('div');
+    summary.className='form-note';
+    summary.textContent=(scrape.title||'GW form')+
+      ' · '+Number(scrape.counts?.ready||0)+' ready'+
+      ' · '+Number(scrape.counts?.review||0)+' review'+
+      ' · '+Number(scrape.counts?.filtered||0)+' filtered'+
+      ' · '+Number(scrape.counts?.images||0)+' image(s)';
+    box.appendChild(summary);
+
+    const table=document.createElement('table');
+    const head=document.createElement('tr');
+    for(const label of ['Item','Disposition','Pack','Reason']){
+      const th=document.createElement('th');th.textContent=label;head.appendChild(th);
+    }
+    table.appendChild(head);
+    for(const item of (scrape.items||[]).slice(0,120)){
+      const tr=document.createElement('tr');
+      for(const v of [
+        item.name||'—',
+        item.disposition||'REVIEW',
+        item.case_pack_size||'—',
+        (item.reasons||[]).join('; ')||'—'
+      ]){
+        const td=document.createElement('td');td.textContent=v;tr.appendChild(td);
+      }
+      table.appendChild(tr);
+    }
+    box.appendChild(table);
+  }catch(e){
+    status.textContent='GW email sync preview failed: '+e.message;
+    const p=document.createElement('p');
+    p.textContent='No campaign was created, no Discord post was sent, and no vendor form was submitted.';
+    box.appendChild(p);
+  }
+}
+
 async function testGwGraphMailbox(){
   const status=document.getElementById('gwCampaignStatus');
   const box=document.getElementById('gwScrapePreview');
