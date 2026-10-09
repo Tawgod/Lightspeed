@@ -101,3 +101,32 @@ document.getElementById('combine').addEventListener('click', async () => {
 });
 
 detectContext();
+
+document.getElementById('scan-page').addEventListener('click', async () => {
+  setStatus('Capturing current product page…');
+  try {
+    const [tab] = await chrome.tabs.query({active:true,currentWindow:true});
+    if (!tab?.id || !/^https?:/.test(tab.url||'')) throw new Error('Open a supplier product page first.');
+    const [{result:draft}] = await chrome.scripting.executeScript({
+      target:{tabId:tab.id},
+      func: () => {
+        const meta = k => document.querySelector('meta[property="'+k+'"],meta[name="'+k+'"]')?.content?.trim() || '';
+        const products=[];
+        const visit=v=>{if(!v||typeof v!=='object')return;if(Array.isArray(v)){v.forEach(visit);return}if([v['@type']].flat().some(t=>typeof t==='string'&&t.toLowerCase()==='product'))products.push(v);if(v['@graph'])visit(v['@graph'])};
+        for(const node of document.querySelectorAll('script[type="application/ld+json"]')){try{visit(JSON.parse(node.textContent))}catch{}}
+        const p=products.length===1?products[0]:null;
+        const offer=Array.isArray(p?.offers)?p.offers[0]:p?.offers;
+        const image=Array.isArray(p?.image)?p.image[0]:p?.image;
+        const str=v=>typeof v==='string'?v.trim():'';
+        return {sourceUrl:location.href,capturedAt:new Date().toISOString(),candidates:products.length,requiresSelection:products.length>1,product:p?{
+          name:str(p.name),description:str(p.description),sku:str(p.sku),upc:str(p.gtin12||p.gtin13||p.gtin14||p.gtin8),
+          manufacturerPartNumber:str(p.mpn),brand:str(typeof p.brand==='string'?p.brand:p.brand?.name),
+          imageUrl:str(typeof image==='string'?image:image?.url),advertisedPrice:offer?.price??null,currency:str(offer?.priceCurrency)
+        }:{name:meta('og:title')||document.title,description:meta('og:description')||meta('description'),sku:'',upc:'',manufacturerPartNumber:'',brand:'',imageUrl:meta('og:image'),advertisedPrice:null,currency:''}};
+      }
+    });
+    await chrome.storage.local.set({scannerDraft:draft});
+    await chrome.windows.create({url:chrome.runtime.getURL('product-scanner/review.html'),type:'popup',width:1400,height:850});
+    window.close();
+  } catch(e){setStatus('Scanner unavailable: '+e.message);}
+});
