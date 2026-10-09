@@ -1230,7 +1230,64 @@ async function runProductReconciliation(){
     showNotice('Reconciliation failed: '+e.message);
   }
 }
-async function loadAll(){await Promise.allSettled([loadStats(),loadOrders(),loadSuppliers(),loadBrands(),loadDepartments(),loadProductCategories(),loadPreorders(),loadProductReconcileStatus()])}
+
+async function loadGwCampaigns(){
+  const sel=document.getElementById('gwCampaignSelect');
+  if(!sel)return;
+  try{
+    const rows=await getJson(api+'/preorders/campaigns?type=GW_WEEKLY');
+    sel.innerHTML='<option value="">Select GW campaign…</option>';
+    for(const x of rows){
+      const o=document.createElement('option');
+      o.value=x.id;
+      o.textContent=(x.name||'GW campaign')+' — '+(x.external_submission_status||x.status||'OPEN');
+      sel.appendChild(o);
+    }
+  }catch(e){
+    const status=document.getElementById('gwCampaignStatus');
+    if(status)status.textContent='GW campaigns unavailable: '+e.message;
+  }
+}
+async function createGwCampaign(){
+  const name=document.getElementById('gwCampaignName').value.trim();
+  const sourceFormUrl=document.getElementById('gwFormUrl').value.trim();
+  const due=document.getElementById('gwOrderDue').value;
+  if(!name||!sourceFormUrl||!due)return showNotice('Campaign name, GW form URL, and order cutoff are required.');
+  try{
+    const row=await getJson(api+'/preorders/gw/campaigns',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        name:name,
+        source_form_url:sourceFormUrl,
+        order_due_at:new Date(due).toISOString(),
+        release_date:document.getElementById('gwReleaseDate').value||null,
+        auto_submit_enabled:Boolean(document.getElementById('gwAutoSubmit').checked),
+        auto_submit_minutes_before:15
+      })
+    });
+    showNotice('GW preorder campaign created.',2200);
+    await loadGwCampaigns();
+    document.getElementById('gwCampaignSelect').value=row.id;
+    await loadGwCampaign();
+  }catch(e){showNotice('Could not create GW campaign: '+e.message)}
+}
+async function loadGwCampaign(){
+  const id=document.getElementById('gwCampaignSelect').value;
+  const status=document.getElementById('gwCampaignStatus');
+  if(!id){status.textContent='';return}
+  try{
+    const d=await getJson(api+'/preorders/campaigns/'+id);
+    const c=d.campaign;
+    status.textContent='Cutoff: '+(c.order_due_at?new Date(c.order_due_at).toLocaleString():'—')+
+      ' · Products: '+d.products.length+
+      ' · Requests: '+d.products.reduce((n,x)=>n+Number(x.requested_total||0),0)+
+      ' · '+(c.external_submission_status||'NOT_SUBMITTED')+
+      (c.auto_submit_enabled?' · Auto-submit requested (currently safety-disabled)':'');
+  }catch(e){status.textContent='GW campaign load failed: '+e.message}
+}
+
+async function loadAll(){await Promise.allSettled([loadStats(),loadOrders(),loadSuppliers(),loadBrands(),loadDepartments(),loadProductCategories(),loadPreorders(),loadProductReconcileStatus(),loadGwCampaigns()])}
 document.addEventListener('input',e=>{if(orderDraftIds.includes(e.target.id)||productDraftIds.includes(e.target.id))saveDrafts()});
 document.addEventListener('change',e=>{if(orderDraftIds.includes(e.target.id)||productDraftIds.includes(e.target.id)||e.target.id==='newSuppliers')saveDrafts()});
 document.getElementById('accessKey').value=accessKey();
