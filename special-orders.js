@@ -736,14 +736,34 @@ export function createSpecialOrdersRouter({
   });
 
   router.patch('/preorders/gw/products/:id', requireDb, async (req,res)=>{
-    const qty=Math.max(0,Math.floor(Number(req.body?.store_order_quantity||0)));
+    const body=req.body||{};
+    const qty=Math.max(0,Math.floor(Number(body.store_order_quantity||0)));
+    const disposition=body.gw_post_disposition?String(body.gw_post_disposition).toUpperCase():null;
+    if(disposition && !['REVIEW','POST_AS_IS','SPLIT_TO_SINGLES','DO_NOT_POST'].includes(disposition)){
+      return res.status(400).json({error:'Invalid GW post disposition.'});
+    }
+    const packSize=body.gw_case_pack_size==null?null:Math.max(1,Math.floor(Number(body.gw_case_pack_size)||1));
+    const singleMsrp=body.gw_single_msrp==null?null:Math.max(0,Number(body.gw_single_msrp)||0);
     const {rows}=await pool.query(`
       UPDATE preorder_products pp
-      SET store_order_quantity=$1
+      SET store_order_quantity=$1,
+          gw_post_disposition=COALESCE($3,gw_post_disposition),
+          gw_case_pack_size=CASE WHEN $4::int IS NULL THEN gw_case_pack_size ELSE $4 END,
+          gw_single_item_name=CASE WHEN $5::text IS NULL THEN gw_single_item_name ELSE NULLIF(trim($5),'') END,
+          gw_single_msrp=CASE WHEN $6::numeric IS NULL THEN gw_single_msrp ELSE $6 END,
+          gw_review_note=CASE WHEN $7::text IS NULL THEN gw_review_note ELSE NULLIF(trim($7),'') END,
+          image_url=CASE WHEN $8::text IS NULL THEN image_url ELSE NULLIF(trim($8),'') END,
+          source_image_url=CASE WHEN $9::text IS NULL THEN source_image_url ELSE NULLIF(trim($9),'') END,
+          gw_reviewed_at=CASE WHEN $3::text IS NULL THEN gw_reviewed_at ELSE now() END,
+          gw_reviewed_by=CASE WHEN $3::text IS NULL THEN gw_reviewed_by ELSE NULLIF(trim($10),'') END
       FROM preorder_campaigns pc
       WHERE pp.id=$2 AND pc.id=pp.preorder_campaign_id AND pc.campaign_type='GW_WEEKLY'
       RETURNING pp.*
-    `,[qty,req.params.id]);
+    `,[
+      qty,req.params.id,disposition,packSize,
+      body.gw_single_item_name??null,singleMsrp,body.gw_review_note??null,
+      body.image_url??null,body.source_image_url??null,body.gw_reviewed_by??null
+    ]);
     if(!rows[0])return res.status(404).json({error:'GW preorder product not found.'});
     res.json(rows[0]);
   });
