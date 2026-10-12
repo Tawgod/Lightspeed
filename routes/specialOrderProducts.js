@@ -118,7 +118,7 @@ export function registerSpecialOrderProductRoutes(router, deps) {
         args.push(String(sku));
         where+=" AND lower(coalesce(p.sku,''))=lower($"+args.length+")";
       }
-      args.push(Math.max(1,Math.min(Number(limit)||250,500)));
+      const safeLimit=Math.max(1,Math.min(Number(limit)||250,500));
       const rows=await pool.query(`
         SELECT p.id,p.name,p.sku,p.lightspeed_product_id,p.lightspeed_missing_count,
                (SELECT pi.identifier_value
@@ -129,7 +129,7 @@ export function registerSpecialOrderProductRoutes(router, deps) {
         WHERE ${where}
         ORDER BY CASE WHEN p.lightspeed_reconcile_status LIKE 'MISSING%' THEN 0 ELSE 1 END,
                  p.last_reconciled_at NULLS FIRST,p.id
-        LIMIT ${args.length}
+        LIMIT ${safeLimit}
       `,args);
 
       for(const local of rows.rows){
