@@ -1311,7 +1311,7 @@ export function createSpecialOrdersRouter({
 
   router.patch('/preorders/gw/products/:id', requireDb, async (req,res)=>{
     const body=req.body||{};
-    const qty=Math.max(0,Math.floor(Number(body.store_order_quantity||0)));
+    const qty=body.store_order_quantity==null?null:Math.max(0,Math.floor(Number(body.store_order_quantity)||0));
     const disposition=body.gw_post_disposition?String(body.gw_post_disposition).toUpperCase():null;
     if(disposition && !['REVIEW','POST_AS_IS','SPLIT_TO_SINGLES','DO_NOT_POST'].includes(disposition)){
       return res.status(400).json({error:'Invalid GW post disposition.'});
@@ -1320,7 +1320,7 @@ export function createSpecialOrdersRouter({
     const singleMsrp=body.gw_single_msrp==null?null:Math.max(0,Number(body.gw_single_msrp)||0);
     const {rows}=await pool.query(`
       UPDATE preorder_products pp
-      SET store_order_quantity=$1,
+      SET store_order_quantity=CASE WHEN $1::int IS NULL THEN store_order_quantity ELSE $1 END,
           gw_post_disposition=COALESCE($3,gw_post_disposition),
           gw_case_pack_size=CASE WHEN $4::int IS NULL THEN gw_case_pack_size ELSE $4 END,
           gw_single_item_name=CASE WHEN $5::text IS NULL THEN gw_single_item_name ELSE NULLIF(trim($5),'') END,
