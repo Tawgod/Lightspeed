@@ -71,3 +71,23 @@ Owner decision: all **active** Timeclock employees with an assigned PIN may look
 - Tests in `tests/scannerDefaultPermissions.test.js` were committed. The JS source passed syntax parsing, but integration and browser tests have not been executed.
 
 **Not live:** The scanner authentication gateway is deliberately not mounted in `server.js`; its Timeclock backend services and required server-only secrets have not been deployed. Until that is safely wired and tested, the sign-in option will report the scanner sign-in service as unavailable. An installed extension is not automatically updated by development branch commits.
+
+## Gateway connection assembled — 2026-10-12
+
+The **code path** is now connected, but **not yet deployed**:
+
+1. `special-orders-test` is the intended backend host because its existing Railway configuration contains `SPECIAL_ORDERS_ADMIN_KEY`; `lightspeed-api` does not.
+2. `server.js` mounts `/api/scanner` only when `SCANNER_ENABLED=true` and all required server-only environment values are set. The service fails closed on incomplete enabled configuration.
+3. PIN sign-in calls Timeclock `/api/timeclock/integrations/scanner/verify-pin` through the server-only `SCANNER_SERVICE_SECRET`; signed 15-minute sessions verify current Timeclock lookup permission on each call.
+4. Matching calls existing local and remote Special Orders product endpoints over **loopback** within the same process, using the already configured server-side Special Orders admin key.
+5. A PostgreSQL-backed multi-replica PIN attempt limiter is required before the gateway can start; `services/scannerLoginLimiter.js` uses the shared database and creates its own small `scanner_login_limits` table on enabled startup.
+6. Scanner extension development version `0.3.19` points to `https://special-orders-test-production.up.railway.app/api/scanner`. No credentials are embedded in extension source. Creating or editing Lightspeed products remains disabled.
+
+**Activation checklist (not done):**
+
+- Review and test the new Timeclock routes and scanner gateway. In particular, test browser CORS and origin headers, successful/failed PINs, revocation, audit log, lockouts, session expiry, and partial Lightspeed outages.
+- Set the same distinct generated 32+-character `SCANNER_SERVICE_SECRET` on Timeclock and Special Orders; `SCANNER_SESSION_SECRET` and `SCANNER_LOGIN_LIMIT_SECRET` only on Special Orders. Set `SCANNER_TIMECLOCK_ORIGIN` to the verified Timeclock HTTPS origin, and `SCANNER_ENABLED=true` **only** on `special-orders-test`, not on `lightspeed-api` or `timeclock`.
+- Use a controlled non-production rollout before configuring any production service, and never claim that the code commit enabled the Railway connection.
+- Evaluate default scanner lookup grants carefully: schema default `TRUE` applies to new/backfilled employee rows when column is first created; administrators retain the ability to revoke individual lookup rights. Approval remains default `FALSE`.
+
+Changed files: `server.js`, `timeclock/server.js`, `services/scannerLoginLimiter.js`, `services/scannerTimeclockIdentity.js`, `services/scannerSessions.js`, `services/scannerTimeclockGateway.js`, `services/scannerSpecialOrdersLookup.js`, `routes/scannerMatchGateway.js`, Chrome extension files, and scanner tests. Production is unchanged.
