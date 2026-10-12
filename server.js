@@ -172,6 +172,15 @@ app.get('/special-orders-client.js', (req, res) => {
   res.type('application/javascript').sendFile(path.join(__dirname, 'special-orders-client.js'));
 });
 
+app.get('/gw-preorders', (req, res) => {
+  res.sendFile(path.join(__dirname, 'gw-preorders.html'));
+});
+
+app.get('/gw-preorders-client.js', (req, res) => {
+  res.set('Cache-Control','no-store');
+  res.type('application/javascript').sendFile(path.join(__dirname, 'gw-preorders-client.js'));
+});
+
 app.use('/api/special-orders', createSpecialOrdersRouter({
   lightspeedDomain: LIGHTSPEED_DOMAIN,
   lightspeedToken: LIGHTSPEED_TOKEN,
@@ -179,7 +188,9 @@ app.use('/api/special-orders', createSpecialOrdersRouter({
   liveMode: process.env.SPECIAL_ORDERS_LIVE_MODE === 'true',
   allowMigration: process.env.SPECIAL_ORDERS_ALLOW_MIGRATION === 'true',
   allowProductWrites: process.env.SPECIAL_ORDERS_ALLOW_PRODUCT_WRITES === 'true',
-  lightspeedOutletId: process.env.LIGHTSPEED_OUTLET_ID || null
+  lightspeedOutletId: process.env.LIGHTSPEED_OUTLET_ID || null,
+  discordToken: process.env.DISCORD_TOKEN || null,
+  gwPreorderChannelId: process.env.GW_PREORDER_TEST_CHANNEL_ID || null
 }));
 
 

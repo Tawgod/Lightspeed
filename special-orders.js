@@ -342,7 +342,9 @@ export function createSpecialOrdersRouter({
   liveMode = false,
   allowMigration = false,
   allowProductWrites = false,
-  lightspeedOutletId = null
+  lightspeedOutletId = null,
+  discordToken = null,
+  gwPreorderChannelId = null
 }) {
   const router = express.Router();
   console.log('Special Orders auth diagnostic', {
@@ -362,7 +364,8 @@ export function createSpecialOrdersRouter({
       adminKeyTrimmedLength: adminKey ? String(adminKey).trim().length : 0,
       liveMode: Boolean(liveMode),
       allowMigration: Boolean(allowMigration),
-      allowProductWrites: Boolean(allowProductWrites)
+      allowProductWrites: Boolean(allowProductWrites),
+      gwDiscordConfigured: Boolean(discordToken && gwPreorderChannelId)
     });
   });
 
@@ -1373,6 +1376,21 @@ export function createSpecialOrdersRouter({
     };
   }
 
+  async function gwDiscordApi(pathname,options={}){
+    if(!discordToken)throw Object.assign(new Error('Discord bot token is not configured for Special Orders.'),{status:503});
+    const response=await fetch('https://discord.com/api/v10'+pathname,{
+      ...options,
+      headers:{Authorization:'Bot '+discordToken,'Content-Type':'application/json',...(options.headers||{})}
+    });
+    const text=await response.text();
+    let body={};try{body=text?JSON.parse(text):{}}catch{}
+    if(!response.ok){
+      const message=body.message||body.error||response.statusText||'Discord API request failed.';
+      throw Object.assign(new Error('Discord API: '+message),{status:502,discordStatus:response.status});
+    }
+    return body;
+  }
+
   router.get('/preorders/gw/campaigns/:id/discord-preview', requireDb, async (req,res)=>{
     try{
       const campaignResult=await pool.query(
@@ -1389,6 +1407,14 @@ export function createSpecialOrdersRouter({
       const posts=evaluated.filter(x=>x.publish);
       const blocked=evaluated.filter(x=>!x.publish && x.reason!=='Do not post');
       const suppressed=evaluated.filter(x=>!x.publish && x.reason==='Do not post');
+      const channelId=String(gwPreorderChannelId||'').trim();
+      const publicationResult=channelId
+        ? await pool.query(
+            'SELECT id,status,post_count,message_ids,published_by,error,started_at,published_at,updated_at FROM preorder_discord_publications WHERE preorder_campaign_id=$1 AND channel_id=$2',
+            [campaign.id,channelId]
+          )
+        : {rows:[]};
+      const publication=publicationResult.rows[0]||null;
       res.set('Cache-Control','no-store');
       res.json({
         campaign:{
@@ -1398,16 +1424,138 @@ export function createSpecialOrdersRouter({
           order_due_at:campaign.order_due_at,
           external_submission_status:campaign.external_submission_status
         },
-        test_channel_id:'1336092698935033917',
-        ready_to_publish:blocked.length===0 && posts.length>0,
+        test_channel_id:channelId||null,
+        ready_to_publish:Boolean(channelId && discordToken && blocked.length===0 && posts.length>0 && !publication),
         counts:{posts:posts.length,blocked:blocked.length,suppressed:suppressed.length},
         posts,
         blocked,
-        suppressed
+        suppressed,
+        publication
       });
     }catch(error){
       console.error('[special-orders] GW Discord preview failed:',error);
       res.status(500).json({error:error.message});
+    }
+  });
+
+  router.post('/preorders/gw/campaigns/:id/discord-publish', requireDb, async (req,res)=>{
+    const channelId=String(gwPreorderChannelId||'').trim();
+    if(!discordToken||!channelId){
+      return res.status(503).json({error:'GW Discord publishing is not configured on the Special Orders service.'});
+    }
+
+    let publication=null;
+    try{
+      const campaignResult=await pool.query(
+        "SELECT * FROM preorder_campaigns WHERE id=$1 AND campaign_type='GW_WEEKLY'",
+        [req.params.id]
+      );
+      const campaign=campaignResult.rows[0];
+      if(!campaign)return res.status(404).json({error:'GW campaign not found.'});
+
+      const productsResult=await pool.query(
+        'SELECT * FROM preorder_products WHERE preorder_campaign_id=$1 ORDER BY item_description',
+        [campaign.id]
+      );
+      const evaluated=productsResult.rows.map(p=>gwDiscordPostFromProduct(p,campaign));
+      const posts=evaluated.filter(x=>x.publish);
+      const blocked=evaluated.filter(x=>!x.publish && x.reason!=='Do not post');
+      if(blocked.length){
+        return res.status(409).json({
+          error:'GW Discord publishing is blocked until every non-suppressed product is reviewed.',
+          blocked,
+          counts:{posts:posts.length,blocked:blocked.length}
+        });
+      }
+      if(!posts.length)return res.status(400).json({error:'There are no approved GW products to publish.'});
+
+      const dbClient=await pool.connect();
+      try{
+        await dbClient.query('BEGIN');
+        const existing=await dbClient.query(
+          'SELECT * FROM preorder_discord_publications WHERE preorder_campaign_id=$1 AND channel_id=$2 FOR UPDATE',
+          [campaign.id,channelId]
+        );
+        if(existing.rows[0]){
+          await dbClient.query('ROLLBACK');
+          return res.status(409).json({
+            error:'This GW campaign already has a Discord publication record. Duplicate publication is blocked.',
+            publication:existing.rows[0]
+          });
+        }
+        const insertSql=
+          "INSERT INTO preorder_discord_publications "+
+          "(preorder_campaign_id,channel_id,status,post_count,message_ids,published_by) "+
+          "VALUES ($1,$2,'PUBLISHING',$3,'[]'::jsonb,$4) RETURNING *";
+        const inserted=await dbClient.query(
+          insertSql,
+          [campaign.id,channelId,posts.length,String(req.body?.published_by||'gw-web').trim()||'gw-web']
+        );
+        publication=inserted.rows[0];
+        await dbClient.query('COMMIT');
+      }catch(error){
+        try{await dbClient.query('ROLLBACK')}catch{}
+        throw error;
+      }finally{
+        dbClient.release();
+      }
+
+      const messageIds=[];
+      for(const post of posts){
+        const embed={
+          title:String(post.title||'GW Preorder').slice(0,256),
+          description:String(post.description||'').slice(0,4096),
+          footer:{text:String(post.footer||'').slice(0,2048)}
+        };
+        if(post.image_url)embed.image={url:String(post.image_url)};
+        const message=await gwDiscordApi('/channels/'+encodeURIComponent(channelId)+'/messages',{
+          method:'POST',
+          body:JSON.stringify({embeds:[embed],allowed_mentions:{parse:[]}})
+        });
+        messageIds.push(String(message.id));
+        await pool.query(
+          'UPDATE preorder_discord_publications SET message_ids=$1::jsonb,updated_at=now() WHERE id=$2',
+          [JSON.stringify(messageIds),publication.id]
+        );
+        try{
+          await gwDiscordApi(
+            '/channels/'+encodeURIComponent(channelId)+'/messages/'+encodeURIComponent(String(message.id))+
+            '/reactions/'+encodeURIComponent('✅')+'/@me',
+            {method:'PUT'}
+          );
+        }catch(reactionError){
+          console.warn('[special-orders] Could not add GW preorder reaction to Discord message '+message.id+':',reactionError.message);
+        }
+      }
+
+      await pool.query(
+        "UPDATE preorder_discord_publications SET status='PUBLISHED',published_at=now(),updated_at=now(),error=NULL WHERE id=$1",
+        [publication.id]
+      );
+      await pool.query(
+        'UPDATE preorder_campaigns SET discord_published_at=now(),updated_at=now() WHERE id=$1',
+        [campaign.id]
+      );
+      res.json({ok:true,publication_id:publication.id,channel_id:channelId,published_count:messageIds.length,message_ids:messageIds});
+    }catch(error){
+      console.error('[special-orders] GW Discord publish failed:',error);
+      if(publication?.id){
+        try{
+          const current=await pool.query('SELECT message_ids FROM preorder_discord_publications WHERE id=$1',[publication.id]);
+          const ids=current.rows[0]?.message_ids||[];
+          await pool.query(
+            "UPDATE preorder_discord_publications SET status=$1,error=$2,updated_at=now() WHERE id=$3",
+            [ids.length?'PARTIAL':'FAILED',String(error.message||error).slice(0,2000),publication.id]
+          );
+          return res.status(error.status||502).json({
+            error:error.message,publication_id:publication.id,status:ids.length?'PARTIAL':'FAILED',
+            published_count:ids.length,message_ids:ids
+          });
+        }catch(recordError){
+          console.error('[special-orders] Could not record GW Discord publish failure:',recordError);
+        }
+      }
+      res.status(error.status||500).json({error:error.message});
     }
   });
 

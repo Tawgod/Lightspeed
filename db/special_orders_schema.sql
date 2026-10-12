@@ -461,3 +461,21 @@ WHERE campaign_type='GW_WEEKLY' AND source_email_message_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_preorder_products_campaign_external_entry
 ON preorder_products (preorder_campaign_id, external_entry_id)
 WHERE external_entry_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS preorder_discord_publications (
+  id BIGSERIAL PRIMARY KEY,
+  preorder_campaign_id BIGINT NOT NULL REFERENCES preorder_campaigns(id) ON DELETE CASCADE,
+  channel_id TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'PUBLISHING',
+  post_count INTEGER NOT NULL DEFAULT 0,
+  message_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+  published_by TEXT,
+  error TEXT,
+  started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  published_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (preorder_campaign_id, channel_id)
+);
+CREATE INDEX IF NOT EXISTS idx_preorder_discord_publications_status
+ON preorder_discord_publications (status, updated_at DESC);
+

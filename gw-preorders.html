@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hobby Corner GW Preorders</title>
+<link rel="stylesheet" href="/special-orders.css">
+</head>
+<body><div class="wrap">
+  <div class="toolbar" style="justify-content:flex-end;margin-bottom:10px">
+    <a href="/special-orders"
+       style="display:inline-block;padding:9px 12px;border-radius:8px;background:#0f766e;color:#fff;text-decoration:none;font-weight:700">
+      Back to Special Orders
+    </a>
+    <a href="https://lightspeed-api-production-c087.up.railway.app/extension" target="_blank" rel="noopener"
+       style="display:inline-block;padding:9px 12px;border-radius:8px;background:#1f3a5f;color:#fff;text-decoration:none;font-weight:700">
+      Open Lightspeed Toolkit
+    </a>
+  </div>
+
+  <h1>GW Preorders</h1>
+  <div class="sub">Games Workshop weekly preorder intake, review, Discord publishing, and supplier submission.</div>
+  <div id="notice" class="notice"></div>
+
+  <div class="panel">
+    <div class="toolbar">
+      <input id="accessKey" type="password" placeholder="Internal access key" size="24">
+      <button id="unlockButton" onclick="saveKey()">Unlock</button>
+      <span id="authStatus" class="pill">Locked</span>
+    </div>
+    <div class="form-note">Uses the same Special Orders access key as the main dashboard.</div>
+  </div>
+
+  <div class="panel">
+    <div class="section-heading">
+      <div>
+        <h2 style="margin:0">Weekly GW Source</h2>
+        <p class="form-note">Pull the latest Games Workshop email, inspect the form, and create or refresh a draft campaign.</p>
+      </div>
+    </div>
+    <div class="form-grid form-grid-4">
+      <label class="field"><span>Campaign name</span><input id="gwCampaignName" placeholder="GW — week of 10/11"></label>
+      <label class="field"><span>GW form URL</span><input id="gwFormUrl" placeholder="Paste weekly Google Form link"></label>
+      <label class="field"><span>Order cutoff</span><input id="gwOrderDue" type="datetime-local"></label>
+      <label class="field"><span>Release date</span><input id="gwReleaseDate" type="date"></label>
+    </div>
+    <div class="toolbar">
+      <label><input id="gwAutoSubmit" type="checkbox"> Auto-submit 15 minutes before cutoff after submission testing is enabled</label>
+      <button type="button" onclick="testGwGraphMailbox()">Test Outlook/Graph</button>
+      <button type="button" onclick="syncLatestGwEmail()">Sync latest GW email</button>
+      <button type="button" onclick="scrapeGwFormPreview()">Scrape form preview</button>
+      <button type="button" onclick="importLatestGwDraft()">Import latest as draft</button>
+      <button type="button" onclick="createGwCampaign()">Create GW campaign</button>
+    </div>
+    <div id="gwSourceStatus" class="form-note"></div>
+    <div id="gwSourcePreview"></div>
+  </div>
+
+  <div class="panel">
+    <div class="section-heading">
+      <div>
+        <h2 style="margin:0">Campaign Review</h2>
+        <p class="form-note">Approve each item as-is, split case packs to singles, or suppress it before Discord publishing.</p>
+      </div>
+    </div>
+    <div class="toolbar">
+      <select id="gwCampaignSelect" onchange="loadGwCampaign()"><option value="">Select GW campaign…</option></select>
+      <button type="button" onclick="loadGwCampaign()">Refresh campaign</button>
+    </div>
+    <div id="gwCampaignStatus" class="form-note"></div>
+    <div id="gwCampaignProducts"></div>
+  </div>
+
+  <div class="panel">
+    <div class="section-heading">
+      <div>
+        <h2 style="margin:0">Discord Preview & Publish</h2>
+        <p class="form-note">Preview exactly what customers will see. Publishing is blocked if any product still needs review and duplicate campaign publication is prevented server-side.</p>
+      </div>
+    </div>
+    <div class="toolbar">
+      <button type="button" onclick="previewGwDiscordPosts()">Preview Discord posts</button>
+      <button id="gwPublishButton" type="button" onclick="publishGwDiscordPosts()" disabled>Publish approved posts to Discord</button>
+    </div>
+    <div id="gwDiscordStatus" class="form-note"></div>
+    <div id="gwDiscordPreview"></div>
+  </div>
+</div>
+<script src="/gw-preorders-client.js"></script>
+</body>
+</html>
