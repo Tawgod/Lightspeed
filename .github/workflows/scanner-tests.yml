@@ -1,0 +1,31 @@
+name: Scanner integration regression tests
+on:
+  push:
+    branches:
+      - feature/scanner-secure-match-gateway
+  pull_request:
+    paths:
+      - 'extension/product-scanner/**'
+      - 'services/scanner**'
+      - 'routes/scannerMatchGateway.js'
+      - 'timeclock/server.js'
+      - 'tests/scanner**'
+      - 'server.js'
+      - '.github/workflows/scanner-tests.yml'
+jobs:
+  scanner-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --ignore-scripts --no-audit --no-fund
+      - run: node --test tests/scanner*.test.js
+      - run: |
+          node --check server.js
+          node --check timeclock/server.js
+          node --check extension/product-scanner/review.js
+          node --check services/scannerLoginLimiter.js
