@@ -3,7 +3,7 @@ import {checkProductMatches,toSpecialOrderMatchRequest} from './special-orders-a
 
 // Keep PIN and signed session strictly in this review window's memory.
 // Never write credentials to extension storage or send them to suppliers.
-const SCANNER_API='https://lightspeed-api-production-c087.up.railway.app/api/scanner';
+const SCANNER_API='https://special-orders-test-production.up.railway.app/api/scanner';
 const signInForm=document.getElementById('employee-sign-in');
 const pinField=document.getElementById('employee-pin');
 const employeeStatus=document.getElementById('employee-status');
