@@ -406,7 +406,10 @@ ALTER TABLE preorder_campaigns
   ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS auto_submit_enabled BOOLEAN NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS auto_submit_minutes_before INTEGER NOT NULL DEFAULT 15,
-  ADD COLUMN IF NOT EXISTS discord_published_at TIMESTAMPTZ;
+  ADD COLUMN IF NOT EXISTS discord_published_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS gw_supplier_deadline_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS auto_submit_failure_alerted_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS auto_submit_last_error TEXT;
 
 ALTER TABLE preorder_products
   ADD COLUMN IF NOT EXISTS external_entry_id TEXT,

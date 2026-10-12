@@ -190,7 +190,9 @@ app.use('/api/special-orders', createSpecialOrdersRouter({
   allowProductWrites: process.env.SPECIAL_ORDERS_ALLOW_PRODUCT_WRITES === 'true',
   lightspeedOutletId: process.env.LIGHTSPEED_OUTLET_ID || null,
   discordToken: process.env.DISCORD_TOKEN || null,
-  gwPreorderChannelId: process.env.GW_PREORDER_TEST_CHANNEL_ID || null
+  gwPreorderChannelId: process.env.GW_PREORDER_TEST_CHANNEL_ID || null,
+  gwAutoSubmitAlertChannelId: process.env.GW_AUTO_SUBMIT_ALERT_CHANNEL_ID || null,
+  gwAutoSubmitAlertRoleId: process.env.GW_AUTO_SUBMIT_ALERT_ROLE_ID || null
 }));
 
 

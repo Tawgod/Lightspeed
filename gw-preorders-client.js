@@ -96,7 +96,8 @@ async function syncLatestGwEmail(){
     if(email.cutoff_at)document.getElementById('gwOrderDue').value=chicagoDatetimeLocal(email.cutoff_at);
     if(email.release_date)document.getElementById('gwCampaignName').value='GW Release '+email.release_date;
     setSourceStatus(['Latest GW email found',email.subject||'—',email.received_at?new Date(email.received_at).toLocaleString():'—',
-      email.due_text?'Cutoff: '+email.due_text:'Cutoff not parsed','Scraped '+Number(scrape.counts?.items||0)+' item candidate(s)'].join(' · '));
+      email.due_text?'GW deadline: '+email.due_text:'GW deadline not parsed',
+      email.cutoff_at?'Customer cutoff: '+new Date(email.cutoff_at).toLocaleString():'Customer cutoff not parsed','Scraped '+Number(scrape.counts?.items||0)+' item candidate(s)'].join(' · '));
     const summary=document.createElement('div');summary.className='form-note';
     summary.textContent=(scrape.title||'GW form')+' · '+Number(scrape.counts?.ready||0)+' ready · '+Number(scrape.counts?.review||0)+
       ' review · '+Number(scrape.counts?.filtered||0)+' filtered · '+Number(scrape.counts?.images||0)+' image(s)';
@@ -207,7 +208,7 @@ async function loadGwCampaign(){
     status.textContent='Cutoff: '+(c.order_due_at?new Date(c.order_due_at).toLocaleString():'—')+' · Products: '+d.products.length+
       ' · Requests: '+d.products.reduce((n,x)=>n+Number(x.requested_total||0),0)+' · '+(c.external_submission_status||'NOT_SUBMITTED')+
       (c.discord_published_at?' · Discord published '+new Date(c.discord_published_at).toLocaleString():'')+
-      (c.auto_submit_enabled?' · Auto-submit requested (currently safety-disabled)':'');renderGwCampaignProducts(d.products);
+      (c.auto_submit_enabled?' · Auto-submit planned 15 min after customer cutoff / 15 min before GW deadline (submission worker still safety-disabled)':'');renderGwCampaignProducts(d.products);
   }catch(e){status.textContent='GW campaign load failed: '+e.message}
 }
 function renderDiscordPreview(d){

@@ -344,7 +344,9 @@ export function createSpecialOrdersRouter({
   allowProductWrites = false,
   lightspeedOutletId = null,
   discordToken = null,
-  gwPreorderChannelId = null
+  gwPreorderChannelId = null,
+  gwAutoSubmitAlertChannelId = null,
+  gwAutoSubmitAlertRoleId = null
 }) {
   const router = express.Router();
   console.log('Special Orders auth diagnostic', {
@@ -1093,6 +1095,49 @@ export function createSpecialOrdersRouter({
     return new Date(utc).toISOString();
   }
 
+  function gwCustomerCutoffFromSupplierDeadline(supplierDeadlineIso){
+    const t=Date.parse(String(supplierDeadlineIso||''));
+    return Number.isNaN(t)?null:new Date(t-30*60*1000).toISOString();
+  }
+
+  async function alertGwAutoSubmitFailure(campaign,error){
+    const channelId=String(gwAutoSubmitAlertChannelId||'').trim();
+    const roleId=String(gwAutoSubmitAlertRoleId||'').trim();
+    if(!channelId||!roleId)return {sent:false,reason:'alert_not_configured'};
+
+    const claimed=await pool.query(
+      `UPDATE preorder_campaigns
+       SET auto_submit_last_error=$2,
+           auto_submit_failure_alerted_at=COALESCE(auto_submit_failure_alerted_at,now()),
+           updated_at=now()
+       WHERE id=$1 AND auto_submit_failure_alerted_at IS NULL
+       RETURNING id,name,order_due_at,gw_supplier_deadline_at`,
+      [campaign.id,String(error?.message||error||'Unknown auto-submit error').slice(0,1800)]
+    );
+    if(!claimed.rows[0])return {sent:false,reason:'already_alerted'};
+
+    const row=claimed.rows[0];
+    const content='<@&'+roleId+'> **GW preorder auto-submit FAILED**\n'+
+      '**Campaign:** '+row.name+'\n'+
+      '**Customer cutoff:** '+new Date(row.order_due_at).toLocaleString('en-US',{timeZone:'America/Chicago'})+' CT\n'+
+      '**GW deadline:** '+(row.gw_supplier_deadline_at?new Date(row.gw_supplier_deadline_at).toLocaleString('en-US',{timeZone:'America/Chicago'})+' CT':'unknown')+'\n'+
+      '**Error:** '+String(error?.message||error||'Unknown error').slice(0,1500);
+
+    try{
+      await gwDiscordApi('/channels/'+encodeURIComponent(channelId)+'/messages',{
+        method:'POST',
+        body:JSON.stringify({content,allowed_mentions:{roles:[roleId]}})
+      });
+      return {sent:true};
+    }catch(sendError){
+      await pool.query(
+        'UPDATE preorder_campaigns SET auto_submit_failure_alerted_at=NULL,updated_at=now() WHERE id=$1',
+        [campaign.id]
+      );
+      throw sendError;
+    }
+  }
+
   function gwExternalEntryKey(item,index){
     const base=String(item.source_question_id||'q')+':'+
       String(item.name||'').toLowerCase().replace(/\s+/g,' ').trim();
@@ -1107,9 +1152,10 @@ export function createSpecialOrdersRouter({
       const scrape=await fetchGwFormPreview(m.metadata.form_url);
       const releaseDate=parseUsDateToIsoDate(m.metadata.release_date);
       const preorderDate=parseUsDateToIsoDate(m.metadata.preorder_date);
-      const cutoffAt=parseGwCutoffToIso(m.metadata.due_text,m.metadata.release_date,m.receivedDateTime);
+      const supplierDeadlineAt=parseGwCutoffToIso(m.metadata.due_text,m.metadata.release_date,m.receivedDateTime);
+      const cutoffAt=gwCustomerCutoffFromSupplierDeadline(supplierDeadlineAt);
       if(!releaseDate)throw Object.assign(new Error('GW release date could not be parsed safely.'),{status:422});
-      if(!cutoffAt)throw Object.assign(new Error('GW cutoff could not be parsed safely; review the email before creating the draft.'),{status:422});
+      if(!supplierDeadlineAt||!cutoffAt)throw Object.assign(new Error('GW cutoff could not be parsed safely; review the email before creating the draft.'),{status:422});
 
       await client.query('BEGIN');
       const existing=await client.query(
@@ -1124,12 +1170,13 @@ export function createSpecialOrdersRouter({
           releaseDate,
           m.metadata.form_url,
           m.id,
+          supplierDeadlineAt,
           'Imported from Outlook: '+String(m.subject||'GW Trade News')
         ]);
         campaign=created.rows[0];
       }else{
         const updated=await client.query("\n          UPDATE preorder_campaigns\n          SET order_due_at=$2,\n              release_date=$3,\n              source_form_url=$4,\n              notes=$5,\n              updated_at=now()\n          WHERE id=$1\n          RETURNING *\n        ",[
-          campaign.id,cutoffAt,releaseDate,m.metadata.form_url,
+          campaign.id,cutoffAt,releaseDate,m.metadata.form_url,supplierDeadlineAt,
           'Imported from Outlook: '+String(m.subject||'GW Trade News')
         ]);
         campaign=updated.rows[0];
@@ -1195,7 +1242,8 @@ export function createSpecialOrdersRouter({
           web_link:m.webLink||null,
           ...m.metadata,
           release_date_iso:parseUsDateToIsoDate(m.metadata.release_date),
-          cutoff_at:parseGwCutoffToIso(m.metadata.due_text,m.metadata.release_date,m.receivedDateTime)
+          supplier_deadline_at:parseGwCutoffToIso(m.metadata.due_text,m.metadata.release_date,m.receivedDateTime),
+          cutoff_at:gwCustomerCutoffFromSupplierDeadline(parseGwCutoffToIso(m.metadata.due_text,m.metadata.release_date,m.receivedDateTime))
         },
         scrape
       });
@@ -1593,6 +1641,19 @@ export function createSpecialOrdersRouter({
     if(!rows[0])return res.status(404).json({error:'GW preorder product not found.'});
     res.json(rows[0]);
   });
+  router.post('/preorders/gw/campaigns/:id/auto-submit-failure', requireDb, async (req,res)=>{
+    try{
+      const {rows}=await pool.query("SELECT * FROM preorder_campaigns WHERE id=$1 AND campaign_type='GW_WEEKLY'",[req.params.id]);
+      const campaign=rows[0];
+      if(!campaign)return res.status(404).json({error:'GW preorder campaign not found.'});
+      const result=await alertGwAutoSubmitFailure(campaign,new Error(String(req.body?.error||'GW auto-submit failed.')));
+      res.json({ok:true,...result});
+    }catch(error){
+      console.error('[special-orders] GW auto-submit failure alert failed:',error);
+      res.status(error.status||500).json({error:error.message});
+    }
+  });
+
   router.post('/preorders/gw/campaigns/:id/mark-submitted', requireDb, async (req,res)=>{
     const client=await pool.connect();
     try{
