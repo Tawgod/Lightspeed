@@ -238,12 +238,19 @@ async function resolveEmployee(identifier) {
   return result.rows[0];
 }
 
-async function assignEmployeePin({ discordUserId, pin }) {
+async function assignEmployeePin({ employeeId, discordUserId, pin, actor }) {
+  const id = employeeId == null || employeeId === '' ? null : Number(employeeId);
   const cleanDiscordId = String(discordUserId || '').trim();
   const cleanPin = String(pin || '').trim();
+  const cleanActor = String(actor || 'DISCORD_ADMIN').trim() || 'DISCORD_ADMIN';
 
-  if (!cleanDiscordId) {
-    const err = new Error('discordUserId is required.');
+  if (id == null && !cleanDiscordId) {
+    const err = new Error('employeeId or discordUserId is required.');
+    err.status = 400;
+    throw err;
+  }
+  if (id != null && (!Number.isInteger(id) || id <= 0)) {
+    const err = new Error('Valid employeeId is required.');
     err.status = 400;
     throw err;
   }
@@ -259,25 +266,36 @@ async function assignEmployeePin({ discordUserId, pin }) {
   try {
     await client.query('BEGIN');
 
-    const employeeResult = await client.query(
-      'SELECT * FROM employees WHERE discord_user_id=$1 AND active=TRUE LIMIT 1 FOR UPDATE',
-      [cleanDiscordId]
-    );
+    const employeeResult = id != null
+      ? await client.query(
+          'SELECT * FROM employees WHERE id=$1 AND active=TRUE LIMIT 1 FOR UPDATE',
+          [id]
+        )
+      : await client.query(
+          'SELECT * FROM employees WHERE discord_user_id=$1 AND active=TRUE LIMIT 1 FOR UPDATE',
+          [cleanDiscordId]
+        );
 
     if (!employeeResult.rows.length) {
-      const err = new Error('Discord user is not linked to an employee. Use /hc timeclock employees and /hc timeclock link first.');
+      const err = new Error(
+        id != null
+          ? 'Employee not found.'
+          : 'Discord user is not linked to an active employee.'
+      );
       err.status = 404;
       throw err;
     }
 
     const employee = employeeResult.rows[0];
     const duplicate = await client.query(
-      'SELECT id FROM employees WHERE pin_hash=$1 AND id<>$2 LIMIT 1',
+      'SELECT id, name FROM employees WHERE pin_hash=$1 AND id<>$2 LIMIT 1',
       [hash, employee.id]
     );
 
     if (duplicate.rows.length) {
-      const err = new Error('That PIN is already assigned to another employee.');
+      const err = new Error(
+        `That PIN is already assigned to employee #${duplicate.rows[0].id} (${duplicate.rows[0].name}).`
+      );
       err.status = 409;
       throw err;
     }
@@ -292,10 +310,17 @@ async function assignEmployeePin({ discordUserId, pin }) {
 
     const row = updated.rows[0];
     await client.query(
-      `INSERT INTO audit_log(actor, action, object_type, object_id, after_json)
-       VALUES ('DISCORD_ADMIN', 'ASSIGN_PIN', 'employee', $1, $2::jsonb)`,
+      `INSERT INTO audit_log(actor, action, object_type, object_id, before_json, after_json)
+       VALUES ($1, 'ASSIGN_PIN', 'employee', $2, $3::jsonb, $4::jsonb)`,
       [
+        cleanActor,
         String(row.id),
+        JSON.stringify({
+          employeeId: employee.id,
+          employeeName: employee.name,
+          discordUserId: employee.discord_user_id,
+          pinAssigned: Boolean(employee.pin_hash)
+        }),
         JSON.stringify({
           employeeId: row.id,
           employeeName: row.name,
@@ -312,118 +337,6 @@ async function assignEmployeePin({ discordUserId, pin }) {
       discordUserId: row.discord_user_id,
       pinAssigned: true
     };
-  } catch (error) {
-    await client.query('ROLLBACK').catch(() => {});
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
-async function employeeByDiscordId(discordUserId) {
-  const clean = String(discordUserId || '').trim();
-  if (!clean) {
-    const err = new Error('Discord user is required.');
-    err.status = 400;
-    throw err;
-  }
-
-  const result = await pool.query(
-    'SELECT * FROM employees WHERE discord_user_id=$1 AND active=TRUE LIMIT 1',
-    [clean]
-  );
-  if (!result.rows.length) {
-    const err = new Error('Discord user is not linked to a timeclock employee.');
-    err.status = 404;
-    throw err;
-  }
-  return result.rows[0];
-}
-
-async function createManualTimeEntry({ employeeId, clockIn, clockOut, reason, actor }) {
-  const id = Number(employeeId);
-  const start = new Date(clockIn);
-  const end = new Date(clockOut);
-  const cleanReason = String(reason || '').trim();
-  const cleanActor = String(actor || 'DISCORD_ADMIN').trim() || 'DISCORD_ADMIN';
-
-  if (!Number.isInteger(id) || id <= 0) {
-    const err = new Error('Valid employeeId is required.');
-    err.status = 400;
-    throw err;
-  }
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    const err = new Error('Valid clock-in and clock-out timestamps are required.');
-    err.status = 400;
-    throw err;
-  }
-  if (end <= start) {
-    const err = new Error('Clock-out must be after clock-in.');
-    err.status = 400;
-    throw err;
-  }
-  if (!cleanReason) {
-    const err = new Error('A reason is required for a manual time entry.');
-    err.status = 400;
-    throw err;
-  }
-
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    const employee = await client.query(
-      'SELECT id, name FROM employees WHERE id=$1 AND active=TRUE LIMIT 1 FOR UPDATE',
-      [id]
-    );
-    if (!employee.rows.length) {
-      const err = new Error('Employee not found.');
-      err.status = 404;
-      throw err;
-    }
-
-    const overlap = await client.query(
-      `SELECT id FROM time_entries
-       WHERE employee_id=$1
-         AND clock_in < $3
-         AND COALESCE(clock_out, NOW()) > $2
-       LIMIT 1`,
-      [id, start, end]
-    );
-    if (overlap.rows.length) {
-      const err = new Error(`Manual entry overlaps time entry #${overlap.rows[0].id}.`);
-      err.status = 409;
-      throw err;
-    }
-
-    const inserted = await client.query(
-      `INSERT INTO time_entries(employee_id, clock_in, clock_out, status, needs_review)
-       VALUES ($1,$2,$3,'CLOSED',FALSE)
-       RETURNING *`,
-      [id, start, end]
-    );
-
-    await client.query(
-      `INSERT INTO time_adjustments(
-         time_entry_id, requested_by, approved_by,
-         new_clock_in, new_clock_out, reason
-       )
-       VALUES ($1,$2,$2,$3,$4,$5)`,
-      [inserted.rows[0].id, cleanActor, start, end, cleanReason]
-    );
-
-    await client.query(
-      `INSERT INTO audit_log(actor, action, object_type, object_id, after_json)
-       VALUES ($1,'MANUAL_TIME_ENTRY','time_entry',$2,$3::jsonb)`,
-      [
-        cleanActor,
-        String(inserted.rows[0].id),
-        JSON.stringify({ ...inserted.rows[0], reason: cleanReason })
-      ]
-    );
-
-    await client.query('COMMIT');
-    return { ...inserted.rows[0], employeeName: employee.rows[0].name };
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     throw error;
@@ -1407,8 +1320,10 @@ app.post('/api/timeclock/admin/assign-pin', async (req,res) => {
     }
 
     const result = await assignEmployeePin({
+      employeeId: req.body?.employeeId,
       discordUserId: req.body?.discordUserId,
-      pin: req.body?.pin
+      pin: req.body?.pin,
+      actor: req.body?.actor
     });
 
     res.json(result);
