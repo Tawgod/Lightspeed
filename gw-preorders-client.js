@@ -54,6 +54,33 @@ function chicagoDatetimeLocal(iso){
   const get=type=>parts.find(p=>p.type===type)?.value||'';
   return get('year')+'-'+get('month')+'-'+get('day')+'T'+get('hour')+':'+get('minute');
 }
+function setGwTimingValues({supplierDeadlineAt=null,customerCutoffAt=null,autoSubmitAt=null}={}){
+  const supplier=document.getElementById('gwSupplierDeadline');
+  const customer=document.getElementById('gwCustomerCutoff');
+  const auto=document.getElementById('gwAutoSubmitAt');
+  const summary=document.getElementById('gwOrderDue');
+  if(supplierDeadlineAt)supplier.value=chicagoDatetimeLocal(supplierDeadlineAt);
+  if(customerCutoffAt)customer.value=chicagoDatetimeLocal(customerCutoffAt);
+  if(autoSubmitAt)auto.value=chicagoDatetimeLocal(autoSubmitAt);
+  summary.value=customer.value||'';
+}
+function recomputeGwTimingFromSupplier(){
+  const v=document.getElementById('gwSupplierDeadline').value;
+  if(!v)return;
+  const t=new Date(v).getTime();
+  if(Number.isNaN(t))return;
+  document.getElementById('gwCustomerCutoff').value=chicagoDatetimeLocal(new Date(t-30*60*1000).toISOString());
+  document.getElementById('gwAutoSubmitAt').value=chicagoDatetimeLocal(new Date(t-15*60*1000).toISOString());
+  document.getElementById('gwOrderDue').value=document.getElementById('gwCustomerCutoff').value;
+}
+function toggleGwTimingPanel(){
+  const open=document.getElementById('gwAdjustTiming').checked;
+  const panel=document.getElementById('gwTimingPanel');
+  panel.classList.toggle('open',open);panel.setAttribute('aria-hidden',open?'false':'true');
+}
+function closeGwTimingPanel(){
+  document.getElementById('gwAdjustTiming').checked=false;toggleGwTimingPanel();
+}
 function setSourceStatus(text){document.getElementById('gwSourceStatus').textContent=text||''}
 function setDiscordStatus(text){document.getElementById('gwDiscordStatus').textContent=text||''}
 function resetDiscordPreview(){
@@ -93,7 +120,11 @@ async function syncLatestGwEmail(){
     const d=await getJson(api+'/preorders/gw/sync-preview'),email=d.email||{},scrape=d.scrape||{};
     if(email.form_url)document.getElementById('gwFormUrl').value=email.form_url;
     if(email.release_date_iso)document.getElementById('gwReleaseDate').value=email.release_date_iso;
-    if(email.cutoff_at)document.getElementById('gwOrderDue').value=chicagoDatetimeLocal(email.cutoff_at);
+    setGwTimingValues({
+      supplierDeadlineAt:email.supplier_deadline_at,
+      customerCutoffAt:email.cutoff_at,
+      autoSubmitAt:email.auto_submit_at
+    });
     if(email.release_date)document.getElementById('gwCampaignName').value='GW Release '+email.release_date;
     setSourceStatus(['Latest GW email found',email.subject||'—',email.received_at?new Date(email.received_at).toLocaleString():'—',
       email.due_text?'GW deadline: '+email.due_text:'GW deadline not parsed',
@@ -151,7 +182,13 @@ async function importLatestGwDraft(){
     const d=await getJson(api+'/preorders/gw/sync-draft',{method:'POST'});await loadGwCampaigns();
     document.getElementById('gwCampaignSelect').value=String(d.campaign.id);
     if(d.campaign.release_date)document.getElementById('gwReleaseDate').value=String(d.campaign.release_date).slice(0,10);
-    if(d.campaign.order_due_at)document.getElementById('gwOrderDue').value=chicagoDatetimeLocal(d.campaign.order_due_at);
+    if(d.campaign.source_form_url)document.getElementById('gwFormUrl').value=d.campaign.source_form_url;
+    document.getElementById('gwAutoSubmit').checked=d.campaign.auto_submit_enabled!==false;
+    setGwTimingValues({
+      supplierDeadlineAt:d.campaign.gw_supplier_deadline_at,
+      customerCutoffAt:d.campaign.order_due_at,
+      autoSubmitAt:d.campaign.gw_auto_submit_at
+    });
     setSourceStatus((d.created?'Created':'Updated')+' GW draft · '+d.products.total+' product(s) · '+Number(d.scrape_counts?.ready||0)+
       ' ready · '+Number(d.scrape_counts?.review||0)+' review · '+Number(d.scrape_counts?.filtered||0)+' filtered');await loadGwCampaign();
   }catch(e){setSourceStatus('GW draft import failed: '+e.message)}
@@ -191,25 +228,72 @@ function renderGwCampaignProducts(products){
   }box.appendChild(table);
 }
 async function createGwCampaign(){
-  const name=document.getElementById('gwCampaignName').value.trim(),sourceFormUrl=document.getElementById('gwFormUrl').value.trim(),due=document.getElementById('gwOrderDue').value;
-  if(!name||!sourceFormUrl||!due)return showNotice('Campaign name, GW form URL, and order cutoff are required.');
+  const name=document.getElementById('gwCampaignName').value.trim();
+  const sourceFormUrl=document.getElementById('gwFormUrl').value.trim();
+  const due=document.getElementById('gwCustomerCutoff').value||document.getElementById('gwOrderDue').value;
+  const supplier=document.getElementById('gwSupplierDeadline').value;
+  const autoSubmitAt=document.getElementById('gwAutoSubmitAt').value;
+  if(!name||!sourceFormUrl||!due)return showNotice('Campaign name, GW form URL, and customer cutoff are required.');
   try{
-    const row=await getJson(api+'/preorders/gw/campaigns',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({name,source_form_url:sourceFormUrl,order_due_at:new Date(due).toISOString(),release_date:document.getElementById('gwReleaseDate').value||null,
-        auto_submit_enabled:Boolean(document.getElementById('gwAutoSubmit').checked),auto_submit_minutes_before:15})});
-    showNotice('GW preorder campaign created.',1800);await loadGwCampaigns();document.getElementById('gwCampaignSelect').value=String(row.id);await loadGwCampaign();
+    const row=await getJson(api+'/preorders/gw/campaigns',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        name,
+        source_form_url:sourceFormUrl,
+        order_due_at:new Date(due).toISOString(),
+        release_date:document.getElementById('gwReleaseDate').value||null,
+        auto_submit_enabled:Boolean(document.getElementById('gwAutoSubmit').checked),
+        auto_submit_minutes_before:15,
+        gw_supplier_deadline_at:supplier?new Date(supplier).toISOString():null,
+        gw_auto_submit_at:autoSubmitAt?new Date(autoSubmitAt).toISOString():null
+      })
+    });
+    if(row.source_form_url)document.getElementById('gwFormUrl').value=row.source_form_url;
+    showNotice('GW preorder campaign created.',1800);
+    await loadGwCampaigns();
+    document.getElementById('gwCampaignSelect').value=String(row.id);
+    await loadGwCampaign();
   }catch(e){showNotice('Could not create GW campaign: '+e.message)}
 }
 async function loadGwCampaign(){
-  const id=document.getElementById('gwCampaignSelect').value,status=document.getElementById('gwCampaignStatus');resetDiscordPreview();
-  if(!id){status.textContent='';document.getElementById('gwCampaignProducts').replaceChildren();return}
+  const id=document.getElementById('gwCampaignSelect').value;
+  const status=document.getElementById('gwCampaignStatus');
+  const submission=document.getElementById('gwSubmissionStatus');
+  resetDiscordPreview();
+  if(!id){
+    status.textContent='';submission.replaceChildren();
+    document.getElementById('gwCampaignProducts').replaceChildren();return;
+  }
   try{
     const d=await getJson(api+'/preorders/campaigns/'+id),c=d.campaign;
-    status.textContent='Cutoff: '+(c.order_due_at?new Date(c.order_due_at).toLocaleString():'—')+' · Products: '+d.products.length+
-      ' · Requests: '+d.products.reduce((n,x)=>n+Number(x.requested_total||0),0)+' · '+(c.external_submission_status||'NOT_SUBMITTED')+
-      (c.discord_published_at?' · Discord published '+new Date(c.discord_published_at).toLocaleString():'')+
-      (c.auto_submit_enabled?' · Auto-submit planned 15 min after customer cutoff / 15 min before GW deadline (submission worker still safety-disabled)':'');renderGwCampaignProducts(d.products);
-  }catch(e){status.textContent='GW campaign load failed: '+e.message}
+    submission.replaceChildren();
+    const label=document.createElement('span');label.textContent='Submission:';
+    const pill=document.createElement('span');
+    const submissionStatus=String(c.external_submission_status||'NOT_SUBMITTED').toUpperCase();
+    pill.className='gw-status-pill '+(submissionStatus==='SUBMITTED'?'submitted':(submissionStatus==='FAILED'?'failed':''));
+    pill.textContent=submissionStatus.replaceAll('_',' ');
+    submission.append(label,pill);
+    if(c.submitted_at){
+      const when=document.createElement('span');when.className='form-note';when.textContent='Submitted '+new Date(c.submitted_at).toLocaleString();submission.appendChild(when);
+    }
+    status.textContent='Customer cutoff: '+(c.order_due_at?new Date(c.order_due_at).toLocaleString():'—')+
+      ' · GW deadline: '+(c.gw_supplier_deadline_at?new Date(c.gw_supplier_deadline_at).toLocaleString():'—')+
+      ' · Auto-submit: '+(c.auto_submit_enabled?(c.gw_auto_submit_at?new Date(c.gw_auto_submit_at).toLocaleString():'enabled'):'OFF')+
+      ' · Products: '+d.products.length+' · Requests: '+d.products.reduce((n,x)=>n+Number(x.requested_total||0),0)+
+      (c.discord_published_at?' · Discord published '+new Date(c.discord_published_at).toLocaleString():'');
+    document.getElementById('gwAutoSubmit').checked=c.auto_submit_enabled!==false;
+    if(c.source_form_url)document.getElementById('gwFormUrl').value=c.source_form_url;
+    if(c.release_date)document.getElementById('gwReleaseDate').value=String(c.release_date).slice(0,10);
+    setGwTimingValues({
+      supplierDeadlineAt:c.gw_supplier_deadline_at,
+      customerCutoffAt:c.order_due_at,
+      autoSubmitAt:c.gw_auto_submit_at
+    });
+    renderGwCampaignProducts(d.products);
+  }catch(e){
+    submission.replaceChildren();
+    status.textContent='GW campaign load failed: '+e.message;
+  }
 }
 function renderDiscordPreview(d){
   const box=document.getElementById('gwDiscordPreview');box.replaceChildren();
@@ -252,5 +336,10 @@ async function publishGwDiscordPosts(){
   }
 }
 
+document.getElementById('gwSupplierDeadline').addEventListener('change',recomputeGwTimingFromSupplier);
+document.getElementById('gwCustomerCutoff').addEventListener('change',()=>{
+  document.getElementById('gwOrderDue').value=document.getElementById('gwCustomerCutoff').value;
+});
+document.getElementById('gwAutoSubmit').checked=true;
 document.getElementById('accessKey').value=accessKey();setAuthState(false);
 if(accessKey())saveKey();else showNotice('GW Preorders is locked. Enter the internal access key above and click Unlock.');

@@ -1154,8 +1154,13 @@ export function createSpecialOrdersRouter({
       const preorderDate=parseUsDateToIsoDate(m.metadata.preorder_date);
       const supplierDeadlineAt=parseGwCutoffToIso(m.metadata.due_text,m.metadata.release_date,m.receivedDateTime);
       const cutoffAt=gwCustomerCutoffFromSupplierDeadline(supplierDeadlineAt);
+      const autoSubmitAt=supplierDeadlineAt
+        ? new Date(Date.parse(supplierDeadlineAt)-15*60*1000).toISOString()
+        : null;
       if(!releaseDate)throw Object.assign(new Error('GW release date could not be parsed safely.'),{status:422});
-      if(!supplierDeadlineAt||!cutoffAt)throw Object.assign(new Error('GW cutoff could not be parsed safely; review the email before creating the draft.'),{status:422});
+      if(!supplierDeadlineAt||!cutoffAt||!autoSubmitAt){
+        throw Object.assign(new Error('GW cutoff could not be parsed safely; review the email before creating the draft.'),{status:422});
+      }
 
       await client.query('BEGIN');
       const existing=await client.query(
@@ -1163,22 +1168,44 @@ export function createSpecialOrdersRouter({
         [m.id]
       );
       let campaign=existing.rows[0]||null;
+      const canonicalFormUrl=scrape.final_url||m.metadata.form_url;
       if(!campaign){
-        const created=await client.query("\n          INSERT INTO preorder_campaigns\n            (name,game,campaign_type,order_due_at,release_date,status,allocation_method,\n             source_form_url,source_email_message_id,external_submission_status,\n             auto_submit_enabled,auto_submit_minutes_before,notes)\n          VALUES ($1,'Games Workshop','GW_WEEKLY',$2,$3,'OPEN','QUEUE',$4,$5,'NOT_SUBMITTED',false,15,$6)\n          RETURNING *\n        ",[
-          'GW Release '+m.metadata.release_date,
-          cutoffAt,
-          releaseDate,
-          m.metadata.form_url,
-          m.id,
-          supplierDeadlineAt,
-          'Imported from Outlook: '+String(m.subject||'GW Trade News')
-        ]);
+        const created=await client.query(
+          "INSERT INTO preorder_campaigns "+
+          "(name,game,campaign_type,order_due_at,release_date,status,allocation_method,"+
+          "source_form_url,source_email_message_id,external_submission_status,"+
+          "auto_submit_enabled,auto_submit_minutes_before,gw_supplier_deadline_at,gw_auto_submit_at,notes) "+
+          "VALUES ($1,'Games Workshop','GW_WEEKLY',$2,$3,'OPEN','QUEUE',$4,$5,'NOT_SUBMITTED',true,15,$6,$7,$8) "+
+          "RETURNING *",
+          [
+            'GW Release '+m.metadata.release_date,
+            cutoffAt,
+            releaseDate,
+            canonicalFormUrl,
+            m.id,
+            supplierDeadlineAt,
+            autoSubmitAt,
+            'Imported from Outlook: '+String(m.subject||'GW Trade News')
+          ]
+        );
         campaign=created.rows[0];
       }else{
-        const updated=await client.query("\n          UPDATE preorder_campaigns\n          SET order_due_at=$2,\n              release_date=$3,\n              source_form_url=$4,\n              notes=$5,\n              updated_at=now()\n          WHERE id=$1\n          RETURNING *\n        ",[
-          campaign.id,cutoffAt,releaseDate,m.metadata.form_url,supplierDeadlineAt,
-          'Imported from Outlook: '+String(m.subject||'GW Trade News')
-        ]);
+        const updated=await client.query(
+          "UPDATE preorder_campaigns SET "+
+          "order_due_at=$2,release_date=$3,source_form_url=$4,"+
+          "gw_supplier_deadline_at=$5,gw_auto_submit_at=$6,"+
+          "auto_submit_enabled=true,auto_submit_minutes_before=15,notes=$7,updated_at=now() "+
+          "WHERE id=$1 RETURNING *",
+          [
+            campaign.id,
+            cutoffAt,
+            releaseDate,
+            canonicalFormUrl,
+            supplierDeadlineAt,
+            autoSubmitAt,
+            'Imported from Outlook: '+String(m.subject||'GW Trade News')
+          ]
+        );
         campaign=updated.rows[0];
       }
 
@@ -1186,16 +1213,25 @@ export function createSpecialOrdersRouter({
       for(let i=0;i<(scrape.items||[]).length;i++){
         const item=scrape.items[i];
         const key=gwExternalEntryKey(item,i);
-        const result=await client.query("\n          INSERT INTO preorder_products\n            (preorder_campaign_id,item_description,release_date,external_entry_id,\n             gw_post_disposition,gw_case_pack_size,gw_review_note,source_image_url)\n          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)\n          ON CONFLICT (preorder_campaign_id,external_entry_id)\n          WHERE external_entry_id IS NOT NULL\n          DO UPDATE SET\n            item_description=EXCLUDED.item_description,\n            release_date=EXCLUDED.release_date,\n            source_image_url=COALESCE(preorder_products.image_url,EXCLUDED.source_image_url),\n            gw_post_disposition=CASE\n              WHEN preorder_products.gw_reviewed_at IS NULL THEN EXCLUDED.gw_post_disposition\n              ELSE preorder_products.gw_post_disposition\n            END,\n            gw_case_pack_size=CASE\n              WHEN preorder_products.gw_reviewed_at IS NULL THEN EXCLUDED.gw_case_pack_size\n              ELSE preorder_products.gw_case_pack_size\n            END,\n            gw_review_note=CASE\n              WHEN preorder_products.gw_reviewed_at IS NULL THEN EXCLUDED.gw_review_note\n              ELSE preorder_products.gw_review_note\n            END\n          RETURNING (xmax = 0) AS inserted\n        ",[
-          campaign.id,
-          item.name,
-          releaseDate,
-          key,
-          item.disposition||'REVIEW',
-          item.case_pack_size||null,
-          (item.reasons||[]).join('; ')||null,
-          item.source_image_url||null
-        ]);
+        const result=await client.query(
+          "INSERT INTO preorder_products "+
+          "(preorder_campaign_id,item_description,release_date,external_entry_id,"+
+          "gw_post_disposition,gw_case_pack_size,gw_review_note,source_image_url) "+
+          "VALUES ($1,$2,$3,$4,$5,$6,$7,$8) "+
+          "ON CONFLICT (preorder_campaign_id,external_entry_id) WHERE external_entry_id IS NOT NULL "+
+          "DO UPDATE SET "+
+          "item_description=EXCLUDED.item_description,"+
+          "release_date=EXCLUDED.release_date,"+
+          "source_image_url=COALESCE(preorder_products.image_url,EXCLUDED.source_image_url),"+
+          "gw_post_disposition=CASE WHEN preorder_products.gw_reviewed_at IS NULL THEN EXCLUDED.gw_post_disposition ELSE preorder_products.gw_post_disposition END,"+
+          "gw_case_pack_size=CASE WHEN preorder_products.gw_reviewed_at IS NULL THEN EXCLUDED.gw_case_pack_size ELSE preorder_products.gw_case_pack_size END,"+
+          "gw_review_note=CASE WHEN preorder_products.gw_reviewed_at IS NULL THEN EXCLUDED.gw_review_note ELSE preorder_products.gw_review_note END "+
+          "RETURNING (xmax = 0) AS inserted",
+          [
+            campaign.id,item.name,releaseDate,key,item.disposition||'REVIEW',
+            item.case_pack_size||null,(item.reasons||[]).join('; ')||null,item.source_image_url||null
+          ]
+        );
         if(result.rows[0]?.inserted)inserted++;else updated++;
       }
 
@@ -1211,7 +1247,10 @@ export function createSpecialOrdersRouter({
           received_at:m.receivedDateTime,
           due_text:m.metadata.due_text,
           release_date:m.metadata.release_date,
-          form_url:m.metadata.form_url
+          form_url:canonicalFormUrl,
+          supplier_deadline_at:supplierDeadlineAt,
+          cutoff_at:cutoffAt,
+          auto_submit_at:autoSubmitAt
         },
         scrape_counts:scrape.counts,
         products:{inserted,updated,total:(scrape.items||[]).length}
@@ -1241,9 +1280,14 @@ export function createSpecialOrdersRouter({
           received_at:m.receivedDateTime,
           web_link:m.webLink||null,
           ...m.metadata,
+          form_url:scrape.final_url||m.metadata.form_url,
           release_date_iso:parseUsDateToIsoDate(m.metadata.release_date),
           supplier_deadline_at:parseGwCutoffToIso(m.metadata.due_text,m.metadata.release_date,m.receivedDateTime),
-          cutoff_at:gwCustomerCutoffFromSupplierDeadline(parseGwCutoffToIso(m.metadata.due_text,m.metadata.release_date,m.receivedDateTime))
+          cutoff_at:gwCustomerCutoffFromSupplierDeadline(parseGwCutoffToIso(m.metadata.due_text,m.metadata.release_date,m.receivedDateTime)),
+          auto_submit_at:(()=>{
+            const deadline=parseGwCutoffToIso(m.metadata.due_text,m.metadata.release_date,m.receivedDateTime);
+            return deadline?new Date(Date.parse(deadline)-15*60*1000).toISOString():null;
+          })()
         },
         scrape
       });
@@ -1355,28 +1399,45 @@ export function createSpecialOrdersRouter({
     const name=String(body.name||'').trim();
     const formUrl=String(body.source_form_url||'').trim();
     const dueAt=body.order_due_at||null;
-    if(!name||!formUrl||!dueAt)return res.status(400).json({error:'name, source_form_url, and order_due_at are required.'});
-    try{
-      const u=new URL(formUrl);
-      if(u.protocol!=='https:'||u.hostname!=='docs.google.com'||!u.pathname.includes('/forms/')){
-        return res.status(400).json({error:'source_form_url must be a Google Forms URL.'});
-      }
-    }catch{
-      return res.status(400).json({error:'source_form_url must be a valid URL.'});
+    if(!name||!formUrl||!dueAt){
+      return res.status(400).json({error:'name, source_form_url, and order_due_at are required.'});
     }
+
+    let formPreview;
+    try{
+      formPreview=await fetchGwFormPreview(formUrl);
+    }catch(error){
+      return res.status(error.status||400).json({error:error.message});
+    }
+    const canonicalFormUrl=String(formPreview.final_url||formUrl).trim();
+
     const due=new Date(dueAt);
     if(Number.isNaN(due.getTime()))return res.status(400).json({error:'order_due_at is invalid.'});
-    const autoMinutes=Math.max(5,Math.min(120,Number(body.auto_submit_minutes_before||15)));
-    const {rows}=await pool.query(`
-      INSERT INTO preorder_campaigns
-        (name,game,campaign_type,order_due_at,release_date,status,allocation_method,
-         source_form_url,external_submission_status,auto_submit_enabled,auto_submit_minutes_before,notes)
-      VALUES ($1,'Games Workshop','GW_WEEKLY',$2,$3,'OPEN','QUEUE',$4,'NOT_SUBMITTED',$5,$6,$7)
-      RETURNING *
-    `,[
-      name,due.toISOString(),body.release_date||null,formUrl,
-      Boolean(body.auto_submit_enabled),autoMinutes,body.notes||null
-    ]);
+
+    let supplierDeadline=body.gw_supplier_deadline_at?new Date(body.gw_supplier_deadline_at):new Date(due.getTime()+30*60*1000);
+    let autoSubmitAt=body.gw_auto_submit_at?new Date(body.gw_auto_submit_at):new Date(supplierDeadline.getTime()-15*60*1000);
+    if(Number.isNaN(supplierDeadline.getTime()))return res.status(400).json({error:'gw_supplier_deadline_at is invalid.'});
+    if(Number.isNaN(autoSubmitAt.getTime()))return res.status(400).json({error:'gw_auto_submit_at is invalid.'});
+
+    const autoEnabled=body.auto_submit_enabled!==false;
+    const {rows}=await pool.query(
+      "INSERT INTO preorder_campaigns "+
+      "(name,game,campaign_type,order_due_at,release_date,status,allocation_method,"+
+      "source_form_url,external_submission_status,auto_submit_enabled,auto_submit_minutes_before,"+
+      "gw_supplier_deadline_at,gw_auto_submit_at,notes) "+
+      "VALUES ($1,'Games Workshop','GW_WEEKLY',$2,$3,'OPEN','QUEUE',$4,'NOT_SUBMITTED',$5,15,$6,$7,$8) "+
+      "RETURNING *",
+      [
+        name,
+        due.toISOString(),
+        body.release_date||null,
+        canonicalFormUrl,
+        autoEnabled,
+        supplierDeadline.toISOString(),
+        autoSubmitAt.toISOString(),
+        body.notes||null
+      ]
+    );
     res.status(201).json(rows[0]);
   });
 
