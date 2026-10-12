@@ -45,7 +45,16 @@
     </div>
     <div class="toolbar">
       <label><input id="gwAutoSubmit" type="checkbox" checked> Auto-submit enabled</label>
-      <label><input id="gwAdjustTiming" type="checkbox" onchange="toggleGwTimingPanel()"> Adjust cutoff / submit timing</label>
+      <label class="field" style="min-width:190px">
+        <span>Submit Before Deadline</span>
+        <select id="gwSubmitLeadMinutes" onchange="recomputeGwAutoSubmitTime()">
+          <option value="10">10 minutes</option>
+          <option value="15" selected>15 minutes</option>
+          <option value="20">20 minutes</option>
+          <option value="30">30 minutes</option>
+          <option value="60">1 hour</option>
+        </select>
+      </label>
       <button type="button" onclick="testGwGraphMailbox()">Test Outlook/Graph</button>
       <button type="button" onclick="syncLatestGwEmail()">Sync latest GW email</button>
       <button type="button" onclick="scrapeGwFormPreview()">Scrape form preview</button>
@@ -88,21 +97,9 @@
   </div>
 </div>
 
-<aside id="gwTimingPanel" class="gw-timing-panel" aria-hidden="true">
-  <div class="gw-timing-panel-inner">
-    <div class="section-heading">
-      <div>
-        <h2 style="margin:0">GW Timing</h2>
-        <p class="form-note">Defaults come from the email. Adjust only when needed.</p>
-      </div>
-      <button type="button" class="secondary-button" onclick="closeGwTimingPanel()">Close</button>
-    </div>
-    <label class="field"><span>GW supplier deadline</span><input id="gwSupplierDeadline" type="datetime-local"></label>
-    <label class="field"><span>Customer order cutoff</span><input id="gwCustomerCutoff" type="datetime-local"></label>
-    <label class="field"><span>Auto-submit time</span><input id="gwAutoSubmitAt" type="datetime-local"></label>
-    <p class="form-note">Default: customer cutoff = GW deadline −30 min; auto-submit = GW deadline −15 min.</p>
-  </div>
-</aside>
+<input id="gwSupplierDeadline" type="hidden">
+<input id="gwCustomerCutoff" type="hidden">
+<input id="gwAutoSubmitAt" type="hidden">
 <script src="/gw-preorders-client.js"></script>
 </body>
 </html>

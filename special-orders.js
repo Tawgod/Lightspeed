@@ -1415,9 +1415,10 @@ export function createSpecialOrdersRouter({
     if(Number.isNaN(due.getTime()))return res.status(400).json({error:'order_due_at is invalid.'});
 
     let supplierDeadline=body.gw_supplier_deadline_at?new Date(body.gw_supplier_deadline_at):new Date(due.getTime()+30*60*1000);
-    let autoSubmitAt=body.gw_auto_submit_at?new Date(body.gw_auto_submit_at):new Date(supplierDeadline.getTime()-15*60*1000);
     if(Number.isNaN(supplierDeadline.getTime()))return res.status(400).json({error:'gw_supplier_deadline_at is invalid.'});
-    if(Number.isNaN(autoSubmitAt.getTime()))return res.status(400).json({error:'gw_auto_submit_at is invalid.'});
+    const requestedLead=Number(body.auto_submit_minutes_before||15);
+    const autoMinutes=[10,15,20,30,60].includes(requestedLead)?requestedLead:15;
+    const autoSubmitAt=new Date(supplierDeadline.getTime()-autoMinutes*60*1000);
 
     const autoEnabled=body.auto_submit_enabled!==false;
     const {rows}=await pool.query(
@@ -1425,7 +1426,7 @@ export function createSpecialOrdersRouter({
       "(name,game,campaign_type,order_due_at,release_date,status,allocation_method,"+
       "source_form_url,external_submission_status,auto_submit_enabled,auto_submit_minutes_before,"+
       "gw_supplier_deadline_at,gw_auto_submit_at,notes) "+
-      "VALUES ($1,'Games Workshop','GW_WEEKLY',$2,$3,'OPEN','QUEUE',$4,'NOT_SUBMITTED',$5,15,$6,$7,$8) "+
+      "VALUES ($1,'Games Workshop','GW_WEEKLY',$2,$3,'OPEN','QUEUE',$4,'NOT_SUBMITTED',$5,$6,$7,$8,$9) "+
       "RETURNING *",
       [
         name,
@@ -1433,6 +1434,7 @@ export function createSpecialOrdersRouter({
         body.release_date||null,
         canonicalFormUrl,
         autoEnabled,
+        autoMinutes,
         supplierDeadline.toISOString(),
         autoSubmitAt.toISOString(),
         body.notes||null

@@ -62,7 +62,15 @@ function setGwTimingValues({supplierDeadlineAt=null,customerCutoffAt=null,autoSu
   if(supplierDeadlineAt)supplier.value=chicagoDatetimeLocal(supplierDeadlineAt);
   if(customerCutoffAt)customer.value=chicagoDatetimeLocal(customerCutoffAt);
   if(autoSubmitAt)auto.value=chicagoDatetimeLocal(autoSubmitAt);
+  if(supplierDeadlineAt&&autoSubmitAt){
+    const diff=Math.round((Date.parse(supplierDeadlineAt)-Date.parse(autoSubmitAt))/60000);
+    if([10,15,20,30,60].includes(diff))document.getElementById('gwSubmitLeadMinutes').value=String(diff);
+  }
   summary.value=customer.value||'';
+}
+function gwSubmitLeadMinutes(){
+  const n=Number(document.getElementById('gwSubmitLeadMinutes')?.value||15);
+  return [10,15,20,30,60].includes(n)?n:15;
 }
 function recomputeGwTimingFromSupplier(){
   const v=document.getElementById('gwSupplierDeadline').value;
@@ -70,16 +78,16 @@ function recomputeGwTimingFromSupplier(){
   const t=new Date(v).getTime();
   if(Number.isNaN(t))return;
   document.getElementById('gwCustomerCutoff').value=chicagoDatetimeLocal(new Date(t-30*60*1000).toISOString());
-  document.getElementById('gwAutoSubmitAt').value=chicagoDatetimeLocal(new Date(t-15*60*1000).toISOString());
+  recomputeGwAutoSubmitTime();
   document.getElementById('gwOrderDue').value=document.getElementById('gwCustomerCutoff').value;
 }
-function toggleGwTimingPanel(){
-  const open=document.getElementById('gwAdjustTiming').checked;
-  const panel=document.getElementById('gwTimingPanel');
-  panel.classList.toggle('open',open);panel.setAttribute('aria-hidden',open?'false':'true');
-}
-function closeGwTimingPanel(){
-  document.getElementById('gwAdjustTiming').checked=false;toggleGwTimingPanel();
+function recomputeGwAutoSubmitTime(){
+  const v=document.getElementById('gwSupplierDeadline').value;
+  if(!v)return;
+  const t=new Date(v).getTime();
+  if(Number.isNaN(t))return;
+  document.getElementById('gwAutoSubmitAt').value=
+    chicagoDatetimeLocal(new Date(t-gwSubmitLeadMinutes()*60*1000).toISOString());
 }
 function setSourceStatus(text){document.getElementById('gwSourceStatus').textContent=text||''}
 function setDiscordStatus(text){document.getElementById('gwDiscordStatus').textContent=text||''}
@@ -184,6 +192,9 @@ async function importLatestGwDraft(){
     if(d.campaign.release_date)document.getElementById('gwReleaseDate').value=String(d.campaign.release_date).slice(0,10);
     if(d.campaign.source_form_url)document.getElementById('gwFormUrl').value=d.campaign.source_form_url;
     document.getElementById('gwAutoSubmit').checked=d.campaign.auto_submit_enabled!==false;
+    if([10,15,20,30,60].includes(Number(d.campaign.auto_submit_minutes_before))){
+      document.getElementById('gwSubmitLeadMinutes').value=String(d.campaign.auto_submit_minutes_before);
+    }
     setGwTimingValues({
       supplierDeadlineAt:d.campaign.gw_supplier_deadline_at,
       customerCutoffAt:d.campaign.order_due_at,
@@ -243,7 +254,7 @@ async function createGwCampaign(){
         order_due_at:new Date(due).toISOString(),
         release_date:document.getElementById('gwReleaseDate').value||null,
         auto_submit_enabled:Boolean(document.getElementById('gwAutoSubmit').checked),
-        auto_submit_minutes_before:15,
+        auto_submit_minutes_before:gwSubmitLeadMinutes(),
         gw_supplier_deadline_at:supplier?new Date(supplier).toISOString():null,
         gw_auto_submit_at:autoSubmitAt?new Date(autoSubmitAt).toISOString():null
       })
@@ -282,6 +293,9 @@ async function loadGwCampaign(){
       ' · Products: '+d.products.length+' · Requests: '+d.products.reduce((n,x)=>n+Number(x.requested_total||0),0)+
       (c.discord_published_at?' · Discord published '+new Date(c.discord_published_at).toLocaleString():'');
     document.getElementById('gwAutoSubmit').checked=c.auto_submit_enabled!==false;
+    if([10,15,20,30,60].includes(Number(c.auto_submit_minutes_before))){
+      document.getElementById('gwSubmitLeadMinutes').value=String(c.auto_submit_minutes_before);
+    }
     if(c.source_form_url)document.getElementById('gwFormUrl').value=c.source_form_url;
     if(c.release_date)document.getElementById('gwReleaseDate').value=String(c.release_date).slice(0,10);
     setGwTimingValues({
@@ -336,10 +350,7 @@ async function publishGwDiscordPosts(){
   }
 }
 
-document.getElementById('gwSupplierDeadline').addEventListener('change',recomputeGwTimingFromSupplier);
-document.getElementById('gwCustomerCutoff').addEventListener('change',()=>{
-  document.getElementById('gwOrderDue').value=document.getElementById('gwCustomerCutoff').value;
-});
+document.getElementById('gwSubmitLeadMinutes').value='15';
 document.getElementById('gwAutoSubmit').checked=true;
 document.getElementById('accessKey').value=accessKey();setAuthState(false);
 if(accessKey())saveKey();else showNotice('GW Preorders is locked. Enter the internal access key above and click Unlock.');
