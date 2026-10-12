@@ -1029,6 +1029,134 @@ export function createSpecialOrdersRouter({
     };
   }
 
+
+  function parseUsDateToIsoDate(value){
+    const m=String(value||'').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if(!m)return null;
+    return m[3]+'-'+String(m[1]).padStart(2,'0')+'-'+String(m[2]).padStart(2,'0');
+  }
+
+  function centralOffsetMinutes(year,month,day){
+    const probe=new Date(Date.UTC(year,month-1,day,12,0,0));
+    const parts=new Intl.DateTimeFormat('en-US',{
+      timeZone:'America/Chicago',
+      timeZoneName:'shortOffset',
+      year:'numeric',month:'2-digit',day:'2-digit'
+    }).formatToParts(probe);
+    const tz=parts.find(p=>p.type==='timeZoneName')?.value||'GMT-6';
+    const m=tz.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/i);
+    if(!m)return -360;
+    const mins=Number(m[2])*60+Number(m[3]||0);
+    return (m[1]==='-'?-1:1)*mins;
+  }
+
+  function parseGwCutoffToIso(dueText,releaseDate,receivedAt){
+    const text=String(dueText||'').replace(/\*+/g,' ').replace(/\s+/g,' ').trim();
+    if(!text)return null;
+    const months={january:1,february:2,march:3,april:4,may:5,june:6,july:7,august:8,september:9,october:10,november:11,december:12};
+    const m=text.match(/(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)?[,]?\s*([A-Za-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?(?:[,]?\s*(\d{4}))?[,]?\s*(?:at\s*)?(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+    if(!m)return null;
+    const month=months[String(m[1]).toLowerCase()];
+    if(!month)return null;
+    const releaseYear=String(releaseDate||'').match(/\/(\d{4})$/)?.[1];
+    const receivedYear=receivedAt?new Date(receivedAt).getUTCFullYear():null;
+    const year=Number(m[3]||releaseYear||receivedYear);
+    if(!year)return null;
+    let hour=Number(m[4]);
+    const minute=Number(m[5]);
+    const ampm=String(m[6]).toUpperCase();
+    if(ampm==='PM'&&hour<12)hour+=12;
+    if(ampm==='AM'&&hour===12)hour=0;
+    const day=Number(m[2]);
+    const offset=centralOffsetMinutes(year,month,day);
+    const utc=Date.UTC(year,month-1,day,hour,minute,0)-offset*60000;
+    return new Date(utc).toISOString();
+  }
+
+  function gwExternalEntryKey(item,index){
+    const base=String(item.source_question_id||'q')+':'+
+      String(item.name||'').toLowerCase().replace(/\s+/g,' ').trim();
+    return base.slice(0,900)||('item:'+index);
+  }
+
+  router.post('/preorders/gw/sync-draft', requireDb, async (req,res)=>{
+    const client=await pool.connect();
+    try{
+      const latest=await getLatestGwFormEmail();
+      const m=latest.message;
+      const scrape=await fetchGwFormPreview(m.metadata.form_url);
+      const releaseDate=parseUsDateToIsoDate(m.metadata.release_date);
+      const preorderDate=parseUsDateToIsoDate(m.metadata.preorder_date);
+      const cutoffAt=parseGwCutoffToIso(m.metadata.due_text,m.metadata.release_date,m.receivedDateTime);
+      if(!releaseDate)throw Object.assign(new Error('GW release date could not be parsed safely.'),{status:422});
+      if(!cutoffAt)throw Object.assign(new Error('GW cutoff could not be parsed safely; review the email before creating the draft.'),{status:422});
+
+      await client.query('BEGIN');
+      const existing=await client.query(
+        "SELECT * FROM preorder_campaigns WHERE campaign_type='GW_WEEKLY' AND source_email_message_id=$1 FOR UPDATE",
+        [m.id]
+      );
+      let campaign=existing.rows[0]||null;
+      if(!campaign){
+        const created=await client.query("\n          INSERT INTO preorder_campaigns\n            (name,game,campaign_type,order_due_at,release_date,status,allocation_method,\n             source_form_url,source_email_message_id,external_submission_status,\n             auto_submit_enabled,auto_submit_minutes_before,notes)\n          VALUES ($1,'Games Workshop','GW_WEEKLY',$2,$3,'OPEN','QUEUE',$4,$5,'NOT_SUBMITTED',false,15,$6)\n          RETURNING *\n        ",[
+          'GW Release '+m.metadata.release_date,
+          cutoffAt,
+          releaseDate,
+          m.metadata.form_url,
+          m.id,
+          'Imported from Outlook: '+String(m.subject||'GW Trade News')
+        ]);
+        campaign=created.rows[0];
+      }else{
+        const updated=await client.query("\n          UPDATE preorder_campaigns\n          SET order_due_at=$2,\n              release_date=$3,\n              source_form_url=$4,\n              notes=$5,\n              updated_at=now()\n          WHERE id=$1\n          RETURNING *\n        ",[
+          campaign.id,cutoffAt,releaseDate,m.metadata.form_url,
+          'Imported from Outlook: '+String(m.subject||'GW Trade News')
+        ]);
+        campaign=updated.rows[0];
+      }
+
+      let inserted=0,updated=0;
+      for(let i=0;i<(scrape.items||[]).length;i++){
+        const item=scrape.items[i];
+        const key=gwExternalEntryKey(item,i);
+        const result=await client.query("\n          INSERT INTO preorder_products\n            (preorder_campaign_id,item_description,release_date,external_entry_id,\n             gw_post_disposition,gw_case_pack_size,gw_review_note)\n          VALUES ($1,$2,$3,$4,$5,$6,$7)\n          ON CONFLICT (preorder_campaign_id,external_entry_id)\n          WHERE external_entry_id IS NOT NULL\n          DO UPDATE SET\n            item_description=EXCLUDED.item_description,\n            release_date=EXCLUDED.release_date,\n            gw_post_disposition=CASE\n              WHEN preorder_products.gw_reviewed_at IS NULL THEN EXCLUDED.gw_post_disposition\n              ELSE preorder_products.gw_post_disposition\n            END,\n            gw_case_pack_size=CASE\n              WHEN preorder_products.gw_reviewed_at IS NULL THEN EXCLUDED.gw_case_pack_size\n              ELSE preorder_products.gw_case_pack_size\n            END,\n            gw_review_note=CASE\n              WHEN preorder_products.gw_reviewed_at IS NULL THEN EXCLUDED.gw_review_note\n              ELSE preorder_products.gw_review_note\n            END\n          RETURNING (xmax = 0) AS inserted\n        ",[
+          campaign.id,
+          item.name,
+          releaseDate,
+          key,
+          item.disposition||'REVIEW',
+          item.case_pack_size||null,
+          (item.reasons||[]).join('; ')||null
+        ]);
+        if(result.rows[0]?.inserted)inserted++;else updated++;
+      }
+
+      await client.query('COMMIT');
+      res.status(existing.rows[0]?200:201).json({
+        ok:true,
+        created:!existing.rows[0],
+        campaign,
+        preorder_date:preorderDate,
+        email:{
+          id:m.id,
+          subject:m.subject,
+          received_at:m.receivedDateTime,
+          due_text:m.metadata.due_text,
+          release_date:m.metadata.release_date,
+          form_url:m.metadata.form_url
+        },
+        scrape_counts:scrape.counts,
+        products:{inserted,updated,total:(scrape.items||[]).length}
+      });
+    }catch(error){
+      try{await client.query('ROLLBACK')}catch{}
+      console.error('[special-orders] GW draft sync failed:',error);
+      res.status(error.status||500).json({error:error.message});
+    }finally{
+      client.release();
+    }
+  });
+
   router.get('/preorders/gw/sync-preview', requireDb, async (req,res)=>{
     try{
       const latest=await getLatestGwFormEmail();
