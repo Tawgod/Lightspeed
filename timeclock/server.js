@@ -85,6 +85,9 @@ async function ensureSchema() {
     ALTER TABLE employees ADD COLUMN IF NOT EXISTS discord_username TEXT;
     ALTER TABLE employees ADD COLUMN IF NOT EXISTS discord_display_name TEXT;
     ALTER TABLE employees ADD COLUMN IF NOT EXISTS pto_eligible BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE employees ADD COLUMN IF NOT EXISTS scanner_can_lookup BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE employees ALTER COLUMN scanner_can_lookup SET DEFAULT TRUE;
+    ALTER TABLE employees ADD COLUMN IF NOT EXISTS scanner_can_approve BOOLEAN NOT NULL DEFAULT FALSE;
 
     CREATE TABLE IF NOT EXISTS clock_events (
       id BIGSERIAL PRIMARY KEY,
@@ -408,6 +411,8 @@ async function listEmployees() {
        discord_display_name,
        active,
        pto_eligible,
+       scanner_can_lookup,
+       scanner_can_approve,
        (pin_hash IS NOT NULL) AS has_pin,
        created_at
      FROM employees
@@ -1546,6 +1551,88 @@ app.post('/api/timeclock/clock-out', async (req,res) => {
   } finally {
     client.release();
   }
+});
+
+
+function scannerServiceAuthorized(req) {
+  const secret=String(process.env.SCANNER_SERVICE_SECRET||'');
+  const supplied=String(req.get('x-scanner-service-secret')||'');
+  if(secret.length<32 || supplied.length!==secret.length)return false;
+  return crypto.timingSafeEqual(Buffer.from(secret),Buffer.from(supplied));
+}
+
+// Called only by the trusted Lightspeed API server. Do not expose a browser
+// credential or use the employee-name fallback from resolveEmployee().
+app.post('/api/timeclock/integrations/scanner/verify-pin', async (req,res) => {
+  res.set('Cache-Control','no-store');
+  if(!scannerServiceAuthorized(req))return res.status(403).json({error:'Forbidden.'});
+  const pin=String(req.body?.pin||'');
+  if(!/^\d{4}$/.test(pin))return res.status(401).json({error:'Invalid employee credentials.'});
+  try{
+    const rows=await pool.query(
+      'SELECT id,name,scanner_can_lookup,scanner_can_approve FROM employees WHERE pin_hash=$1 AND active=TRUE LIMIT 1',
+      [pinHash(pin)]
+    );
+    const employee=rows.rows[0];
+    if(!employee)return res.status(401).json({error:'Invalid employee credentials.'});
+    return res.json({employee:{id:employee.id,name:employee.name,
+      canLookup:employee.scanner_can_lookup,canApprove:employee.scanner_can_approve}});
+  }catch(error){return res.status(503).json({error:'Employee verification unavailable.'});}
+});
+
+// Check active status and current permission on every privileged request;
+// this makes revocation effective without relying on a stale browser session.
+app.post('/api/timeclock/integrations/scanner/authorize', async (req,res) => {
+  res.set('Cache-Control','no-store');
+  if(!scannerServiceAuthorized(req))return res.status(403).json({error:'Forbidden.'});
+  const employeeId=Number(req.body?.employeeId);
+  if(!Number.isSafeInteger(employeeId)||employeeId<=0)return res.status(400).json({error:'Valid employee ID required.'});
+  try{
+    const rows=await pool.query(
+      'SELECT id,name,scanner_can_lookup,scanner_can_approve FROM employees WHERE id=$1 AND active=TRUE LIMIT 1',
+      [employeeId]
+    );
+    const employee=rows.rows[0];
+    if(!employee)return res.status(403).json({error:'Employee access revoked.'});
+    return res.json({employee:{id:employee.id,name:employee.name,
+      canLookup:employee.scanner_can_lookup,canApprove:employee.scanner_can_approve}});
+  }catch(error){return res.status(503).json({error:'Employee authorization unavailable.'});}
+});
+
+// Existing Timeclock administrator authorizes each permission independently.
+app.post('/api/timeclock/admin/employees/:employeeId/scanner-permissions', async(req,res)=>{
+  res.set('Cache-Control','no-store');
+  if(!ADMIN_SECRET || req.get('x-timeclock-admin-secret')!==ADMIN_SECRET){
+    return res.status(403).json({error:'Forbidden.'});
+  }
+  const employeeId=Number(req.params.employeeId);
+  if(!Number.isSafeInteger(employeeId)||employeeId<=0)return res.status(400).json({error:'Valid employee ID required.'});
+  if(typeof req.body?.canLookup!=='boolean'||typeof req.body?.canApprove!=='boolean'){
+    return res.status(400).json({error:'canLookup and canApprove must both be boolean.'});
+  }
+  if(req.body.canApprove && !req.body.canLookup){
+    return res.status(400).json({error:'Approval permission requires lookup permission.'});
+  }
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    const old=await client.query(
+      'SELECT id,name,scanner_can_lookup,scanner_can_approve FROM employees WHERE id=$1 FOR UPDATE',
+      [employeeId]
+    );
+    if(!old.rows[0]){await client.query('ROLLBACK');return res.status(404).json({error:'Employee not found.'});}
+    const updated=await client.query(
+      'UPDATE employees SET scanner_can_lookup=$2,scanner_can_approve=$3 WHERE id=$1 RETURNING id,name,scanner_can_lookup,scanner_can_approve',
+      [employeeId,req.body.canLookup,req.body.canApprove]
+    );
+    await client.query(
+      "INSERT INTO audit_log(actor,action,object_type,object_id,before_json,after_json) VALUES ($1,'SET_SCANNER_PERMISSIONS','employee',$2,$3::jsonb,$4::jsonb)",
+      ['TIMECLOCK_ADMIN',String(employeeId),JSON.stringify(old.rows[0]),JSON.stringify(updated.rows[0])]
+    );
+    await client.query('COMMIT');
+    return res.json({updated:true,employee:updated.rows[0]});
+  }catch(error){await client.query('ROLLBACK').catch(()=>{});return res.status(500).json({error:'Unable to save scanner permissions.'});}
+  finally{client.release();}
 });
 
 ensureSchema()
