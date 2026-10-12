@@ -1351,8 +1351,67 @@ export function createSpecialOrdersRouter({
 
     const release=product.release_date||campaign.release_date||null;
     const sku=String(product.sku||'NO_SKU').trim()||'NO_SKU';
-    const lines=[];
-    if(msrp!=null&&Number.isFinite(msrp))lines.push('MSRP: 
+    const detailLines=[];
+    if(msrp!=null&&Number.isFinite(msrp))detailLines.push('MSRP: $'+msrp.toFixed(2));
+    if(release)detailLines.push('Release: '+String(release).slice(0,10));
+    if(mode==='SPLIT_TO_SINGLES')detailLines.push('Store orders in case packs of '+packSize+'; customer preorder is for one single.');
+    detailLines.push('React to preorder 1.');
+
+    return {
+      publish:true,
+      product_id:product.id,
+      campaign_id:campaign.id,
+      title,
+      description:detailLines.join('\n'),
+      sku,
+      msrp,
+      release_date:release,
+      image_url:product.image_url||product.source_image_url||null,
+      mode,
+      case_pack_size:packSize,
+      footer:'SKU: '+sku+' · GW preorder'
+    };
+  }
+
+  router.get('/preorders/gw/campaigns/:id/discord-preview', requireDb, async (req,res)=>{
+    try{
+      const campaignResult=await pool.query(
+        "SELECT * FROM preorder_campaigns WHERE id=$1 AND campaign_type='GW_WEEKLY'",
+        [req.params.id]
+      );
+      const campaign=campaignResult.rows[0];
+      if(!campaign)return res.status(404).json({error:'GW campaign not found.'});
+      const productsResult=await pool.query(
+        'SELECT * FROM preorder_products WHERE preorder_campaign_id=$1 ORDER BY item_description',
+        [campaign.id]
+      );
+      const evaluated=productsResult.rows.map(p=>gwDiscordPostFromProduct(p,campaign));
+      const posts=evaluated.filter(x=>x.publish);
+      const blocked=evaluated.filter(x=>!x.publish && x.reason!=='Do not post');
+      const suppressed=evaluated.filter(x=>!x.publish && x.reason==='Do not post');
+      res.set('Cache-Control','no-store');
+      res.json({
+        campaign:{
+          id:campaign.id,
+          name:campaign.name,
+          release_date:campaign.release_date,
+          order_due_at:campaign.order_due_at,
+          external_submission_status:campaign.external_submission_status
+        },
+        test_channel_id:'1336092698935033917',
+        ready_to_publish:blocked.length===0 && posts.length>0,
+        counts:{posts:posts.length,blocked:blocked.length,suppressed:suppressed.length},
+        posts,
+        blocked,
+        suppressed
+      });
+    }catch(error){
+      console.error('[special-orders] GW Discord preview failed:',error);
+      res.status(500).json({error:error.message});
+    }
+  });
+
+  router.patch('/preorders/gw/products/:id', requireDb, async (req,res)=>{
     const body=req.body||{};
     const qty=body.store_order_quantity==null?null:Math.max(0,Math.floor(Number(body.store_order_quantity)||0));
     const disposition=body.gw_post_disposition?String(body.gw_post_disposition).toUpperCase():null;
@@ -1384,7 +1443,6 @@ export function createSpecialOrdersRouter({
     if(!rows[0])return res.status(404).json({error:'GW preorder product not found.'});
     res.json(rows[0]);
   });
-
   router.post('/preorders/gw/campaigns/:id/mark-submitted', requireDb, async (req,res)=>{
     const client=await pool.connect();
     try{
