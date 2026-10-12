@@ -763,19 +763,29 @@ export function createSpecialOrdersRouter({
         const key=String(id)+'|'+title;
         if(!seen.has(key)){
           const options=[];
+          const images=[];
           const collect=(x,d=0)=>{
-            if(d>6||x==null)return;
+            if(d>7||x==null)return;
+            if(typeof x==='string'){
+              const raw=x.replace(/\\u0026/g,'&').replace(/\\\//g,'/');
+              if(/^https:\/\//i.test(raw) &&
+                 (/googleusercontent\.com/i.test(raw)||/\.(?:png|jpe?g|webp)(?:\?|$)/i.test(raw))){
+                if(!images.includes(raw))images.push(raw);
+              }
+              return;
+            }
             if(Array.isArray(x)){
-              // Option tuples are usually [label,...].
               if(typeof x[0]==='string'){
                 const label=gwHtmlText(x[0]);
-                if(label && label.length<300 && !options.includes(label)) options.push(label);
+                if(label && label.length<300 && !options.includes(label) && !/^https:\/\//i.test(label)) options.push(label);
               }
               for(const y of x)collect(y,d+1);
+            }else if(typeof x==='object'){
+              for(const y of Object.values(x))collect(y,d+1);
             }
           };
-          collect(node[4]);
-          out.push({id:String(id),title,description:desc,type,options:options.slice(0,200)});
+          collect(node);
+          out.push({id:String(id),title,description:desc,type,options:options.slice(0,200),images:images.slice(0,12)});
           seen.add(key);
         }
       }
@@ -840,11 +850,18 @@ export function createSpecialOrdersRouter({
             source_question_id:q.id,
             name:opt,
             description,
+            source_image_url:Array.isArray(q.images)&&q.images.length?q.images[0]:null,
             ...c
           });
         }
       }else if(/\$|sku|product|warhammer|codex|battle|paint|brush|set|pack|box|kit/i.test(title+' '+description)){
-        itemCandidates.push({source_question_id:q.id,name:title,description,...cls});
+        itemCandidates.push({
+          source_question_id:q.id,
+          name:title,
+          description,
+          source_image_url:Array.isArray(q.images)&&q.images.length?q.images[0]:null,
+          ...cls
+        });
       }
     }
 
