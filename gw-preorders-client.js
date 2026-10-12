@@ -15,7 +15,7 @@ function setAuthState(ok,msg=''){
   s.textContent=ok?'Unlocked':'Locked';
   s.style.background=ok?'#dcfce7':'#fee2e2';s.style.color=ok?'#166534':'#991b1b';
   document.querySelectorAll('button:not(#unlockButton), input:not(#accessKey), select, textarea').forEach(el=>{el.disabled=!ok});
-  if(!ok)document.getElementById('gwPublishButton').disabled=true;
+  document.getElementById('gwPublishButton').disabled=true;
   if(msg)showNotice(msg);
 }
 async function getJson(url,opts={}){
