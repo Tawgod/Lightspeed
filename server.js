@@ -11,6 +11,11 @@ import { createOrderSplitExecuteRouter } from './routes/orderSplitExecute.js';
 import { createDepositConversionRouter } from './routes/depositConversion.js';
 import { createWorkOrderCombineRouter } from './routes/workOrderCombine.js';
 import { createSpecialOrdersRouter, initializeSpecialOrdersDb } from './special-orders.js';
+import pg from 'pg';
+import { createTimeclockScannerGateway } from './services/scannerTimeclockGateway.js';
+import { createTimeclockScannerIdentity } from './services/scannerTimeclockIdentity.js';
+import { createSpecialOrdersMatchLookup } from './services/scannerSpecialOrdersLookup.js';
+import { createScannerLoginLimiter } from './services/scannerLoginLimiter.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -807,6 +812,41 @@ async function startServer() {
     console.error('[special-orders] database initialization failed:', error);
   }
 
+  // The scanner gateway is enabled only on the explicitly configured
+  // Special Orders service, NEVER by default on lightspeed-api or timeclock.
+  if(process.env.SCANNER_ENABLED==='true'){
+    if(!process.env.SPECIAL_ORDERS_ADMIN_KEY || !process.env.SCANNER_TIMECLOCK_ORIGIN ||
+      !process.env.SCANNER_SERVICE_SECRET || !process.env.SCANNER_SESSION_SECRET ||
+      !process.env.SCANNER_LOGIN_LIMIT_SECRET || !process.env.DATABASE_URL){
+      throw new Error('Scanner enabled but required server-only configuration is missing.');
+    }
+    const scannerPool=new pg.Pool({
+      connectionString:process.env.DATABASE_URL,
+      ssl:process.env.PGSSLMODE==='disable'?false:{rejectUnauthorized:false}
+    });
+    const loginLimiter=await createScannerLoginLimiter({
+      pool:scannerPool,secret:process.env.SCANNER_LOGIN_LIMIT_SECRET
+    });
+    const identity=createTimeclockScannerIdentity({
+      baseUrl:process.env.SCANNER_TIMECLOCK_ORIGIN,
+      serviceSecret:process.env.SCANNER_SERVICE_SECRET
+    });
+    const lookup=createSpecialOrdersMatchLookup({
+      baseUrl:'http://127.0.0.1:'+PORT,
+      adminKey:process.env.SPECIAL_ORDERS_ADMIN_KEY
+    });
+    const scannerGateway=createTimeclockScannerGateway({
+      identity,lookup,sessionSecret:process.env.SCANNER_SESSION_SECRET,loginLimiter
+    });
+    app.use('/api/scanner',(req,res,next)=>{
+      const origin=String(req.get('origin')||'');
+      if(!/^chrome-extension:\/\/[a-p]{32}$/.test(origin)){
+        return res.status(403).json({error:'Scanner access requires the Hobby Corner Chrome extension.'});
+      }
+      next();
+    },scannerGateway);
+    console.log('[scanner] authenticated read-only gateway enabled');
+  }
   app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
 }
 
