@@ -2,7 +2,7 @@ name: Scanner live read-only smoke test
 on:
   push:
     branches: [feature/scanner-secure-match-gateway]
-    paths: [.github/workflows/scanner-live-smoke.yml]
+    paths: [.github/workflows/scanner-live-smoke.yml, scripts/scanner-live-smoke.mjs]
 jobs:
   smoke:
     runs-on: ubuntu-latest
