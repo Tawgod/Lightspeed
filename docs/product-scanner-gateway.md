@@ -35,3 +35,11 @@ It validates and bounds lookup inputs; runs both lookups; rejects partial result
 `node --test tests/scannerMatchGateway.test.js` tests input validation, data minimization, duplicate merging, failure behavior, and gateway construction. Tests are committed but **not yet executed**.
 
 No change to `server.js`, Railway configuration, PostgreSQL schemas, or Lightspeed product records was made in this branch.
+
+## 2026-10-12 follow-up — reuse adapter added
+
+- Added `services/scannerSpecialOrdersLookup.js`, a backend-only, loopback-restricted client for the existing Special Orders local and remote match endpoints.
+- Added `tests/scannerSpecialOrdersLookup.test.js` covering routing, secret isolation, malformed replies, and failures.
+- This does **not** expose the administrative key to the extension. The gateway still requires an independently verified employee identity; no identity mechanism has yet been selected.
+- The new adapter is not mounted or invoked by `server.js`. Production and the downloadable extension remain unchanged by these commits.
+- Test cases are committed but not executed. Next: identify an approved staff authorization mechanism, then wire the gateway to `createSpecialOrdersMatchLookup` and run automated/browser tests before deployment.
