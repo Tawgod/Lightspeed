@@ -1,4 +1,68 @@
-import {checkProductMatches} from './special-orders-adapter.js';
+import {checkProductMatches,toSpecialOrderMatchRequest} from './special-orders-adapter.js';
+
+
+// Keep PIN and signed session strictly in this review window's memory.
+// Never write credentials to extension storage or send them to suppliers.
+const SCANNER_API='https://lightspeed-api-production-c087.up.railway.app/api/scanner';
+const signInForm=document.getElementById('employee-sign-in');
+const pinField=document.getElementById('employee-pin');
+const employeeStatus=document.getElementById('employee-status');
+const signInButton=document.getElementById('sign-in');
+const signOutButton=document.getElementById('sign-out');
+let scannerSession=null;
+let draftAvailable=false;
+
+function clearScannerSession(){
+  scannerSession=null;
+  pinField.value='';
+  signOutButton.hidden=true;
+  signInForm.hidden=false;
+  signInButton.disabled=false;
+  signInButton.hidden=false;
+  pinField.disabled=false;
+  checkButton.disabled=true;
+  employeeStatus.textContent='Not signed in. Use your Timeclock PIN.';
+}
+signOutButton.addEventListener('click',clearScannerSession);
+signInForm.addEventListener('submit',async event=>{
+  event.preventDefault();
+  const pin=pinField.value;
+  if(!/^\\d{4}$/.test(pin)){
+    employeeStatus.textContent='Enter your four-digit Timeclock PIN.';
+    pinField.value='';
+    return;
+  }
+  signInButton.disabled=true;
+  employeeStatus.textContent='Verifying employee…';
+  try {
+    const response=await fetch(SCANNER_API+'/session',{
+      method:'POST',cache:'no-store',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({pin})
+    });
+    if(!response.ok)throw new Error(response.status===429
+      ? 'Too many sign-in attempts. Try again later.'
+      : response.status===404||response.status===503
+        ? 'Scanner sign-in is not active on Railway yet.'
+        : 'PIN not recognized or scanner access denied.');
+    const data=await response.json();
+    if(!data?.token || !Number.isFinite(data.expiresIn) || data.expiresIn<=0 || data.employee?.canLookup!==true){
+      throw new Error('Scanner sign-in returned an invalid session.');
+    }
+    scannerSession={token:data.token,expiresAt:Date.now()+data.expiresIn*1000};
+    pinField.disabled=true;
+    signInButton.hidden=true;
+    signOutButton.hidden=false;
+    employeeStatus.textContent='Signed in as '+(data.employee.name||'employee')+'. Read-only product lookup enabled.';
+    checkButton.disabled=!draftAvailable;
+  }catch(error){
+    scannerSession=null;
+    employeeStatus.textContent=error.message;
+  }finally{
+    pinField.value='';
+    signInButton.disabled=false;
+  }
+});
 
 const keys=['name','sku','upc','manufacturerPartNumber','brand','imageUrl','advertisedPrice','currency'];
 const labels={name:'Product name',sku:'SKU',upc:'UPC / GTIN',manufacturerPartNumber:'Manufacturer part number',brand:'Brand',imageUrl:'Image URL',advertisedPrice:'Supplier advertised price (reference only)',currency:'Currency'};
@@ -37,6 +101,7 @@ function showMatches(matches){
 chrome.storage.local.get('scannerDraft',({scannerDraft:d})=>{
   if(!d){status.textContent='No product has been captured. Use Scan Current Page in the extension.';checkButton.disabled=true;return;}
   status.textContent=d.requiresSelection?'Multiple products detected — automatic selection is disabled. Verify manually.':'Review extracted information; no changes have been sent to Lightspeed.';
+  draftAvailable=true;
   const p=d.product||{};
   if(/^https?:\/\//.test(d.sourceUrl||'')){document.getElementById('source').href=d.sourceUrl;}
   document.getElementById('source').textContent=d.sourceUrl||'Unknown source';
@@ -55,10 +120,29 @@ document.getElementById('copy').addEventListener('click',async()=>{
 checkButton.addEventListener('click',async()=>{
   checkButton.disabled=true;matchStatus.textContent='Checking…';matchesElement.replaceChildren();
   try{
-    // The privileged gateway is not deployed. Never call admin-key-protected
-    // Special Orders endpoints from an extension or store a secret in Chrome.
-    // This fails closed until a restricted, employee-authenticated gateway exists.
-    const lookup=async()=>{throw new Error('Secure Railway scanner gateway has not been deployed. Duplicate checking is unavailable.');};
+    if(!scannerSession || scannerSession.expiresAt<=Date.now()) {
+      clearScannerSession();
+      throw new Error('Your scanner session has expired. Please sign in again.');
+    }
+    // Both existing Special Orders searches are executed behind one authenticated
+    // server endpoint. The browser never receives the Special Orders admin key.
+    const body=toSpecialOrderMatchRequest(currentProduct());
+    const response=await fetch(SCANNER_API+'/matches',{
+      method:'POST',cache:'no-store',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+scannerSession.token},
+      body:JSON.stringify(body)
+    });
+    if(!response.ok) {
+      if(response.status===401||response.status===403)clearScannerSession();
+      throw new Error(response.status===404||response.status===503
+        ? 'Secure scanner service is not available yet.'
+        : 'Product verification failed ('+response.status+').');
+    }
+    const data=await response.json();
+    if(data?.verified!==true || !Array.isArray(data.local?.matches) || !Array.isArray(data.remote?.matches)){
+      throw new Error('Scanner service did not verify both matching sources.');
+    }
+    const lookup=async kind=>kind==='local'?data.local:data.remote;
     const result=await checkProductMatches(currentProduct(),lookup);
     if(!result.verified)throw new Error('Incomplete verification');
     showMatches(result.matches);
