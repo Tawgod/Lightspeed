@@ -1431,6 +1431,103 @@ async function scrapeGwFormPreview(){
   }
 }
 
+
+async function importLatestGwDraft(){
+  const status=document.getElementById('gwCampaignStatus');
+  status.textContent='Importing latest GW email and scraped products as a draft…';
+  try{
+    const d=await getJson(api+'/preorders/gw/sync-draft',{method:'POST'});
+    await loadGwCampaigns();
+    document.getElementById('gwCampaignSelect').value=d.campaign.id;
+    status.textContent=(d.created?'Created':'Updated')+
+      ' GW draft · '+d.products.total+' product(s) · '+
+      Number(d.scrape_counts?.ready||0)+' ready · '+
+      Number(d.scrape_counts?.review||0)+' review · '+
+      Number(d.scrape_counts?.filtered||0)+' filtered';
+    await loadGwCampaign();
+  }catch(e){
+    status.textContent='GW draft import failed: '+e.message;
+  }
+}
+
+async function updateGwProductReview(id,patch){
+  try{
+    await getJson(api+'/preorders/gw/products/'+id,{
+      method:'PATCH',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({...patch,gw_reviewed_by:'dashboard'})
+    });
+    showNotice('GW product review saved.',1200);
+  }catch(e){
+    showNotice('Could not save GW product review: '+e.message);
+    throw e;
+  }
+}
+
+function renderGwCampaignProducts(products){
+  const box=document.getElementById('gwScrapePreview');
+  box.replaceChildren();
+  if(!products.length){
+    const p=document.createElement('p');p.textContent='No products in this GW campaign yet.';box.appendChild(p);return;
+  }
+  const table=document.createElement('table');
+  const head=document.createElement('tr');
+  for(const label of ['Item','Disposition','Pack','Single item name','Single MSRP','Review note']){
+    const th=document.createElement('th');th.textContent=label;head.appendChild(th);
+  }
+  table.appendChild(head);
+
+  for(const item of products){
+    const tr=document.createElement('tr');
+
+    const name=document.createElement('td');
+    name.textContent=item.item_description||'—';
+
+    const dispTd=document.createElement('td');
+    const sel=document.createElement('select');
+    for(const value of ['REVIEW','POST_AS_IS','SPLIT_TO_SINGLES','DO_NOT_POST']){
+      const o=document.createElement('option');
+      o.value=value;o.textContent=value.replaceAll('_',' ');
+      if(value===item.gw_post_disposition)o.selected=true;
+      sel.appendChild(o);
+    }
+    sel.addEventListener('change',()=>updateGwProductReview(item.id,{gw_post_disposition:sel.value}));
+    dispTd.appendChild(sel);
+
+    const packTd=document.createElement('td');
+    const pack=document.createElement('input');
+    pack.type='number';pack.min='1';pack.style.width='5rem';
+    pack.value=item.gw_case_pack_size||'';
+    pack.addEventListener('change',()=>updateGwProductReview(item.id,{gw_case_pack_size:pack.value?Number(pack.value):null}));
+    packTd.appendChild(pack);
+
+    const singleNameTd=document.createElement('td');
+    const singleName=document.createElement('input');
+    singleName.value=item.gw_single_item_name||'';
+    singleName.placeholder='Optional';
+    singleName.addEventListener('change',()=>updateGwProductReview(item.id,{gw_single_item_name:singleName.value}));
+    singleNameTd.appendChild(singleName);
+
+    const singleMsrpTd=document.createElement('td');
+    const singleMsrp=document.createElement('input');
+    singleMsrp.type='number';singleMsrp.min='0';singleMsrp.step='0.01';singleMsrp.style.width='7rem';
+    singleMsrp.value=item.gw_single_msrp??'';
+    singleMsrp.addEventListener('change',()=>updateGwProductReview(item.id,{gw_single_msrp:singleMsrp.value===''?null:Number(singleMsrp.value)}));
+    singleMsrpTd.appendChild(singleMsrp);
+
+    const noteTd=document.createElement('td');
+    const note=document.createElement('input');
+    note.value=item.gw_review_note||'';
+    note.placeholder='Why flagged / instructions';
+    note.addEventListener('change',()=>updateGwProductReview(item.id,{gw_review_note:note.value}));
+    noteTd.appendChild(note);
+
+    tr.append(name,dispTd,packTd,singleNameTd,singleMsrpTd,noteTd);
+    table.appendChild(tr);
+  }
+  box.appendChild(table);
+}
+
 async function createGwCampaign(){
   const name=document.getElementById('gwCampaignName').value.trim();
   const sourceFormUrl=document.getElementById('gwFormUrl').value.trim();
@@ -1467,6 +1564,7 @@ async function loadGwCampaign(){
       ' · Requests: '+d.products.reduce((n,x)=>n+Number(x.requested_total||0),0)+
       ' · '+(c.external_submission_status||'NOT_SUBMITTED')+
       (c.auto_submit_enabled?' · Auto-submit requested (currently safety-disabled)':'');
+    renderGwCampaignProducts(d.products);
   }catch(e){status.textContent='GW campaign load failed: '+e.message}
 }
 
