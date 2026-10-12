@@ -689,7 +689,7 @@ export function createSpecialOrdersRouter({
     const where=[];
     if(req.query.type){
       params.push(String(req.query.type).toUpperCase());
-      where.push(`pc.campaign_type=${params.length}`);
+      where.push(`pc.campaign_type=$${params.length}`);
     }
     const { rows } = await pool.query(`
       SELECT pc.*,
