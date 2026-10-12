@@ -129,7 +129,7 @@ export function registerSpecialOrderProductRoutes(router, deps) {
         WHERE ${where}
         ORDER BY CASE WHEN p.lightspeed_reconcile_status LIKE 'MISSING%' THEN 0 ELSE 1 END,
                  p.last_reconciled_at NULLS FIRST,p.id
-        LIMIT \${args.length}
+        LIMIT ${args.length}
       `,args);
 
       for(const local of rows.rows){
