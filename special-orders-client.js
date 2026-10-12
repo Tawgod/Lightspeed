@@ -1464,6 +1464,80 @@ async function updateGwProductReview(id,patch){
   }
 }
 
+
+async function previewGwDiscordPosts(){
+  const id=document.getElementById('gwCampaignSelect').value;
+  const status=document.getElementById('gwCampaignStatus');
+  const box=document.getElementById('gwScrapePreview');
+  if(!id)return showNotice('Select a GW campaign first.');
+  status.textContent='Building Discord preview…';
+  box.replaceChildren();
+  try{
+    const d=await getJson(api+'/preorders/gw/campaigns/'+id+'/discord-preview');
+    status.textContent=[
+      'Discord preview for test channel '+d.test_channel_id,
+      d.counts.posts+' post(s)',
+      d.counts.blocked+' blocked',
+      d.counts.suppressed+' suppressed',
+      d.ready_to_publish?'Ready for test publish':'Not ready to publish'
+    ].join(' · ');
+
+    if(d.blocked.length){
+      const warn=document.createElement('div');
+      warn.className='notice';
+      warn.textContent='Blocked: '+d.blocked.map(x=>'#'+x.product_id+' '+x.reason).join(' | ');
+      box.appendChild(warn);
+    }
+
+    for(const post of d.posts){
+      const card=document.createElement('div');
+      card.style.border='1px solid var(--border, #777)';
+      card.style.borderRadius='8px';
+      card.style.padding='12px';
+      card.style.margin='10px 0';
+
+      const title=document.createElement('strong');
+      title.textContent=post.title;
+      card.appendChild(title);
+
+      const desc=document.createElement('pre');
+      desc.style.whiteSpace='pre-wrap';
+      desc.style.margin='8px 0';
+      desc.textContent=post.description||'';
+      card.appendChild(desc);
+
+      if(post.image_url){
+        const img=document.createElement('img');
+        img.src=post.image_url;
+        img.alt=post.title;
+        img.loading='lazy';
+        img.style.maxWidth='320px';
+        img.style.maxHeight='240px';
+        img.style.objectFit='contain';
+        img.style.display='block';
+        img.style.margin='8px 0';
+        img.onerror=()=>{img.style.display='none'};
+        card.appendChild(img);
+      }
+
+      const footer=document.createElement('div');
+      footer.className='form-note';
+      footer.textContent=post.footer+(post.image_url?' · image attached':' · no image');
+      card.appendChild(footer);
+      box.appendChild(card);
+    }
+
+    if(d.suppressed.length){
+      const p=document.createElement('p');
+      p.className='form-note';
+      p.textContent=d.suppressed.length+' product(s) are intentionally suppressed and will not be posted.';
+      box.appendChild(p);
+    }
+  }catch(e){
+    status.textContent='Discord preview failed: '+e.message;
+  }
+}
+
 function renderGwCampaignProducts(products){
   const box=document.getElementById('gwScrapePreview');
   box.replaceChildren();
@@ -1472,13 +1546,29 @@ function renderGwCampaignProducts(products){
   }
   const table=document.createElement('table');
   const head=document.createElement('tr');
-  for(const label of ['Item','Disposition','Pack','Single item name','Single MSRP','Review note']){
+  for(const label of ['Image','Item','Disposition','Pack','Single item name','Single MSRP','Review note']){
     const th=document.createElement('th');th.textContent=label;head.appendChild(th);
   }
   table.appendChild(head);
 
   for(const item of products){
     const tr=document.createElement('tr');
+
+    const imageTd=document.createElement('td');
+    const imageUrl=item.image_url||item.source_image_url||'';
+    if(imageUrl){
+      const img=document.createElement('img');
+      img.src=imageUrl;
+      img.alt=item.item_description||'GW product';
+      img.loading='lazy';
+      img.style.width='72px';
+      img.style.height='72px';
+      img.style.objectFit='contain';
+      img.onerror=()=>{img.style.display='none'};
+      imageTd.appendChild(img);
+    }else{
+      imageTd.textContent='—';
+    }
 
     const name=document.createElement('td');
     name.textContent=item.item_description||'—';
@@ -1522,7 +1612,7 @@ function renderGwCampaignProducts(products){
     note.addEventListener('change',()=>updateGwProductReview(item.id,{gw_review_note:note.value}));
     noteTd.appendChild(note);
 
-    tr.append(name,dispTd,packTd,singleNameTd,singleMsrpTd,noteTd);
+    tr.append(imageTd,name,dispTd,packTd,singleNameTd,singleMsrpTd,noteTd);
     table.appendChild(tr);
   }
   box.appendChild(table);
