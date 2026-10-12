@@ -445,19 +445,12 @@ ALTER TABLE preorder_products
   ADD COLUMN IF NOT EXISTS gw_reviewed_at TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS gw_reviewed_by TEXT;
 
-DO $
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1
-    FROM pg_constraint
-    WHERE conname = 'preorder_products_gw_post_disposition_chk'
-      AND conrelid = 'preorder_products'::regclass
-  ) THEN
-    ALTER TABLE preorder_products
-      ADD CONSTRAINT preorder_products_gw_post_disposition_chk
-      CHECK (gw_post_disposition IN ('REVIEW','POST_AS_IS','SPLIT_TO_SINGLES','DO_NOT_POST'));
-  END IF;
-END $;
+ALTER TABLE preorder_products
+  DROP CONSTRAINT IF EXISTS preorder_products_gw_post_disposition_chk;
+
+ALTER TABLE preorder_products
+  ADD CONSTRAINT preorder_products_gw_post_disposition_chk
+  CHECK (gw_post_disposition IN ('REVIEW','POST_AS_IS','SPLIT_TO_SINGLES','DO_NOT_POST'));
 
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_preorder_campaigns_gw_source_email
