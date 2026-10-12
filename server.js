@@ -822,7 +822,7 @@ async function startServer() {
     }
     const scannerPool=new pg.Pool({
       connectionString:process.env.DATABASE_URL,
-      ssl:process.env.PGSSLMODE==='disable'?false:{rejectUnauthorized:false}
+      ssl:process.env.PGSSL==='true'?{rejectUnauthorized:false}:undefined
     });
     const loginLimiter=await createScannerLoginLimiter({
       pool:scannerPool,secret:process.env.SCANNER_LOGIN_LIMIT_SECRET
