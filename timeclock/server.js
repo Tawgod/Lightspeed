@@ -1651,7 +1651,7 @@ app.post('/api/timeclock/integrations/scanner/verify-pin', async (req,res) => {
   res.set('Cache-Control','no-store');
   if(!scannerServiceAuthorized(req))return res.status(403).json({error:'Forbidden.'});
   const pin=String(req.body?.pin||'');
-  if(!/^\\d{4}$/.test(pin))return res.status(401).json({error:'Invalid employee credentials.'});
+  if(!/^\d{4}$/.test(pin))return res.status(401).json({error:'Invalid employee credentials.'});
   try{
     const rows=await pool.query(
       'SELECT id,name,scanner_can_lookup,scanner_can_approve FROM employees WHERE pin_hash=$1 AND active=TRUE LIMIT 1',
