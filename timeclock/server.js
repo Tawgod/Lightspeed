@@ -85,7 +85,8 @@ async function ensureSchema() {
     ALTER TABLE employees ADD COLUMN IF NOT EXISTS discord_username TEXT;
     ALTER TABLE employees ADD COLUMN IF NOT EXISTS discord_display_name TEXT;
     ALTER TABLE employees ADD COLUMN IF NOT EXISTS pto_eligible BOOLEAN NOT NULL DEFAULT FALSE;
-    ALTER TABLE employees ADD COLUMN IF NOT EXISTS scanner_can_lookup BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE employees ADD COLUMN IF NOT EXISTS scanner_can_lookup BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE employees ALTER COLUMN scanner_can_lookup SET DEFAULT TRUE;
     ALTER TABLE employees ADD COLUMN IF NOT EXISTS scanner_can_approve BOOLEAN NOT NULL DEFAULT FALSE;
 
     CREATE TABLE IF NOT EXISTS clock_events (
