@@ -453,3 +453,8 @@ ALTER TABLE preorder_products
 CREATE UNIQUE INDEX IF NOT EXISTS idx_preorder_campaigns_gw_source_email
 ON preorder_campaigns (source_email_message_id)
 WHERE campaign_type='GW_WEEKLY' AND source_email_message_id IS NOT NULL;
+
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_preorder_products_campaign_external_entry
+ON preorder_products (preorder_campaign_id, external_entry_id)
+WHERE external_entry_id IS NOT NULL;
