@@ -448,3 +448,8 @@ ALTER TABLE preorder_products
 ALTER TABLE preorder_products
   ADD CONSTRAINT preorder_products_gw_post_disposition_chk
   CHECK (gw_post_disposition IN ('REVIEW','POST_AS_IS','SPLIT_TO_SINGLES','DO_NOT_POST'));
+
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_preorder_campaigns_gw_source_email
+ON preorder_campaigns (source_email_message_id)
+WHERE campaign_type='GW_WEEKLY' AND source_email_message_id IS NOT NULL;
