@@ -1,0 +1,15 @@
+name: Scanner live read-only smoke test
+on:
+  push:
+    branches: [feature/scanner-secure-match-gateway]
+    paths: [.github/workflows/scanner-live-smoke.yml]
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify public scanner security gates (no employee PINs or secrets)
+        run: node scripts/scanner-live-smoke.mjs
