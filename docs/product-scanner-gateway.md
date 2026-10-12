@@ -58,3 +58,16 @@ Implemented **on the feature branch only**:
 **Before deployment:** Configure `SCANNER_SERVICE_SECRET` on both relevant server services and `SCANNER_SESSION_SECRET` on the Lightspeed API backend (never in Chrome); choose a server-side Timeclock origin; connect gateway dependencies and mount it; implement centralized login throttling/lockout appropriate for 4-digit PINs across Railway instances; apply CSRF/origin restrictions where applicable; review and run tests; approve a non-production test rollout before production.
 
 The live Chrome extension still has no credential form or enabled duplicate lookup. No Railway variables, databases, or deployments have been changed.
+
+## Employee lookup default and scanner sign-in — 2026-10-12
+
+Owner decision: all **active** Timeclock employees with an assigned PIN may look up products by default; modifying products remains opt-in per employee.
+
+- New `scanner_can_lookup` columns default to `TRUE`; existing columns receive a default of `TRUE` for newly added employee records. The `scanner_can_approve` default remains `FALSE`.
+- Administrators can override either permission using the existing Timeclock admin-only scanner permission endpoint. Previously explicitly revoked lookup permissions are **not** overwritten by this schema change.
+- Chrome scanner review includes a Timeclock 4-digit PIN sign-in form, sign-out action, and authenticated read-only matching request handling at `/api/scanner/session` and `/api/scanner/matches`.
+- The PIN is sent to the configured API only, cleared after each attempt and never persisted in Chrome storage. The 15-minute scanner bearer token remains **in the review window's memory**.
+- Product creation and product update buttons remain disabled.
+- Tests in `tests/scannerDefaultPermissions.test.js` were committed. The JS source passed syntax parsing, but integration and browser tests have not been executed.
+
+**Not live:** The scanner authentication gateway is deliberately not mounted in `server.js`; its Timeclock backend services and required server-only secrets have not been deployed. Until that is safely wired and tested, the sign-in option will report the scanner sign-in service as unavailable. An installed extension is not automatically updated by development branch commits.
