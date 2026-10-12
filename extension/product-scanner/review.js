@@ -27,7 +27,7 @@ signOutButton.addEventListener('click',clearScannerSession);
 signInForm.addEventListener('submit',async event=>{
   event.preventDefault();
   const pin=pinField.value;
-  if(!/^\\d{4}$/.test(pin)){
+  if(!/^\d{4}$/.test(pin)){
     employeeStatus.textContent='Enter your four-digit Timeclock PIN.';
     pinField.value='';
     return;
