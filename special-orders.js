@@ -1136,14 +1136,15 @@ export function createSpecialOrdersRouter({
       for(let i=0;i<(scrape.items||[]).length;i++){
         const item=scrape.items[i];
         const key=gwExternalEntryKey(item,i);
-        const result=await client.query("\n          INSERT INTO preorder_products\n            (preorder_campaign_id,item_description,release_date,external_entry_id,\n             gw_post_disposition,gw_case_pack_size,gw_review_note)\n          VALUES ($1,$2,$3,$4,$5,$6,$7)\n          ON CONFLICT (preorder_campaign_id,external_entry_id)\n          WHERE external_entry_id IS NOT NULL\n          DO UPDATE SET\n            item_description=EXCLUDED.item_description,\n            release_date=EXCLUDED.release_date,\n            gw_post_disposition=CASE\n              WHEN preorder_products.gw_reviewed_at IS NULL THEN EXCLUDED.gw_post_disposition\n              ELSE preorder_products.gw_post_disposition\n            END,\n            gw_case_pack_size=CASE\n              WHEN preorder_products.gw_reviewed_at IS NULL THEN EXCLUDED.gw_case_pack_size\n              ELSE preorder_products.gw_case_pack_size\n            END,\n            gw_review_note=CASE\n              WHEN preorder_products.gw_reviewed_at IS NULL THEN EXCLUDED.gw_review_note\n              ELSE preorder_products.gw_review_note\n            END\n          RETURNING (xmax = 0) AS inserted\n        ",[
+        const result=await client.query("\n          INSERT INTO preorder_products\n            (preorder_campaign_id,item_description,release_date,external_entry_id,\n             gw_post_disposition,gw_case_pack_size,gw_review_note,source_image_url)\n          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)\n          ON CONFLICT (preorder_campaign_id,external_entry_id)\n          WHERE external_entry_id IS NOT NULL\n          DO UPDATE SET\n            item_description=EXCLUDED.item_description,\n            release_date=EXCLUDED.release_date,\n            source_image_url=COALESCE(preorder_products.image_url,EXCLUDED.source_image_url),\n            gw_post_disposition=CASE\n              WHEN preorder_products.gw_reviewed_at IS NULL THEN EXCLUDED.gw_post_disposition\n              ELSE preorder_products.gw_post_disposition\n            END,\n            gw_case_pack_size=CASE\n              WHEN preorder_products.gw_reviewed_at IS NULL THEN EXCLUDED.gw_case_pack_size\n              ELSE preorder_products.gw_case_pack_size\n            END,\n            gw_review_note=CASE\n              WHEN preorder_products.gw_reviewed_at IS NULL THEN EXCLUDED.gw_review_note\n              ELSE preorder_products.gw_review_note\n            END\n          RETURNING (xmax = 0) AS inserted\n        ",[
           campaign.id,
           item.name,
           releaseDate,
           key,
           item.disposition||'REVIEW',
           item.case_pack_size||null,
-          (item.reasons||[]).join('; ')||null
+          (item.reasons||[]).join('; ')||null,
+          item.source_image_url||null
         ]);
         if(result.rows[0]?.inserted)inserted++;else updated++;
       }
