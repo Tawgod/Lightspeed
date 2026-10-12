@@ -1,6 +1,168 @@
 const HCT_BACKEND = 'https://lightspeed-api-production-c087.up.railway.app';
 const HCT_TIMECLOCK_BACKEND = 'https://timeclock-production-2bfa.up.railway.app';
 
+const hctZipLookupCache = new Map();
+let hctZipLookupTimer = null;
+
+async function hctLookupUsZip(zip) {
+  const clean = String(zip || '').replace(/\D/g, '').slice(0, 5);
+  if (clean.length !== 5) return null;
+  if (hctZipLookupCache.has(clean)) return hctZipLookupCache.get(clean);
+
+  const response = await fetch(HCT_BACKEND + '/api/address/zip?zip=' + encodeURIComponent(clean));
+  if (!response.ok) return null;
+  const data = await response.json();
+  const result = data?.city && data?.state ? { city:data.city, state:data.state } : null;
+
+  hctZipLookupCache.set(clean, result);
+  return result;
+}
+
+function hctFieldDescriptor(el) {
+  return [
+    el.id,
+    el.name,
+    el.getAttribute('aria-label'),
+    el.getAttribute('placeholder'),
+    el.getAttribute('autocomplete')
+  ].filter(Boolean).join(' ').toLowerCase();
+}
+
+function hctFindAddressField(root, hints) {
+  const fields = [...root.querySelectorAll('input')];
+  return fields.find(el => {
+    const d = hctFieldDescriptor(el);
+    return hints.some(hint => d.includes(hint));
+  }) || null;
+}
+
+function hctSetNativeInputValue(el, value) {
+  if (!el || !value) return;
+  const proto = Object.getPrototypeOf(el);
+  const descriptor = Object.getOwnPropertyDescriptor(proto, 'value');
+  if (descriptor?.set) descriptor.set.call(el, value);
+  else el.value = value;
+  el.dispatchEvent(new Event('input', { bubbles:true }));
+  el.dispatchEvent(new Event('change', { bubbles:true }));
+}
+
+function ensureCustomerZipAutofill() {
+  const inputs = [...document.querySelectorAll('input')];
+
+  for (const zipInput of inputs) {
+    if (zipInput.dataset.hctZipAutofill === '1') continue;
+    const descriptor = hctFieldDescriptor(zipInput);
+    const looksLikeZip =
+      descriptor.includes('postal') ||
+      descriptor.includes('postcode') ||
+      descriptor.includes('zip') ||
+      descriptor.includes('postal-code');
+    if (!looksLikeZip) continue;
+
+    zipInput.dataset.hctZipAutofill = '1';
+
+    const resolveRoot = () =>
+      zipInput.closest('form,[role="dialog"],[data-testid*="customer" i],[class*="customer" i]') ||
+      document;
+
+    zipInput.addEventListener('input', () => {
+      const clean = String(zipInput.value || '').replace(/\D/g, '').slice(0, 5);
+      if (hctZipLookupTimer) clearTimeout(hctZipLookupTimer);
+      if (clean.length !== 5) return;
+
+      hctZipLookupTimer = setTimeout(async () => {
+        try {
+          const place = await hctLookupUsZip(clean);
+          if (!place) return;
+
+          const root = resolveRoot();
+          const city = hctFindAddressField(root, ['address-level2','city','town']);
+          const state = hctFindAddressField(root, ['address-level1','state','province','region']);
+
+          hctSetNativeInputValue(city, place.city);
+          hctSetNativeInputValue(state, place.state);
+        } catch (error) {
+          console.warn('[Hobby Corner] ZIP lookup failed', error);
+        }
+      }, 200);
+    });
+
+    const parent = zipInput.parentElement;
+    if (parent && !parent.querySelector('[data-hct-usps-verify="1"]')) {
+      const verify = document.createElement('button');
+      verify.type = 'button';
+      verify.dataset.hctUspsVerify = '1';
+      verify.textContent = 'Verify USPS Address';
+      Object.assign(verify.style, {
+        marginLeft:'8px',
+        padding:'7px 10px',
+        border:'1px solid #0f766e',
+        borderRadius:'6px',
+        background:'#0f766e',
+        color:'#fff',
+        fontWeight:'700',
+        cursor:'pointer'
+      });
+
+      verify.addEventListener('click', async () => {
+        const root = resolveRoot();
+        const street = hctFindAddressField(root, ['address-line1','address 1','address1','street address','street']);
+        const secondary = hctFindAddressField(root, ['address-line2','address 2','address2','suite','unit','apt']);
+        const city = hctFindAddressField(root, ['address-level2','city','town']);
+        const state = hctFindAddressField(root, ['address-level1','state','province','region']);
+
+        if (!street?.value?.trim()) {
+          alert('Enter the street address first.');
+          return;
+        }
+
+        const oldText = verify.textContent;
+        verify.disabled = true;
+        verify.textContent = 'Checking USPS…';
+
+        try {
+          const response = await fetch(HCT_BACKEND + '/api/address/verify-usps', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({
+              street_address:street.value.trim(),
+              secondary_address:secondary?.value?.trim() || '',
+              city:city?.value?.trim() || '',
+              state:state?.value?.trim() || '',
+              zip:zipInput.value.trim()
+            })
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(data.error || 'USPS verification failed.');
+
+          const zipText = data.zip_plus4 ? data.zip + '-' + data.zip_plus4 : data.zip;
+          const standardized = [
+            data.street_address,
+            data.secondary_address,
+            [data.city, data.state, zipText].filter(Boolean).join(' ')
+          ].filter(Boolean).join(', ');
+
+          if (confirm('USPS standardized address:\n\n' + standardized + '\n\nUse this address?')) {
+            hctSetNativeInputValue(street, data.street_address);
+            hctSetNativeInputValue(secondary, data.secondary_address || '');
+            hctSetNativeInputValue(city, data.city);
+            hctSetNativeInputValue(state, data.state);
+            hctSetNativeInputValue(zipInput, zipText);
+          }
+        } catch (error) {
+          alert(error.message || 'Could not verify the address with USPS.');
+        } finally {
+          verify.disabled = false;
+          verify.textContent = oldText;
+        }
+      });
+
+      parent.appendChild(verify);
+    }
+  }
+}
+
+
 function extractPurchaseOrderId() {
   const match = location.pathname.match(/\/inventory\/purchase-order\/([^/?#]+)/i);
   return match ? match[1] : null;
@@ -60,10 +222,12 @@ function ensurePoLabelButton() {
 ensurePoLabelButton();
 ensureSplitLauncher();
 ensureTimeclockButton();
+ensureCustomerZipAutofill();
 new MutationObserver(() => {
   ensurePoLabelButton();
   ensureSplitLauncher();
   ensureTimeclockButton();
+  ensureCustomerZipAutofill();
 }).observe(document.documentElement, {childList:true, subtree:true});
 
 
