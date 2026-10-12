@@ -43,6 +43,17 @@ async function saveKey(){
     setAuthState(false,e.message==='Access key missing or incorrect.'?'Access key was not accepted.':'Special Orders service is not ready: '+e.message);
   }
 }
+function chicagoDatetimeLocal(iso){
+  if(!iso)return '';
+  const d=new Date(iso);
+  if(Number.isNaN(d.getTime()))return '';
+  const parts=new Intl.DateTimeFormat('en-CA',{
+    timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit',
+    hour:'2-digit',minute:'2-digit',hourCycle:'h23'
+  }).formatToParts(d);
+  const get=type=>parts.find(p=>p.type===type)?.value||'';
+  return get('year')+'-'+get('month')+'-'+get('day')+'T'+get('hour')+':'+get('minute');
+}
 function setSourceStatus(text){document.getElementById('gwSourceStatus').textContent=text||''}
 function setDiscordStatus(text){document.getElementById('gwDiscordStatus').textContent=text||''}
 function resetDiscordPreview(){
@@ -81,7 +92,8 @@ async function syncLatestGwEmail(){
   try{
     const d=await getJson(api+'/preorders/gw/sync-preview'),email=d.email||{},scrape=d.scrape||{};
     if(email.form_url)document.getElementById('gwFormUrl').value=email.form_url;
-    if(email.release_date)document.getElementById('gwReleaseDate').value=email.release_date.split('/').reverse().join('-');
+    if(email.release_date_iso)document.getElementById('gwReleaseDate').value=email.release_date_iso;
+    if(email.cutoff_at)document.getElementById('gwOrderDue').value=chicagoDatetimeLocal(email.cutoff_at);
     if(email.release_date)document.getElementById('gwCampaignName').value='GW Release '+email.release_date;
     setSourceStatus(['Latest GW email found',email.subject||'—',email.received_at?new Date(email.received_at).toLocaleString():'—',
       email.due_text?'Cutoff: '+email.due_text:'Cutoff not parsed','Scraped '+Number(scrape.counts?.items||0)+' item candidate(s)'].join(' · '));
@@ -137,6 +149,8 @@ async function importLatestGwDraft(){
   try{
     const d=await getJson(api+'/preorders/gw/sync-draft',{method:'POST'});await loadGwCampaigns();
     document.getElementById('gwCampaignSelect').value=String(d.campaign.id);
+    if(d.campaign.release_date)document.getElementById('gwReleaseDate').value=String(d.campaign.release_date).slice(0,10);
+    if(d.campaign.order_due_at)document.getElementById('gwOrderDue').value=chicagoDatetimeLocal(d.campaign.order_due_at);
     setSourceStatus((d.created?'Created':'Updated')+' GW draft · '+d.products.total+' product(s) · '+Number(d.scrape_counts?.ready||0)+
       ' ready · '+Number(d.scrape_counts?.review||0)+' review · '+Number(d.scrape_counts?.filtered||0)+' filtered');await loadGwCampaign();
   }catch(e){setSourceStatus('GW draft import failed: '+e.message)}

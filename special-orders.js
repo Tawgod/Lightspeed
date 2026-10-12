@@ -1193,7 +1193,9 @@ export function createSpecialOrdersRouter({
           subject:m.subject,
           received_at:m.receivedDateTime,
           web_link:m.webLink||null,
-          ...m.metadata
+          ...m.metadata,
+          release_date_iso:parseUsDateToIsoDate(m.metadata.release_date),
+          cutoff_at:parseGwCutoffToIso(m.metadata.due_text,m.metadata.release_date,m.receivedDateTime)
         },
         scrape
       });
