@@ -130,3 +130,25 @@ document.getElementById('scan-page').addEventListener('click', async () => {
     window.close();
   } catch(e){setStatus('Scanner unavailable: '+e.message);}
 });
+
+document.getElementById('po-use').addEventListener('click',async()=>{
+  try{
+    const [tab]=await chrome.tabs.query({active:true,currentWindow:true});
+    if(!tab?.id || !/^https:\/\/[^/]*retail\.lightspeed\.app\//i.test(tab.url||''))throw new Error('Open a Lightspeed purchase order first.');
+    const context=await chrome.tabs.sendMessage(tab.id,{type:'HCT_GET_CONTEXT'});
+    if(!context?.purchaseOrderId)throw new Error('This is not a recognized purchase order page.');
+    await chrome.storage.local.set({poCompanionContext:{poId:context.purchaseOrderId,supplierId:null,selectedAt:new Date().toISOString()}});
+    setStatus('Selected PO '+context.purchaseOrderId+'. Open the supplier site, then launch PO Companion.');
+  }catch(e){setStatus(e.message);}
+});
+document.getElementById('po-open').addEventListener('click',async()=>{
+  try{
+    const {poCompanionContext:context}=await chrome.storage.local.get('poCompanionContext');
+    if(!context?.poId)throw new Error('Select the PO from Lightspeed first.');
+    const [tab]=await chrome.tabs.query({active:true,currentWindow:true});
+    if(!tab?.id || !/^https:\/\//i.test(tab.url||''))throw new Error('Open the supplier website first.');
+    if(/retail\.lightspeed\.app/i.test(new URL(tab.url).hostname))throw new Error('Open the supplier website, not Lightspeed.');
+    await chrome.scripting.executeScript({target:{tabId:tab.id},files:['po-companion/panel.js']});
+    window.close();
+  }catch(e){setStatus('PO Companion: '+e.message);}
+});
