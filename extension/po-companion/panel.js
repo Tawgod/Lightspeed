@@ -23,7 +23,7 @@
     .name{margin:3px 0 3px 23px;font-weight:600;overflow-wrap:anywhere}
     .code{font-family:ui-monospace,monospace;overflow-wrap:anywhere;flex:1}
     .fields{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0 0 22px}
-    .fields label{font-size:11px;color:#344f61}.fields input{display:block;width:100%;padding:5px}
+    [hidden]{display:none!important}.fields label{font-size:11px;color:#344f61}.fields input{display:block;width:100%;padding:5px}
     .warning{color:#9b4e08}.error{color:#a51d27}.good{color:#17633d}
     footer{padding:8px;border-top:1px solid #d7e0e6;display:flex;justify-content:space-between}
     .collapsed{width:38px;min-width:38px;resize:none}.collapsed .body,.collapsed footer,.collapsed h2{display:none}
