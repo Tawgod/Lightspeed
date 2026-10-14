@@ -29,13 +29,15 @@ jobs:
           const html=fs.readFileSync('extension/product-scanner/review.html','utf8');
           const popup=fs.readFileSync('extension/popup.js','utf8');
           assert.match(review,/supplierSku/);
-          assert.match(review,/const keys=\['name','sku','supplierSku','upc','brand','imageUrl','advertisedPrice'\]/);
+          assert.match(review,/const keys=\['name','sku','supplierSku','upc','brand','cost','msrp','weight','imageUrl','advertisedPrice'\]/);
           assert.doesNotMatch(review,/manufacturerPartNumber|currency/i);
           assert.match(html,/id="create-item"/);
           assert.match(html,/id="create-preview"/);
           assert.match(review,/lastMatches.length/);
           assert.doesNotMatch(review,/fetch\([^)]*\/create/);
           assert.match(popup,/upcCandidates/);
-          assert.match(popup,/supplierSku:str\(p.sku\)/);
+          assert.match(popup,/acdSupplierSku\|\|str\(p.sku\)/);
           console.log('Scanner UI field and read-only create proposal assertions passed');
           JS
+      - name: Verify ACD screenshot-based extraction fixtures
+        run: node --test tests/scannerAcdCapture.test.cjs
