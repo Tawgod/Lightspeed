@@ -6,6 +6,9 @@ on:
       - 'extension/**'
       - 'services/scannerSupplierTemplates.js'
       - 'tests/scannerSupplierTemplates.test.js'
+      - 'timeclock/scannerLightspeedRoles.js'
+      - 'timeclock/server.js'
+      - 'tests/scannerLightspeedRoles.test.js'
       - '.github/workflows/scanner-ui-check.yml'
 jobs:
   ui:
@@ -21,6 +24,8 @@ jobs:
         run: npm install --ignore-scripts --no-audit --no-fund
       - name: Check extension JavaScript
         run: |
+          node --check timeclock/server.js
+          node --check timeclock/scannerLightspeedRoles.js
           node --check extension/popup.js
           node --check extension/product-scanner/review.js
           node --check extension/product-scanner/special-orders-adapter.js
@@ -47,3 +52,5 @@ jobs:
         run: node --test tests/scannerAcdCapture.test.cjs
       - name: Verify permission-gated supplier template registry
         run: node --test tests/scannerSupplierTemplates.test.js
+      - name: Verify linked Lightspeed user role eligibility
+        run: node --test tests/scannerLightspeedRoles.test.js
