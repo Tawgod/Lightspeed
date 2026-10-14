@@ -1,3 +1,4 @@
+import {linkedScannerApproval} from './scannerLightspeedRoles.js';
 import express from 'express';
 import cors from 'cors';
 import pg from 'pg';
@@ -573,6 +574,20 @@ async function fetchLightspeedUsers() {
   if (Array.isArray(data?.data)) return data.data;
   if (Array.isArray(data?.users)) return data.users;
   return [];
+}
+
+async function fetchLightspeedRoles() {
+  if (!LIGHTSPEED_DOMAIN || !LIGHTSPEED_TOKEN) throw new Error('Lightspeed role lookup unavailable.');
+  const response=await fetch(
+    `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/roles?page_size=1000`,{
+      method:'GET',redirect:'error',signal:AbortSignal.timeout(7000),
+      headers:{Authorization:`Bearer ${LIGHTSPEED_TOKEN}`,Accept:'application/json'}
+    }
+  );
+  if(!response.ok) throw new Error('Lightspeed role lookup failed.');
+  const result=await response.json();
+  const roles=Array.isArray(result)?result:Array.isArray(result?.data)?result.data:Array.isArray(result?.roles)?result.roles:[];
+  return roles.filter(x=>x&&typeof x==='object');
 }
 
 async function syncLightspeedUsers() {
@@ -1561,6 +1576,37 @@ function scannerServiceAuthorized(req) {
   return crypto.timingSafeEqual(Buffer.from(secret),Buffer.from(supplied));
 }
 
+// Resolve an employee's linked Lightspeed user on each authorization request.
+// Fail closed for automatic privilege if the API is unavailable or role is unknown.
+// Explicit, audited Timeclock grants remain independent.
+async function scannerEffectivePermissions(employee){
+  let approval={role:null,canApprove:false,verified:false,reason:'unavailable'};
+  if(employee.lightspeed_user_id){
+    try{
+      const users=await fetchLightspeedUsers();
+      const direct=linkedScannerApproval({lightspeedUserId:employee.lightspeed_user_id,users});
+      if(direct.verified)approval=direct;
+      else {
+        // Legacy Lightspeed user payloads can expose only role_id.
+        // Never infer role privileges from the numeric/string ID alone.
+        const roles=await fetchLightspeedRoles();
+        approval=linkedScannerApproval({lightspeedUserId:employee.lightspeed_user_id,users,roles});
+      }
+    }catch(error){
+      console.warn('[scanner] Lightspeed role lookup unavailable; automatic approval withheld:',error?.status||'error');
+    }
+  }
+  const canLookup=employee.scanner_can_lookup===true;
+  const canApprove=canLookup && (employee.scanner_can_approve===true || (approval.verified && approval.canApprove));
+  return {
+    id:employee.id,name:employee.name,canLookup,canApprove,
+    role:approval.verified?approval.role:null,
+    permissionSource:canApprove
+      ? (approval.verified&&approval.canApprove?'lightspeed_role':'timeclock_admin')
+      : 'read_only'
+  };
+}
+
 // Called only by the trusted Lightspeed API server. Do not expose a browser
 // credential or use the employee-name fallback from resolveEmployee().
 app.post('/api/timeclock/integrations/scanner/verify-pin', async (req,res) => {
@@ -1570,13 +1616,12 @@ app.post('/api/timeclock/integrations/scanner/verify-pin', async (req,res) => {
   if(!/^\d{4}$/.test(pin))return res.status(401).json({error:'Invalid employee credentials.'});
   try{
     const rows=await pool.query(
-      'SELECT id,name,scanner_can_lookup,scanner_can_approve FROM employees WHERE pin_hash=$1 AND active=TRUE LIMIT 1',
+      'SELECT id,name,lightspeed_user_id,scanner_can_lookup,scanner_can_approve FROM employees WHERE pin_hash=$1 AND active=TRUE LIMIT 1',
       [pinHash(pin)]
     );
     const employee=rows.rows[0];
     if(!employee)return res.status(401).json({error:'Invalid employee credentials.'});
-    return res.json({employee:{id:employee.id,name:employee.name,
-      canLookup:employee.scanner_can_lookup,canApprove:employee.scanner_can_approve}});
+    return res.json({employee:await scannerEffectivePermissions(employee)});
   }catch(error){return res.status(503).json({error:'Employee verification unavailable.'});}
 });
 
@@ -1589,13 +1634,12 @@ app.post('/api/timeclock/integrations/scanner/authorize', async (req,res) => {
   if(!Number.isSafeInteger(employeeId)||employeeId<=0)return res.status(400).json({error:'Valid employee ID required.'});
   try{
     const rows=await pool.query(
-      'SELECT id,name,scanner_can_lookup,scanner_can_approve FROM employees WHERE id=$1 AND active=TRUE LIMIT 1',
+      'SELECT id,name,lightspeed_user_id,scanner_can_lookup,scanner_can_approve FROM employees WHERE id=$1 AND active=TRUE LIMIT 1',
       [employeeId]
     );
     const employee=rows.rows[0];
     if(!employee)return res.status(403).json({error:'Employee access revoked.'});
-    return res.json({employee:{id:employee.id,name:employee.name,
-      canLookup:employee.scanner_can_lookup,canApprove:employee.scanner_can_approve}});
+    return res.json({employee:await scannerEffectivePermissions(employee)});
   }catch(error){return res.status(503).json({error:'Employee authorization unavailable.'});}
 });
 

@@ -169,27 +169,50 @@ function extractPurchaseOrderId() {
 }
 
 function extractSaleRef() {
-  const pathMatches = [
-    /\/sales?\/([0-9]+)(?:\/|$)/i,
-    /\/sale\/([0-9]+)(?:\/|$)/i,
-    /\/orders?\/([0-9]+)(?:\/|$)/i
+  // Lightspeed uses both numeric invoice references and UUID sale IDs.
+  // Never confuse inventory purchase orders with customer sales.
+  const uuid='[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}';
+  const routePatterns=[
+    new RegExp('/(?:redirect/1\\.0/)?sales?/('+uuid+'|[0-9]+)(?:[/?#]|$)','i'),
+    new RegExp('/(?:register-sale|register_sales|orders?)/('+uuid+')(?:[/?#]|$)','i'),
+    /\/(?:sale|order|invoice)s?\/([0-9]+)(?:[/?#]|$)/i
   ];
-  for (const pattern of pathMatches) {
-    const match = location.pathname.match(pattern);
-    if (match) return match[1];
+  const locations=[location.pathname,location.hash?.replace(/^#/,'')||''];
+  for(const path of locations) {
+    for(const pattern of routePatterns) {
+      const match=path.match(pattern);
+      if(match) return match[1];
+    }
   }
-
-  const text = document.body?.innerText || '';
-  const candidates = [
-    /Invoice\s*#?\s*([0-9]+)/i,
-    /Sale\s*#?\s*([0-9]+)/i,
-    /Order\s*#?\s*([0-9]+)/i
+  const params=new URLSearchParams(location.search);
+  for(const key of ['invoice_number','invoiceNumber','invoice','sale_id','saleId','sale_ref']) {
+    const value=String(params.get(key)||'').trim();
+    if(/^[0-9]+$/.test(value)||new RegExp('^'+uuid+'$','i').test(value))return value;
+  }
+  // Prioritize fields that identify *this* order, not a past invoice appearing
+  // in product notes or unrelated tables. Ignore generic "Order" matches.
+  const named=[
+    '[data-testid*="invoice-number"]','[data-testid*="invoiceNumber"]',
+    '[data-qa*="invoice-number"]','[name="invoice_number"]',
+    '[aria-label*="Invoice"]','[aria-label*="invoice"]'
   ];
-  for (const pattern of candidates) {
-    const match = text.match(pattern);
-    if (match) return match[1];
+  for(const selector of named) {
+    for(const element of document.querySelectorAll(selector)) {
+      const raw=String(element.value||element.textContent||element.getAttribute('aria-label')||'').trim();
+      const match=raw.match(/(?:invoice(?: number)?\s*[#:]*\s*)?([0-9]{1,12})\b/i);
+      if(match) return match[1];
+    }
   }
-  return '';
+  const headings=[...document.querySelectorAll('h1,h2,h3,[role="heading"]')].slice(0,30);
+  for(const heading of headings) {
+    const label=String(heading.textContent||'').trim();
+    const match=label.match(/\b(?:invoice|sale)(?:\s*(?:number|no\.?))?\s*[#:]?\s*([0-9]{1,12})\b/i);
+    if(match)return match[1];
+  }
+  // Conservative visible-text fallback for layouts whose headings are generic.
+  const text=String(document.body?.innerText||'').slice(0,15000);
+  const match=text.match(/(?:^|\n)\s*(?:invoice(?:\s*(?:number|no\.?))?|sale\s*(?:number|no\.?))\s*[#:]?\s*([0-9]{1,12})\b/im);
+  return match?.[1]||'';
 }
 
 function ensurePoLabelButton() {
