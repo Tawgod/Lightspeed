@@ -725,37 +725,58 @@ export function createSpecialOrdersRouter({
       .trim();
   }
 
-  function classifyGwListing(name='',description=''){
-    const text=(String(name)+' '+String(description)).replace(/\s+/g,' ').trim();
-    const lower=text.toLowerCase();
-    const reasons=[];
-    let disposition='POST_AS_IS';
-    let casePackSize=null;
-
-    const frenchStrong=/\b(french|français|francais|version française|version francaise)\b/i.test(text);
-    const quebecStrong=/\b(qu[eé]bec\s*only|only\s+(?:in|for)\s+qu[eé]bec|qu[eé]bec\s+exclusive)\b/i.test(text);
-    const regionalStrong=/\b(canada\s*only|canadian\s*exclusive|not\s+available\s+in\s+(?:the\s+)?u\.?s\.?a?\.?)\b/i.test(text);
-    if(frenchStrong){disposition='DO_NOT_POST';reasons.push('French-language product');}
-    if(quebecStrong){disposition='DO_NOT_POST';reasons.push('Québec-only product');}
-    if(regionalStrong){disposition='DO_NOT_POST';reasons.push('Regional product not intended for US posting');}
-
-    const packMatch=text.match(/\(\s*x\s*(\d+)\s*\)|\b(\d+)\s*[- ]?pack\b|\bpack\s+of\s+(\d+)\b|\bcase\s+of\s+(\d+)\b/i);
-    if(packMatch){
-      casePackSize=Number(packMatch[1]||packMatch[2]||packMatch[3]||packMatch[4]||0)||null;
-      if(disposition!=='DO_NOT_POST'){
-        disposition='REVIEW';
-        reasons.push('Possible case pack'+(casePackSize?' x'+casePackSize:''));
-      }
-    }
-
-    if(/\b(stockist|assortment|display|rack|range\s+set|launch\s+set|paint\s+range)\b/i.test(lower) && disposition!=='DO_NOT_POST'){
-      disposition='REVIEW';
-      reasons.push('Possible retailer assortment / launch product');
-    }
-
-    return {disposition,case_pack_size:casePackSize,reasons};
+  function parseGwMoney(label,text){
+    const re=new RegExp('(?:'+label+')\\s*[:\\-]?\\s*\\$?\\s*(\\d+(?:\\.\\d{1,2})?)','i');
+    const m=String(text||'').match(re);
+    return m?Number(m[1]):null;
   }
 
+  function parseGwListing(name='',description=''){
+    const sourceName=String(name||'').replace(/\\s+/g,' ').trim();
+    const desc=String(description||'').replace(/\\s+/g,' ').trim();
+    const text=(sourceName+' '+desc).trim();
+    const lower=text.toLowerCase();
+    const reasons=[];
+    const french=/\\b(french|français|francais|version française|version francaise|québec|quebec)\\b/i.test(text);
+    const fixture=/\\b(fixture|display|rack|stockist|assortment|range\\s+set|launch\\s+set|paint\\s+range|counter\\s+unit|floor\\s+stand)\\b/i.test(lower);
+    const packMatch=text.match(/\\(\\s*x\\s*(\\d+)\\s*\\)|\\b(\\d+)\\s*[- ]?pack\\b|\\bpack\\s+of\\s+(\\d+)\\b|\\bcase\\s+of\\s+(\\d+)\\b/i);
+    const casePackSize=Number(packMatch?.[1]||packMatch?.[2]||packMatch?.[3]||packMatch?.[4]||0)||null;
+    let shortCode=null;
+    const codeMatch=text.match(/\\b(?:short\\s*code|product\\s*code|code|sku)\\s*[:#-]?\\s*([A-Z0-9][A-Z0-9_-]{2,20})\\b/i);
+    if(codeMatch)shortCode=codeMatch[1].toUpperCase();
+    let msrp=parseGwMoney('(?:MSRP|RRP|RETAIL(?:\\s+PRICE)?)',text);
+    let cost=parseGwMoney('(?:COST|TRADE(?:\\s+PRICE)?|NET)',text);
+    const money=[...text.matchAll(/\\$(\\d+(?:\\.\\d{1,2})?)/g)].map(m=>Number(m[1])).filter(Number.isFinite);
+    if(msrp==null && money.length)msrp=money[0];
+    if(cost==null && money.length>1)cost=money[1];
+    let itemDescription=sourceName
+      .replace(/\\b(?:short\\s*code|product\\s*code|code|sku)\\s*[:#-]?\\s*[A-Z0-9][A-Z0-9_-]{2,20}\\b/ig,'')
+      .replace(/\\b(?:MSRP|RRP|RETAIL(?:\\s+PRICE)?|COST|TRADE(?:\\s+PRICE)?|NET)\\s*[:\\-]?\\s*\\$?\\s*\\d+(?:\\.\\d{1,2})?/ig,'')
+      .replace(/\\s*[|•·]\\s*[|•·\\s]*/g,' ')
+      .replace(/\\s{2,}/g,' ')
+      .trim()||sourceName;
+    let suggestedSingleName=null;
+    let suggestedSingleMsrp=null;
+    if(casePackSize && casePackSize>1){
+      suggestedSingleName=itemDescription
+        .replace(/\\(\\s*x\\s*\\d+\\s*\\)/ig,'')
+        .replace(/\\b\\d+\\s*[- ]?pack\\b/ig,'')
+        .replace(/\\bpack\\s+of\\s+\\d+\\b/ig,'')
+        .replace(/\\bcase\\s+of\\s+\\d+\\b/ig,'')
+        .replace(/\\s{2,}/g,' ').trim()||itemDescription;
+      if(msrp!=null)suggestedSingleMsrp=Math.round((msrp/casePackSize)*100)/100;
+      reasons.push('Case pack x'+casePackSize+' — review suggested single-item name/price before posting');
+    }
+    if(french)reasons.push('French / Québec product');
+    if(fixture)reasons.push('Fixture / retailer display material');
+    const postEnabled=!(french||fixture||casePackSize);
+    return {
+      item_description:itemDescription,source_item_description:sourceName,short_code:shortCode,msrp,cost,
+      post_enabled:postEnabled,case_pack_size:casePackSize,suggested_single_name:suggestedSingleName,
+      suggested_single_msrp:suggestedSingleMsrp,reasons,
+      disposition:postEnabled?'POST_AS_IS':(french||fixture?'DO_NOT_POST':'REVIEW')
+    };
+  }
   function walkGwFormData(node,out,seen,depth=0){
     if(depth>14||node==null)return;
     if(Array.isArray(node)){
@@ -842,7 +863,7 @@ export function createSpecialOrdersRouter({
     for(const q of questions){
       const title=q.title||'';
       const description=q.description||'';
-      const cls=classifyGwListing(title,description);
+      const cls=parseGwListing(title,description);
       // Keep questions with product-like options/titles; exclude common account/contact fields.
       const accountField=/^(name|email|email address|cuid|account|store|phone|comments?|notes?)\b/i.test(title);
       if(accountField)continue;
@@ -850,10 +871,11 @@ export function createSpecialOrdersRouter({
         for(const option of q.options){
           const opt=gwHtmlText(option);
           if(!opt||/^(yes|no|other|none|n\/a)$/i.test(opt))continue;
-          const c=classifyGwListing(opt,description);
+          const c=parseGwListing(opt,description);
           itemCandidates.push({
             source_question_id:q.id,
-            name:opt,
+            name:c.item_description,
+            source_name:opt,
             description,
             source_image_url:Array.isArray(q.images)&&q.images.length?q.images[0]:null,
             ...c
@@ -862,7 +884,8 @@ export function createSpecialOrdersRouter({
       }else if(/\$|sku|product|warhammer|codex|battle|paint|brush|set|pack|box|kit/i.test(title+' '+description)){
         itemCandidates.push({
           source_question_id:q.id,
-          name:title,
+          name:cls.item_description,
+          source_name:title,
           description,
           source_image_url:Array.isArray(q.images)&&q.images.length?q.images[0]:null,
           ...cls
@@ -888,9 +911,9 @@ export function createSpecialOrdersRouter({
         questions:questions.length,
         images:imageUrls.length,
         items:dedup.length,
-        ready:dedup.filter(x=>x.disposition==='POST_AS_IS').length,
-        review:dedup.filter(x=>x.disposition==='REVIEW').length,
-        filtered:dedup.filter(x=>x.disposition==='DO_NOT_POST').length
+        ready:dedup.filter(x=>x.post_enabled).length,
+        review:dedup.filter(x=>x.case_pack_size && !x.post_enabled).length,
+        filtered:dedup.filter(x=>!x.post_enabled).length
       }
     };
   }
@@ -1215,21 +1238,27 @@ export function createSpecialOrdersRouter({
         const key=gwExternalEntryKey(item,i);
         const result=await client.query(
           "INSERT INTO preorder_products "+
-          "(preorder_campaign_id,item_description,release_date,external_entry_id,"+
-          "gw_post_disposition,gw_case_pack_size,gw_review_note,source_image_url) "+
-          "VALUES ($1,$2,$3,$4,$5,$6,$7,$8) "+
+          "(preorder_campaign_id,item_description,gw_source_item_description,sku,msrp,cost,release_date,external_entry_id,"+
+          "gw_post_enabled,gw_post_disposition,gw_case_pack_size,gw_single_item_name,gw_single_msrp,gw_review_note,source_image_url) "+
+          "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) "+
           "ON CONFLICT (preorder_campaign_id,external_entry_id) WHERE external_entry_id IS NOT NULL "+
           "DO UPDATE SET "+
-          "item_description=EXCLUDED.item_description,"+
-          "release_date=EXCLUDED.release_date,"+
+          "item_description=EXCLUDED.item_description,gw_source_item_description=EXCLUDED.gw_source_item_description,"+
+          "sku=COALESCE(EXCLUDED.sku,preorder_products.sku),msrp=COALESCE(EXCLUDED.msrp,preorder_products.msrp),"+
+          "cost=COALESCE(EXCLUDED.cost,preorder_products.cost),release_date=EXCLUDED.release_date,"+
           "source_image_url=COALESCE(preorder_products.image_url,EXCLUDED.source_image_url),"+
+          "gw_post_enabled=CASE WHEN preorder_products.gw_reviewed_at IS NULL THEN EXCLUDED.gw_post_enabled ELSE preorder_products.gw_post_enabled END,"+
           "gw_post_disposition=CASE WHEN preorder_products.gw_reviewed_at IS NULL THEN EXCLUDED.gw_post_disposition ELSE preorder_products.gw_post_disposition END,"+
           "gw_case_pack_size=CASE WHEN preorder_products.gw_reviewed_at IS NULL THEN EXCLUDED.gw_case_pack_size ELSE preorder_products.gw_case_pack_size END,"+
+          "gw_single_item_name=COALESCE(preorder_products.gw_single_item_name,EXCLUDED.gw_single_item_name),"+
+          "gw_single_msrp=COALESCE(preorder_products.gw_single_msrp,EXCLUDED.gw_single_msrp),"+
           "gw_review_note=CASE WHEN preorder_products.gw_reviewed_at IS NULL THEN EXCLUDED.gw_review_note ELSE preorder_products.gw_review_note END "+
           "RETURNING (xmax = 0) AS inserted",
           [
-            campaign.id,item.name,releaseDate,key,item.disposition||'REVIEW',
-            item.case_pack_size||null,(item.reasons||[]).join('; ')||null,item.source_image_url||null
+            campaign.id,item.item_description||item.name,item.source_item_description||item.source_name||item.name,
+            item.short_code||null,item.msrp??null,item.cost??null,releaseDate,key,Boolean(item.post_enabled),
+            item.disposition||'REVIEW',item.case_pack_size||null,item.suggested_single_name||null,
+            item.suggested_single_msrp??null,(item.reasons||[]).join('; ')||null,item.source_image_url||null
           ]
         );
         if(result.rows[0]?.inserted)inserted++;else updated++;
@@ -1445,50 +1474,21 @@ export function createSpecialOrdersRouter({
 
 
   function gwDiscordPostFromProduct(product,campaign){
-    const disposition=String(product.gw_post_disposition||'REVIEW').toUpperCase();
-    if(disposition==='DO_NOT_POST')return {publish:false,reason:'Do not post',product_id:product.id};
-    if(disposition==='REVIEW')return {publish:false,reason:'Needs review',product_id:product.id};
-
-    let title=String(product.item_description||'').trim();
-    let msrp=product.msrp==null?null:Number(product.msrp);
-    let packSize=null;
-    let mode='AS_IS';
-    if(disposition==='SPLIT_TO_SINGLES'){
-      packSize=Number(product.gw_case_pack_size||0);
-      if(packSize<2)return {publish:false,reason:'Split-to-singles item is missing a valid case-pack size',product_id:product.id};
-      title=String(product.gw_single_item_name||'').trim();
-      if(!title)return {publish:false,reason:'Split-to-singles item is missing its customer-facing single item name',product_id:product.id};
-      msrp=product.gw_single_msrp==null?null:Number(product.gw_single_msrp);
-      if(msrp==null||!Number.isFinite(msrp)||msrp<0){
-        return {publish:false,reason:'Split-to-singles item is missing its single-item MSRP',product_id:product.id};
-      }
-      mode='SPLIT_TO_SINGLES';
-    }
-
+    if(product.gw_post_enabled===false)return {publish:false,reason:'Post disabled',product_id:product.id};
+    const packSize=Number(product.gw_case_pack_size||0);
+    const isPack=packSize>1;
+    const title=String(isPack?(product.gw_single_item_name||''):product.item_description||'').trim();
+    const msrp=isPack?(product.gw_single_msrp==null?null:Number(product.gw_single_msrp)):(product.msrp==null?null:Number(product.msrp));
+    if(!title)return {publish:false,reason:'Missing customer-facing item description',product_id:product.id};
+    if(isPack&&(msrp==null||!Number.isFinite(msrp)||msrp<0))return {publish:false,reason:'Case pack needs confirmed single-item MSRP before posting',product_id:product.id};
     const release=product.release_date||campaign.release_date||null;
-    const sku=String(product.sku||'NO_SKU').trim()||'NO_SKU';
+    const sku=String(product.sku||'NO_CODE').trim()||'NO_CODE';
     const detailLines=[];
     if(msrp!=null&&Number.isFinite(msrp))detailLines.push('MSRP: $'+msrp.toFixed(2));
     if(release)detailLines.push('Release: '+String(release).slice(0,10));
-    if(mode==='SPLIT_TO_SINGLES')detailLines.push('Store orders in case packs of '+packSize+'; customer preorder is for one single.');
     detailLines.push('React to preorder 1.');
-
-    return {
-      publish:true,
-      product_id:product.id,
-      campaign_id:campaign.id,
-      title,
-      description:detailLines.join('\n'),
-      sku,
-      msrp,
-      release_date:release,
-      image_url:product.image_url||product.source_image_url||null,
-      mode,
-      case_pack_size:packSize,
-      footer:'SKU: '+sku+' · GW preorder'
-    };
+    return {publish:true,product_id:product.id,campaign_id:campaign.id,title,description:detailLines.join('\\n'),sku,msrp,release_date:release,image_url:product.image_url||product.source_image_url||null,mode:isPack?'SPLIT_TO_SINGLES':'AS_IS',case_pack_size:isPack?packSize:null,footer:'Code: '+sku+' · GW preorder'};
   }
-
   async function gwDiscordApi(pathname,options={}){
     if(!discordToken)throw Object.assign(new Error('Discord bot token is not configured for Special Orders.'),{status:503});
     const response=await fetch('https://discord.com/api/v10'+pathname,{
@@ -1674,33 +1674,28 @@ export function createSpecialOrdersRouter({
 
   router.patch('/preorders/gw/products/:id', requireDb, async (req,res)=>{
     const body=req.body||{};
-    const qty=body.store_order_quantity==null?null:Math.max(0,Math.floor(Number(body.store_order_quantity)||0));
-    const disposition=body.gw_post_disposition?String(body.gw_post_disposition).toUpperCase():null;
-    if(disposition && !['REVIEW','POST_AS_IS','SPLIT_TO_SINGLES','DO_NOT_POST'].includes(disposition)){
-      return res.status(400).json({error:'Invalid GW post disposition.'});
-    }
+    const postEnabled=body.gw_post_enabled==null?null:Boolean(body.gw_post_enabled);
+    const itemDescription=body.item_description==null?null:String(body.item_description).trim();
+    const sku=body.sku==null?null:String(body.sku).trim();
+    const msrp=body.msrp==null?null:Math.max(0,Number(body.msrp)||0);
+    const cost=body.cost==null?null:Math.max(0,Number(body.cost)||0);
     const packSize=body.gw_case_pack_size==null?null:Math.max(1,Math.floor(Number(body.gw_case_pack_size)||1));
+    const singleName=body.gw_single_item_name==null?null:String(body.gw_single_item_name).trim();
     const singleMsrp=body.gw_single_msrp==null?null:Math.max(0,Number(body.gw_single_msrp)||0);
-    const {rows}=await pool.query(`
-      UPDATE preorder_products pp
-      SET store_order_quantity=CASE WHEN $1::int IS NULL THEN store_order_quantity ELSE $1 END,
-          gw_post_disposition=COALESCE($3,gw_post_disposition),
-          gw_case_pack_size=CASE WHEN $4::int IS NULL THEN gw_case_pack_size ELSE $4 END,
-          gw_single_item_name=CASE WHEN $5::text IS NULL THEN gw_single_item_name ELSE NULLIF(trim($5),'') END,
-          gw_single_msrp=CASE WHEN $6::numeric IS NULL THEN gw_single_msrp ELSE $6 END,
-          gw_review_note=CASE WHEN $7::text IS NULL THEN gw_review_note ELSE NULLIF(trim($7),'') END,
-          image_url=CASE WHEN $8::text IS NULL THEN image_url ELSE NULLIF(trim($8),'') END,
-          source_image_url=CASE WHEN $9::text IS NULL THEN source_image_url ELSE NULLIF(trim($9),'') END,
-          gw_reviewed_at=CASE WHEN $3::text IS NULL THEN gw_reviewed_at ELSE now() END,
-          gw_reviewed_by=CASE WHEN $3::text IS NULL THEN gw_reviewed_by ELSE NULLIF(trim($10),'') END
-      FROM preorder_campaigns pc
-      WHERE pp.id=$2 AND pc.id=pp.preorder_campaign_id AND pc.campaign_type='GW_WEEKLY'
-      RETURNING pp.*
-    `,[
-      qty,req.params.id,disposition,packSize,
-      body.gw_single_item_name??null,singleMsrp,body.gw_review_note??null,
-      body.image_url??null,body.source_image_url??null,body.gw_reviewed_by??null
-    ]);
+    const sql="UPDATE preorder_products pp SET "+
+      "item_description=CASE WHEN $1::text IS NULL THEN item_description ELSE $1 END,"+
+      "sku=CASE WHEN $2::text IS NULL THEN sku ELSE NULLIF($2,'') END,"+
+      "msrp=CASE WHEN $3::numeric IS NULL THEN msrp ELSE $3 END,"+
+      "cost=CASE WHEN $4::numeric IS NULL THEN cost ELSE $4 END,"+
+      "gw_post_enabled=CASE WHEN $5::boolean IS NULL THEN gw_post_enabled ELSE $5 END,"+
+      "gw_case_pack_size=CASE WHEN $6::int IS NULL THEN gw_case_pack_size ELSE $6 END,"+
+      "gw_single_item_name=CASE WHEN $7::text IS NULL THEN gw_single_item_name ELSE NULLIF($7,'') END,"+
+      "gw_single_msrp=CASE WHEN $8::numeric IS NULL THEN gw_single_msrp ELSE $8 END,"+
+      "gw_post_disposition=CASE WHEN $5::boolean IS NULL THEN gw_post_disposition WHEN $5::boolean=false THEN 'DO_NOT_POST' "+
+      "WHEN COALESCE($6,gw_case_pack_size,1)>1 THEN 'SPLIT_TO_SINGLES' ELSE 'POST_AS_IS' END,"+
+      "gw_reviewed_at=now(),gw_reviewed_by=COALESCE(NULLIF(trim($9),''),'gw-web') "+
+      "FROM preorder_campaigns pc WHERE pp.id=$10 AND pc.id=pp.preorder_campaign_id AND pc.campaign_type='GW_WEEKLY' RETURNING pp.*";
+    const {rows}=await pool.query(sql,[itemDescription,sku,msrp,cost,postEnabled,packSize,singleName,singleMsrp,body.gw_reviewed_by??null,req.params.id]);
     if(!rows[0])return res.status(404).json({error:'GW preorder product not found.'});
     res.json(rows[0]);
   });

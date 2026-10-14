@@ -439,6 +439,9 @@ WHERE preorder_campaign_id IS NOT NULL
 
 
 ALTER TABLE preorder_products
+  ADD COLUMN IF NOT EXISTS cost NUMERIC(12,2),
+  ADD COLUMN IF NOT EXISTS gw_post_enabled BOOLEAN NOT NULL DEFAULT true,
+  ADD COLUMN IF NOT EXISTS gw_source_item_description TEXT,
   ADD COLUMN IF NOT EXISTS image_url TEXT,
   ADD COLUMN IF NOT EXISTS source_image_url TEXT,
   ADD COLUMN IF NOT EXISTS gw_post_disposition TEXT NOT NULL DEFAULT 'REVIEW',
