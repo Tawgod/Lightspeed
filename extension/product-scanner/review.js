@@ -72,9 +72,69 @@ const matchesElement=document.getElementById('matches');
 const checkButton=document.getElementById('check-matches');
 const createButton=document.getElementById('create-item');
 const createPreview=document.getElementById('create-preview');
+
+const supplierInput=document.getElementById('supplier-default');
+const supplierVerification=document.getElementById('supplier-verification');
+const snapshotPanel=document.getElementById('supplier-snapshot-panel');
+const snapshotInput=document.getElementById('supplier-image-upload');
+const snapshotStatus=document.getElementById('supplier-snapshot-status');
+const snapshotPreview=document.getElementById('supplier-snapshot-preview');
+let sourceDomain='';
+function snapshotKey(){return sourceDomain?'supplierSnapshot:'+sourceDomain:null;}
+async function refreshSupplierSnapshot(){
+  const key=snapshotKey();
+  if(!key){snapshotStatus.textContent='No supplier website associated with this scan.';snapshotPreview.hidden=true;return;}
+  const record=(await chrome.storage.local.get(key))[key];
+  if(record?.domain===sourceDomain && /^data:image\/jpeg;base64,/.test(record.image||'')){
+    snapshotPreview.src=record.image;
+    snapshotPreview.hidden=false;
+    snapshotStatus.textContent='Saved locally for '+sourceDomain+' on '+new Date(record.capturedAt).toLocaleDateString()+'.';
+  }else{
+    snapshotPreview.removeAttribute('src');snapshotPreview.hidden=true;
+    snapshotStatus.textContent='No saved snapshot for this supplier website.';
+  }
+}
+snapshotInput.addEventListener('change',async()=>{
+  const file=snapshotInput.files?.[0];
+  if(!file)return;
+  if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>8*1024*1024){
+    snapshotStatus.textContent='Use a JPG, PNG or WebP image under 8 MB.';snapshotInput.value='';return;
+  }
+  if(!snapshotKey()){snapshotStatus.textContent='Scan a supplier page before uploading a template reference.';return;}
+  try{
+    const objectUrl=URL.createObjectURL(file);
+    const image=new Image();
+    try{
+      await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=()=>reject(new Error('Invalid image'));image.src=objectUrl;});
+      const scale=Math.min(1,900/image.width,650/image.height);
+      const canvas=document.createElement('canvas');
+      canvas.width=Math.max(1,Math.floor(image.width*scale));
+      canvas.height=Math.max(1,Math.floor(image.height*scale));
+      canvas.getContext('2d').drawImage(image,0,0,canvas.width,canvas.height);
+      const data=canvas.toDataURL('image/jpeg',0.58);
+      if(data.length>450000)throw new Error('Snapshot is too large after resizing');
+      const indexKey='supplierSnapshotDomains';
+      const old=await chrome.storage.local.get(indexKey);
+      const domains=[sourceDomain,...(Array.isArray(old[indexKey])?old[indexKey]:[]).filter(d=>d!==sourceDomain)];
+      if(domains.length>8)await chrome.storage.local.remove(domains.slice(8).map(d=>'supplierSnapshot:'+d));
+      await chrome.storage.local.set({[snapshotKey()]:{domain:sourceDomain,image:data,capturedAt:new Date().toISOString()},[indexKey]:domains.slice(0,8)});
+      await refreshSupplierSnapshot();
+    }finally{URL.revokeObjectURL(objectUrl);}
+  }catch(error){snapshotStatus.textContent='Could not save snapshot: '+error.message;}
+  finally{snapshotInput.value='';}
+});
+document.getElementById('remove-supplier-snapshot').addEventListener('click',async()=>{
+  const key=snapshotKey();if(!key)return;
+  await chrome.storage.local.remove(key);
+  const old=await chrome.storage.local.get('supplierSnapshotDomains');
+  await chrome.storage.local.set({supplierSnapshotDomains:(old.supplierSnapshotDomains||[]).filter(d=>d!==sourceDomain)});
+  await refreshSupplierSnapshot();
+});
+
 let verifiedProductSignature=null;
 let lastMatches=null;
-function signature(){return JSON.stringify(currentProduct());}
+function signature(){return JSON.stringify({...currentProduct(),supplier:supplierInput.value.trim()});}
+supplierInput.addEventListener('input',invalidateVerification);
 function invalidateVerification(){verifiedProductSignature=null;lastMatches=null;createButton.disabled=true;createPreview.hidden=true;matchStatus.textContent='Product changed — check existing products again before preparing creation.';}
 
 function currentProduct(){
@@ -109,6 +169,13 @@ chrome.storage.local.get('scannerDraft',({scannerDraft:d})=>{
   status.textContent=d.requiresSelection?'Multiple products detected — automatic selection is disabled. Verify manually.':'Review extracted information; no changes have been sent to Lightspeed.';
   draftAvailable=true;
   const p=d.product||{};
+  sourceDomain=String(d.supplierDomain||'').trim().toLowerCase();
+  supplierInput.value=String(p.supplierName||sourceDomain||'').trim();
+  supplierVerification.textContent=p.supplierName
+    ? 'Supplier detected from site: verify this matches an existing supplier before approval.'
+    : 'Suggested from website domain only. Enter the actual supplier name and verify against existing suppliers.';
+  if(d.snapshotWarning)snapshotStatus.textContent=d.snapshotWarning;
+  refreshSupplierSnapshot().catch(error=>{snapshotStatus.textContent='Snapshot unavailable: '+error.message;});
   if(/^https?:\/\//.test(d.sourceUrl||'')){document.getElementById('source').href=d.sourceUrl;}
   document.getElementById('source').textContent=d.sourceUrl||'Unknown source';
   document.getElementById('original').textContent=JSON.stringify({capturedAt:d.capturedAt,candidates:d.candidates,product:p},null,2);
@@ -174,11 +241,12 @@ createButton.addEventListener('click',()=>{
     invalidateVerification();createPreview.hidden=false;createPreview.textContent='Re-check the current product before preparing creation.';return;
   }
   const product=currentProduct();
+  if(!supplierInput.value.trim()){createPreview.hidden=false;createPreview.textContent='Confirm a supplier before preparing a new product.';return;}
   if(!product.name || (!product.upc && !product.sku && !product.supplierSku)){
     createPreview.hidden=false;createPreview.textContent='Enter a product name and at least one identifier first.';return;
   }
   createPreview.hidden=false;
   createPreview.textContent='Create Item — approval preview only. No Lightspeed changes will be made.\\n'+
-    JSON.stringify({name:product.name,generalSku:product.sku,supplierReorderNumber:product.supplierSku,upc:product.upc,brand:product.brand,description:product.description,advertisedPrice:product.advertisedPrice,cost:product.cost,msrp:product.msrp,weight:product.weight},null,2)+
+    JSON.stringify({supplierSuggestion:supplierInput.value.trim(),supplierWebsite:sourceDomain,supplierNotYetVerified:true,name:product.name,generalSku:product.sku,supplierReorderNumber:product.supplierSku,upc:product.upc,brand:product.brand,description:product.description,advertisedPrice:product.advertisedPrice,cost:product.cost,msrp:product.msrp,weight:product.weight},null,2)+
     '\\nCreation requires a separately approved, employee-authorized backend workflow.';
 });
