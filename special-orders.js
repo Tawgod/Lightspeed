@@ -2540,6 +2540,40 @@ export function createSpecialOrdersRouter({
     }
   });
 
+  router.patch('/items/:id/routing', requireDb, async (req,res)=>{
+    const client=await pool.connect();
+    try{
+      await client.query('BEGIN');
+      const current=await client.query('SELECT * FROM special_order_items WHERE id=$1 FOR UPDATE',[req.params.id]);
+      const item=current.rows[0];
+      if(!item){await client.query('ROLLBACK');return res.status(404).json({error:'Special Order line not found.'});}
+      const attached=await client.query('SELECT supplier_order_id FROM supplier_order_items WHERE special_order_item_id=$1 LIMIT 1',[req.params.id]);
+      if(attached.rows[0]){await client.query('ROLLBACK');return res.status(409).json({error:'Routing cannot be changed after the line is attached to supplier order #'+attached.rows[0].supplier_order_id+'.'});}
+      let supplierId=req.body?.preferred_supplier_id===undefined?item.preferred_supplier_id:(req.body.preferred_supplier_id||null);
+      let departmentId=req.body?.sourcing_department_id===undefined?item.sourcing_department_id:(req.body.sourcing_department_id||null);
+      if(supplierId){
+        const s=await client.query('SELECT id FROM suppliers WHERE id=$1 AND is_active=true',[supplierId]);
+        if(!s.rows[0]){await client.query('ROLLBACK');return res.status(400).json({error:'Preferred supplier is invalid or inactive.'});}
+      }
+      if(departmentId){
+        const d=await client.query('SELECT id FROM sourcing_departments WHERE id=$1 AND is_active=true',[departmentId]);
+        if(!d.rows[0]){await client.query('ROLLBACK');return res.status(400).json({error:'Sourcing department is invalid or inactive.'});}
+      }
+      const {rows}=await client.query(
+        'UPDATE special_order_items SET preferred_supplier_id=$1,sourcing_department_id=$2,updated_at=now() WHERE id=$3 RETURNING *',
+        [supplierId,departmentId,req.params.id]
+      );
+      if(supplierId){
+        await client.query(
+          'INSERT INTO special_order_item_suppliers (special_order_item_id,supplier_id,priority) VALUES ($1,$2,1) ON CONFLICT (special_order_item_id,supplier_id) DO UPDATE SET priority=LEAST(special_order_item_suppliers.priority,1)',
+          [req.params.id,supplierId]
+        );
+      }
+      await client.query('COMMIT');
+      res.json(rows[0]);
+    }catch(error){await client.query('ROLLBACK');res.status(400).json({error:error.message});}
+    finally{client.release()}
+  });
   router.get('/ordering/work-queue', requireDb, async (req,res)=>{
     const view=String(req.query.view||'general').toLowerCase();
     const statuses=String(req.query.status||'OOS,READY_TO_ORDER,ORDERED,BACKORDERED').split(',').map(x=>x.trim().toUpperCase()).filter(Boolean);
