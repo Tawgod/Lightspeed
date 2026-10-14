@@ -64,8 +64,8 @@ signInForm.addEventListener('submit',async event=>{
   }
 });
 
-const keys=['name','sku','supplierSku','upc','brand','imageUrl','advertisedPrice'];
-const labels={name:'Product name',sku:'General SKU (Lightspeed)',supplierSku:'Supplier reorder number',upc:'UPC / GTIN',brand:'Brand',imageUrl:'Image URL',advertisedPrice:'Supplier advertised price (reference only)'};
+const keys=['name','sku','supplierSku','upc','brand','cost','msrp','weight','imageUrl','advertisedPrice'];
+const labels={name:'Product name',sku:'General SKU (Lightspeed)',supplierSku:'Supplier reorder number',upc:'UPC / GTIN',brand:'Manufacturer / Brand',cost:'Supplier Cost (reference)',msrp:'MSRP (reference)',weight:'Weight (with unit)',imageUrl:'Image URL',advertisedPrice:'Supplier advertised price (reference only)'};
 const status=document.getElementById('status');
 const matchStatus=document.getElementById('match-status');
 const matchesElement=document.getElementById('matches');
@@ -119,6 +119,8 @@ chrome.storage.local.get('scannerDraft',({scannerDraft:d})=>{
   document.getElementById('description').value=p.description||'';
   document.getElementById('description').addEventListener('input',invalidateVerification);
   const missing=['name','upc'].filter(k=>!p[k]);
+  if(p.availabilityNote)document.getElementById('supplier-status').textContent='Supplier listing: '+p.availabilityNote+' (confirm availability before ordering).';
+  if(p.supplierName)document.getElementById('supplier-name').textContent='Supplier: '+p.supplierName;
   document.getElementById('warnings').textContent=missing.length?'Not found on supplier page — enter or verify manually: '+missing.join(', ')+'. Supplier reorder number is separate from general SKU.':'';
 });
 document.getElementById('copy').addEventListener('click',async()=>{
@@ -177,6 +179,6 @@ createButton.addEventListener('click',()=>{
   }
   createPreview.hidden=false;
   createPreview.textContent='Create Item — approval preview only. No Lightspeed changes will be made.\\n'+
-    JSON.stringify({name:product.name,generalSku:product.sku,supplierReorderNumber:product.supplierSku,upc:product.upc,brand:product.brand,description:product.description,advertisedPrice:product.advertisedPrice},null,2)+
+    JSON.stringify({name:product.name,generalSku:product.sku,supplierReorderNumber:product.supplierSku,upc:product.upc,brand:product.brand,description:product.description,advertisedPrice:product.advertisedPrice,cost:product.cost,msrp:product.msrp,weight:product.weight},null,2)+
     '\\nCreation requires a separately approved, employee-authorized backend workflow.';
 });
