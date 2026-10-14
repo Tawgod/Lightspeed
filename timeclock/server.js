@@ -576,6 +576,20 @@ async function fetchLightspeedUsers() {
   return [];
 }
 
+async function fetchLightspeedRoles() {
+  if (!LIGHTSPEED_DOMAIN || !LIGHTSPEED_TOKEN) throw new Error('Lightspeed role lookup unavailable.');
+  const response=await fetch(
+    `https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2.0/roles?page_size=1000`,{
+      method:'GET',redirect:'error',signal:AbortSignal.timeout(7000),
+      headers:{Authorization:`Bearer ${LIGHTSPEED_TOKEN}`,Accept:'application/json'}
+    }
+  );
+  if(!response.ok) throw new Error('Lightspeed role lookup failed.');
+  const result=await response.json();
+  const roles=Array.isArray(result)?result:Array.isArray(result?.data)?result.data:Array.isArray(result?.roles)?result.roles:[];
+  return roles.filter(x=>x&&typeof x==='object');
+}
+
 async function syncLightspeedUsers() {
   const users = await fetchLightspeedUsers();
   const client = await pool.connect();
@@ -1570,7 +1584,14 @@ async function scannerEffectivePermissions(employee){
   if(employee.lightspeed_user_id){
     try{
       const users=await fetchLightspeedUsers();
-      approval=linkedScannerApproval({lightspeedUserId:employee.lightspeed_user_id,users});
+      const direct=linkedScannerApproval({lightspeedUserId:employee.lightspeed_user_id,users});
+      if(direct.verified)approval=direct;
+      else {
+        // Legacy Lightspeed user payloads can expose only role_id.
+        // Never infer role privileges from the numeric/string ID alone.
+        const roles=await fetchLightspeedRoles();
+        approval=linkedScannerApproval({lightspeedUserId:employee.lightspeed_user_id,users,roles});
+      }
     }catch(error){
       console.warn('[scanner] Lightspeed role lookup unavailable; automatic approval withheld:',error?.status||'error');
     }
