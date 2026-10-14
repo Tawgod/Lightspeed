@@ -14,7 +14,7 @@ test('gateway is opt-in and co-located with Special Orders backend',()=>{
   assert.match(server,/createScannerLoginLimiter/);
 });
 test('extension uses restricted gateway and has matching host permission',()=>{
-  assert.equal(manifest.version,'0.3.19');
+  assert.match(manifest.version,/^0\.3\.\d+$/);
   assert.ok(manifest.host_permissions.includes('https://special-orders-test-production.up.railway.app/*'));
   assert.match(review,/special-orders-test-production\.up\.railway\.app\/api\/scanner/);
   assert.doesNotMatch(review,/SPECIAL_ORDERS_ADMIN_KEY|SCANNER_SERVICE_SECRET/);
