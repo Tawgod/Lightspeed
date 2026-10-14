@@ -849,7 +849,11 @@ async function startServer() {
       adminKey:process.env.SPECIAL_ORDERS_ADMIN_KEY
     });
     const scannerGateway=createTimeclockScannerGateway({
-      identity,lookup,sessionSecret:process.env.SCANNER_SESSION_SECRET,loginLimiter
+      identity,lookup,sessionSecret:process.env.SCANNER_SESSION_SECRET,loginLimiter,
+      supplierLookup:async()=>{
+        const result=await scannerPool.query('SELECT id,name FROM suppliers WHERE is_active=TRUE ORDER BY name LIMIT 500');
+        return result.rows;
+      }
     });
     app.use('/api/scanner',(req,res,next)=>{
       const origin=String(req.get('origin')||'');
