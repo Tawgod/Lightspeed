@@ -24,6 +24,12 @@ export function normalizeMatches(local = [], remote = []) {
         const existing = byKey.get(key);
         existing.sources.push(source);
         existing.score = Math.max(existing.score || 0, Number(row.score) || 0);
+        if(source==='lightspeed'){
+          existing.weight=row.weight??existing.weight;
+          existing.weightKnown=row.weightKnown??existing.weightKnown;
+          existing.imageUrl=row.imageUrl||existing.imageUrl;
+          existing.pictureKnown=row.pictureKnown??existing.pictureKnown;
+        }
         continue;
       }
       const match = {
@@ -31,6 +37,8 @@ export function normalizeMatches(local = [], remote = []) {
         localId: row.local_id || (source === 'railway' ? row.id : null),
         name: row.name || '', sku: row.sku || '', upc: row.upc || '',
         description: row.description || '', brand: row.brand || '',
+        weight:row.weight??null,weightKnown:row.weightKnown===true,
+        imageUrl:row.imageUrl||'',pictureKnown:row.pictureKnown===true,
         score: Number(row.score) || 0,
         reasons: Array.isArray(row.reasons) ? row.reasons : [],
         sources: [source]
@@ -43,9 +51,9 @@ export function normalizeMatches(local = [], remote = []) {
 
 // No result from one service must never be treated as confirmation that a
 // product is absent from Lightspeed. Both checks must succeed.
-export async function checkProductMatches(product, lookup) {
-  const request = toSpecialOrderMatchRequest(product);
-  if (!request.product_code && !request.sku && !request.name) {
+export async function checkProductMatches(product, lookup, supplierId = null) {
+  const request = toSpecialOrderMatchRequest(product,supplierId);
+  if (!request.product_code && !request.sku && !request.supplier_sku && !request.name) {
     throw new Error('Enter a barcode, SKU, or product name before checking duplicates.');
   }
   const [local, remote] = await Promise.all([
