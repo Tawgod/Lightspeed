@@ -13,20 +13,53 @@ function saleRef() {
   return String(saleInput.value || '').trim();
 }
 
+let detectedLightspeedTabId=null;
+async function findLightspeedTabs() {
+  const tabs=await chrome.tabs.query({});
+  const ls=tabs.filter(tab=>tab.id&&/^https?:\/\/[^/]+\.retail\.lightspeed\.app\//i.test(tab.url||''));
+  return ls.sort((a,b)=>(Number(b.active)-Number(a.active)) || ((b.lastAccessed||0)-(a.lastAccessed||0)));
+}
+async function resolveLightspeedTab(){
+  const active=await chrome.tabs.query({active:true,currentWindow:true});
+  const current=active.find(tab=>/^https?:\/\/[^/]+\.retail\.lightspeed\.app\//i.test(tab.url||''));
+  if(current) return current;
+  const matches=await findLightspeedTabs();
+  if(detectedLightspeedTabId)return matches.find(tab=>tab.id===detectedLightspeedTabId)||matches[0]||null;
+  return matches[0]||null;
+}
 async function detectContext() {
-  setStatus('Detecting current Lightspeed order...');
+  setStatus('Detecting the open Lightspeed order…');
   try {
-    const [tab] = await chrome.tabs.query({active:true,currentWindow:true});
-    if (!tab?.id) throw new Error('No active tab.');
-    const context = await chrome.tabs.sendMessage(tab.id, {type:'HCT_GET_CONTEXT'});
-    if (context?.saleRef) {
-      saleInput.value = context.saleRef;
-      setStatus('Detected order ' + context.saleRef + '.');
-    } else {
-      setStatus('Could not detect an invoice number on this page. Enter it manually.');
+    const tab=await resolveLightspeedTab();
+    if(!tab)throw new Error('Open an order in Lightspeed Retail first.');
+    detectedLightspeedTabId=tab.id;
+    let context;
+    try {
+      context=await chrome.tabs.sendMessage(tab.id,{type:'HCT_GET_CONTEXT'});
+    }catch{
+      // When Lightspeed hasn't loaded our content script (e.g. after a recent
+      // extension update), attempt a read-only DOM check instead of failing.
+      const [probe]=await chrome.scripting.executeScript({target:{tabId:tab.id},func:()=>{
+        const text=String(document.body?.innerText||'').slice(0,15000);
+        const heading=[...document.querySelectorAll('h1,h2,h3')].map(x=>x.textContent||'').join('\n');
+        const pattern=/(?:invoice|sale)\s*(?:number|no\.?)?\s*[#:]?\s*([0-9]{1,12})\b/i;
+        const found=heading.match(pattern)||text.match(pattern);
+        const uuid=location.pathname.match(/\/(?:redirect\/1\.0\/)?sales?\/([0-9a-f-]{36})(?:[/?#]|$)/i);
+        const po=location.pathname.match(/\/inventory\/purchase-order\/([^/?#]+)/i);
+        return {saleRef:found?.[1]||uuid?.[1]||'',purchaseOrderId:po?.[1]||null};
+      }});
+      context=probe?.result;
     }
-  } catch (e) {
-    setStatus('Enter the invoice/order number manually.');
+    if(context?.saleRef){
+      saleInput.value=context.saleRef;
+      setStatus('Detected Lightspeed sale/invoice '+context.saleRef+'.');
+    }else if(context?.purchaseOrderId){
+      setStatus('Detected purchase order '+context.purchaseOrderId+'. The invoice field is for customer sales; PO Companion is separate.');
+    }else{
+      setStatus('Lightspeed tab located, but no sale number found. You can enter the invoice number manually.');
+    }
+  }catch(error){
+    setStatus(error.message||'Unable to detect order. Enter invoice number manually.');
   }
 }
 
@@ -36,8 +69,8 @@ document.getElementById('split').addEventListener('click', async () => {
   const ref = saleRef();
   if (!ref) return setStatus('Enter an invoice/order number first.');
   try {
-    const [tab] = await chrome.tabs.query({active:true,currentWindow:true});
-    if (!tab?.id) throw new Error('No active Lightspeed tab.');
+    const tab=await resolveLightspeedTab();
+    if (!tab?.id) throw new Error('No open Lightspeed tab.');
     await chrome.tabs.sendMessage(tab.id, {type:'HCT_OPEN_SPLIT', saleRef:ref});
     window.close();
   } catch (e) {
