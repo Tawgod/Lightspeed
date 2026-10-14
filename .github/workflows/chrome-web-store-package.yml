@@ -1,0 +1,49 @@
+name: Build Chrome Web Store package
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/chrome-web-store-release
+    paths:
+      - 'extension/**'
+      - 'scripts/build-chrome-web-store.py'
+      - '.github/workflows/chrome-web-store-package.yml'
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate JavaScript syntax
+        run: |
+          node --check extension/content.js
+          node --check extension/popup.js
+          node --check extension/product-scanner/review.js
+          node --check extension/product-scanner/special-orders-adapter.js
+      - name: Build package
+        run: python scripts/build-chrome-web-store.py
+      - name: Validate package structure
+        run: |
+          python - <<'PY'
+          import glob, json, zipfile
+          path = glob.glob("dist/*.zip")
+          assert len(path) == 1, path
+          with zipfile.ZipFile(path[0]) as z:
+            m = json.loads(z.read("manifest.json"))
+            assert m["manifest_version"] == 3
+            assert m["icons"]["128"] in z.namelist()
+            assert "popup.html" in z.namelist()
+            assert "product-scanner/review.html" in z.namelist()
+            assert not any(n.startswith("extension/") for n in z.namelist())
+          print("Web Store package checks passed")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Hobby-Corner-Chrome-Web-Store-Package
+          path: dist/*.zip
+          if-no-files-found: error
+          retention-days: 30
