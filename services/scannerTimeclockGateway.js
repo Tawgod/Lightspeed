@@ -3,8 +3,9 @@
 import express from 'express';
 import {createScannerMatchGateway} from '../routes/scannerMatchGateway.js';
 import {createScannerSessions} from './scannerSessions.js';
+import {createPoCompanionRouter} from '../routes/poCompanion.js';
 
-export function createTimeclockScannerGateway({identity,lookup,sessionSecret,clock=()=>Date.now(),loginLimiter}={}){
+export function createTimeclockScannerGateway({identity,lookup,sessionSecret,clock=()=>Date.now(),loginLimiter,poReadClient,poPool}={}){
   const router=express.Router();
   router.use((req,res,next)=>{res.set('Cache-Control','no-store');next();});
   if(!identity?.verifyPin||!identity?.authorize||typeof lookup!=='function'||typeof loginLimiter!=='function'){
@@ -32,6 +33,7 @@ export function createTimeclockScannerGateway({identity,lookup,sessionSecret,clo
     if(!employee.canLookup)throw Object.assign(new Error('Scanner lookup not permitted.'),{status:403});
     return employee;
   };
+  if(poReadClient && poPool)router.use(createPoCompanionRouter({verifyEmployee,lightspeed:poReadClient,pool:poPool}));
   router.use(createScannerMatchGateway({verifyEmployee,lookup}));
   return router;
 }
