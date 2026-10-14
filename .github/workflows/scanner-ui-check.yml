@@ -9,6 +9,7 @@ on:
       - 'timeclock/scannerLightspeedRoles.js'
       - 'timeclock/server.js'
       - 'tests/scannerLightspeedRoles.test.js'
+      - 'tests/lightspeedOrderDetection.test.cjs'
       - '.github/workflows/scanner-ui-check.yml'
 jobs:
   ui:
@@ -59,3 +60,5 @@ jobs:
         run: node --test tests/scannerSupplierTemplates.test.js
       - name: Verify linked Lightspeed user role eligibility
         run: node --test tests/scannerLightspeedRoles.test.js
+      - name: Verify Lightspeed sale and invoice detection
+        run: node --test tests/lightspeedOrderDetection.test.cjs
