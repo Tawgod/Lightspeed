@@ -12,6 +12,37 @@ const signInButton=document.getElementById('sign-in');
 const signOutButton=document.getElementById('sign-out');
 let scannerSession=null;
 let draftAvailable=false;
+let supplierRecords=[];
+let supplierVerifiedId=null;
+let supplierMatched=false;
+let lookupGeneration=0;
+let lookupBusy=false;
+let pendingLookup=false;
+const SUPPLIER_DOMAINS={'acdd.com':'ACD Distribution'};
+function normalizedSupplierName(value){return String(value||'').toLowerCase().replace(/[^a-z0-9]/g,'');}
+function chosenSupplierId(){const name=normalizedSupplierName(supplierInput.value);const exact=supplierRecords.filter(s=>normalizedSupplierName(s.name)===name);return exact.length===1?exact[0].id:null;}
+function resolveSupplier(){
+  supplierVerifiedId=chosenSupplierId();supplierMatched=!!supplierVerifiedId;
+  supplierVerification.textContent=supplierMatched?'Matched existing supplier: '+supplierRecords.find(x=>x.id===supplierVerifiedId).name:'⚠ No exact supplier match. Review or choose an existing supplier before proposing creation.';
+  supplierVerification.style.color=supplierMatched?'#2d8053':'#b56309';
+}
+async function lookupSuppliers(){
+  if(!scannerSession||scannerSession.expiresAt<=Date.now())return;
+  try{
+    const response=await fetch(SCANNER_API+'/suppliers',{headers:{Authorization:'Bearer '+scannerSession.token},cache:'no-store'});
+    if(!response.ok)throw new Error('Supplier lookup failed ('+response.status+')');
+    const result=await response.json();
+    supplierRecords=Array.isArray(result.suppliers)?result.suppliers:[];
+    const list=document.getElementById('supplier-options');list.replaceChildren();
+    for(const supplier of supplierRecords){const option=document.createElement('option');option.value=supplier.name;list.append(option);}
+    const alias=SUPPLIER_DOMAINS[sourceDomain];
+    const suggestion=supplierInput.value.trim();
+    const exact=supplierRecords.find(x=>normalizedSupplierName(x.name)===normalizedSupplierName(suggestion));
+    if(!exact && alias && supplierRecords.some(x=>normalizedSupplierName(x.name)===normalizedSupplierName(alias)))supplierInput.value=alias;
+    resolveSupplier();
+  }catch(error){supplierRecords=[];resolveSupplier();supplierVerification.textContent='⚠ Supplier records could not be verified. '+error.message;}
+}
+
 
 function clearScannerSession(){
   scannerSession=null;
@@ -22,6 +53,7 @@ function clearScannerSession(){
   signInButton.hidden=false;
   pinField.disabled=false;
   checkButton.disabled=true;
+  lookupGeneration++;pendingLookup=false;createButton.disabled=true;
   employeeStatus.textContent='Not signed in. Use your Timeclock PIN.';
 }
 signOutButton.addEventListener('click',clearScannerSession);
@@ -54,8 +86,12 @@ signInForm.addEventListener('submit',async event=>{
     pinField.disabled=true;
     signInButton.hidden=true;
     signOutButton.hidden=false;
-    employeeStatus.textContent='Signed in as '+(data.employee.name||'employee')+'. '+(data.employee.canApprove===true?'Scanner approval permission verified. Product creation remains disabled until the write workflow is approved.':'Read-only product lookup enabled.');
+    const role=data.employee.role?' ('+data.employee.role+')':'';
+    const reasons={lightspeed_account_not_linked:'No Lightspeed user link was found for this PIN.',lightspeed_user_not_found:'The linked Lightspeed account could not be found.',lightspeed_role_not_recognized:'The Lightspeed role could not be verified.',lightspeed_lookup_unavailable:'Lightspeed permissions could not be checked.',role_read_only:'Lightspeed returned a read-only role.'};
+    employeeStatus.textContent='Signed in as '+(data.employee.name||'employee')+role+'. '+(data.employee.canApprove===true?'Approval access verified (product writes disabled).':'Read-only: '+(reasons[data.employee.permissionReason]||'Approval permission not verified.'));
     checkButton.disabled=!draftAvailable;
+    await lookupSuppliers();
+    if(draftAvailable)queueProductLookup();
   }catch(error){
     scannerSession=null;
     employeeStatus.textContent=error.message;
@@ -66,7 +102,7 @@ signInForm.addEventListener('submit',async event=>{
 });
 
 const keys=['name','sku','supplierSku','upc','brand','cost','msrp','weight','imageUrl','advertisedPrice'];
-const labels={name:'Product name',sku:'General SKU (Lightspeed)',supplierSku:'Supplier reorder number',upc:'UPC / GTIN',brand:'Manufacturer / Brand',cost:'Supplier Cost (reference)',msrp:'MSRP (reference)',weight:'Weight (with unit)',imageUrl:'Image URL',advertisedPrice:'Supplier advertised price (reference only)'};
+const labels={name:'Product name',sku:'General SKU (Lightspeed)',supplierSku:'Supplier reorder number',upc:'UPC / GTIN',brand:'Manufacturer / Brand',cost:'Supplier Cost (reference)',msrp:'MSRP (reference)',weight:'Weight (with unit)',imageUrl:'Image URL',advertisedPrice:'MAP price (verify with supplier)'};
 const status=document.getElementById('status');
 const matchStatus=document.getElementById('match-status');
 const matchesElement=document.getElementById('matches');
@@ -135,8 +171,8 @@ document.getElementById('remove-supplier-snapshot').addEventListener('click',asy
 let verifiedProductSignature=null;
 let lastMatches=null;
 function signature(){return JSON.stringify({...currentProduct(),supplier:supplierInput.value.trim()});}
-supplierInput.addEventListener('input',invalidateVerification);
-function invalidateVerification(){verifiedProductSignature=null;lastMatches=null;createButton.disabled=true;createPreview.hidden=true;matchStatus.textContent='Product changed — check existing products again before preparing creation.';}
+supplierInput.addEventListener('input',()=>{invalidateVerification();resolveSupplier();queueProductLookup();});
+function invalidateVerification(){lookupGeneration++;verifiedProductSignature=null;lastMatches=null;createButton.disabled=true;createPreview.hidden=true;matchStatus.textContent='Product changed — checking for existing products…';}
 
 function currentProduct(){
   const product=Object.fromEntries(keys.map(k=>[k,document.getElementById('field-'+k).value.trim()]));
@@ -145,22 +181,23 @@ function currentProduct(){
 }
 function showMatches(matches){
   matchesElement.replaceChildren();
-  if(!matches.length){matchesElement.textContent='No matches returned by both services. This is not approval to create a product.';return;}
+  if(!matches.length){matchesElement.textContent='No potential products found in either matching service.';return;}
   for(const match of matches){
     const box=document.createElement('div');box.className='card';
     const title=document.createElement('strong');title.textContent=match.name||'(Unnamed product)';
-    const detail=document.createElement('p');
-    detail.textContent=['SKU: '+(match.sku||'—'),'UPC: '+(match.upc||'—'),'Lightspeed ID: '+(match.lightspeedId||'not linked'),'Sources: '+match.sources.join(', ')].join(' | ');
-    box.append(title,detail);
-    if(match.lightspeedId){
-      const select=document.createElement('button');select.type='button';select.textContent='Compare this product';
-      select.addEventListener('click',()=>{
-        document.getElementById('existing').value=match.lightspeedId;
-        const diffs=['name','sku','upc','brand','description'].filter(k=>String(match[k]||'').trim()!==String(currentProduct()[k]||'').trim());
-        matchStatus.textContent='Selected '+match.name+'. Fields to review: '+(diffs.join(', ')||'none')+'. No changes have been made.';
-      });
-      box.append(select);
-    }
+    const desc=document.createElement('p');desc.textContent='SKU: '+(match.sku||'Missing')+' · Description: '+(match.description||'Missing');
+    const missing=[];
+    if(!match.upc)missing.push('UPC');
+    if(match.weightKnown && (!match.weight||Number(match.weight)===0))missing.push('Weight');
+    if(match.pictureKnown && !match.imageUrl)missing.push('Picture');
+    const unknown=[];
+    if(!match.weightKnown)unknown.push('Weight');
+    if(!match.pictureKnown)unknown.push('Picture');
+    const alert=document.createElement('p');
+    alert.className=missing.length?'missing':'complete';
+    alert.textContent=missing.length?'Missing: '+missing.join(', '):'No confirmed missing fields';
+    if(unknown.length)alert.textContent+=' · Not verified: '+unknown.join(', ');
+    box.append(title,desc,alert);
     matchesElement.append(box);
   }
 }
@@ -173,26 +210,26 @@ function loadScannerDraft(d){
   draftAvailable=true;
   const p=d.product||{};
   sourceDomain=String(d.supplierDomain||'').trim().toLowerCase();
-  supplierInput.value=String(p.supplierName||sourceDomain||'').trim();
+  supplierInput.value=String(p.supplierName||SUPPLIER_DOMAINS[sourceDomain]||sourceDomain||'').trim();
   supplierVerification.textContent=p.supplierName
     ? 'Supplier detected from site: verify this matches an existing supplier before approval.'
     : 'Suggested from website domain only. Enter the actual supplier name and verify against existing suppliers.';
   if(d.snapshotWarning)snapshotStatus.textContent=d.snapshotWarning;
   refreshSupplierSnapshot().catch(error=>{snapshotStatus.textContent='Snapshot unavailable: '+error.message;});
   if(/^https?:\/\//.test(d.sourceUrl||'')){document.getElementById('source').href=d.sourceUrl;}
-  document.getElementById('source').textContent=d.sourceUrl||'Unknown source';
-  document.getElementById('original').textContent=JSON.stringify({capturedAt:d.capturedAt,candidates:d.candidates,product:p},null,2);
+  document.getElementById('source').textContent=d.sourceUrl?'Source page':'Source unavailable';
   const fields=document.getElementById('fields');
   for(const k of keys){const label=document.createElement('label');label.textContent=labels[k];const input=document.createElement('input');input.id='field-'+k;
     input.value=k==='supplierSku' ? (p.supplierSku??p.sku??'') : k==='sku' ? (p.supplierSku ? (p.sku??'') : '') : (p[k]??'');
-    input.addEventListener('input',invalidateVerification);label.append(input);fields.append(label);}
+    input.addEventListener('input',()=>{invalidateVerification();queueProductLookup();});label.append(input);fields.append(label);}
   document.getElementById('description').value=p.description||'';
-  document.getElementById('description').addEventListener('input',invalidateVerification);
+  document.getElementById('description').addEventListener('input',()=>{invalidateVerification();queueProductLookup();});
   const missing=['name','upc'].filter(k=>!p[k]);
   if(p.availabilityNote)document.getElementById('supplier-status').textContent='Supplier listing: '+p.availabilityNote+' (confirm availability before ordering).';
   if(p.supplierName)document.getElementById('supplier-name').textContent='Supplier: '+p.supplierName;
   document.getElementById('warnings').textContent=missing.length?'Not found on supplier page — enter or verify manually: '+missing.join(', ')+'. Supplier reorder number is separate from general SKU.':'';
   checkButton.disabled=!scannerSession || scannerSession.expiresAt<=Date.now();
+  if(scannerSession){lookupSuppliers().then(()=>queueProductLookup());}
 }
 chrome.storage.local.get('scannerDraft',({scannerDraft:d})=>loadScannerDraft(d));
 document.getElementById('copy').addEventListener('click',async()=>{
@@ -200,41 +237,49 @@ document.getElementById('copy').addEventListener('click',async()=>{
   catch(e){status.textContent='Clipboard failed: '+e.message;}
 });
 
-checkButton.addEventListener('click',async()=>{
-  checkButton.disabled=true;createButton.disabled=true;createPreview.hidden=true;verifiedProductSignature=null;lastMatches=null;matchStatus.textContent='Checking…';matchesElement.replaceChildren();
+async function checkExistingProducts(){
+  if(!scannerSession||scannerSession.expiresAt<=Date.now()){
+    matchStatus.textContent='Sign in to check existing products.';createButton.disabled=true;return;
+  }
+  if(!draftAvailable)return;
+  const generation=++lookupGeneration;
+  lookupBusy=true;checkButton.disabled=true;createButton.disabled=true;createPreview.hidden=true;
+  verifiedProductSignature=null;lastMatches=null;matchStatus.textContent='Checking existing products…';matchesElement.replaceChildren();
+  const currentSignature=signature();
   try{
-    if(!scannerSession || scannerSession.expiresAt<=Date.now()) {
-      clearScannerSession();
-      throw new Error('Your scanner session has expired. Please sign in again.');
-    }
-    // Both existing Special Orders searches are executed behind one authenticated
-    // server endpoint. The browser never receives the Special Orders admin key.
-    const body=toSpecialOrderMatchRequest(currentProduct());
+    const product=currentProduct();
+    const body=toSpecialOrderMatchRequest(product,supplierVerifiedId);
     const response=await fetch(SCANNER_API+'/matches',{
       method:'POST',cache:'no-store',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+scannerSession.token},
       body:JSON.stringify(body)
     });
-    if(!response.ok) {
-      if(response.status===401||response.status===403)clearScannerSession();
-      throw new Error(response.status===404||response.status===503
-        ? 'Secure scanner service is not available yet.'
-        : 'Product verification failed ('+response.status+').');
-    }
+    if(!response.ok)throw new Error(response.status===401||response.status===403?'Sign in again to check products.':'Product verification failed ('+response.status+').');
     const data=await response.json();
-    if(data?.verified!==true || !Array.isArray(data.local?.matches) || !Array.isArray(data.remote?.matches)){
-      throw new Error('Scanner service did not verify both matching sources.');
-    }
-    const lookup=async kind=>kind==='local'?data.local:data.remote;
-    const result=await checkProductMatches(currentProduct(),lookup);
-    if(!result.verified)throw new Error('Incomplete verification');
+    if(data?.verified!==true||!Array.isArray(data.local?.matches)||!Array.isArray(data.remote?.matches))throw new Error('Incomplete matching results');
+    const result=await checkProductMatches(product,async kind=>kind==='local'?data.local:data.remote,supplierVerifiedId);
+    if(generation!==lookupGeneration||currentSignature!==signature())return;
     showMatches(result.matches);
-    verifiedProductSignature=signature();lastMatches=result.matches;
-    createButton.disabled=result.matches.length!==0;
-    matchStatus.textContent=result.matches.length ? 'Potential matches found. Review them; create is unavailable.' : 'No matches found by both services. You may prepare a creation request for review; nothing will be saved.';
-  }catch(e){matchStatus.textContent='Not verified: '+e.message;}
-  finally{checkButton.disabled=false;}
-});
+    verifiedProductSignature=currentSignature;lastMatches=result.matches;
+    createButton.disabled=result.matches.length!==0||!supplierMatched;
+    matchStatus.textContent=result.matches.length
+      ? result.matches.length+' potential product match(es). Review missing information below.'
+      : supplierMatched?'No existing products matched. You can prepare a new-item proposal.':'No product matched, but supplier selection needs review.';
+  }catch(error){
+    if(generation===lookupGeneration)matchStatus.textContent='Unable to verify existing products: '+error.message;
+  }finally{
+    lookupBusy=false;checkButton.disabled=false;
+    if(pendingLookup){pendingLookup=false;queueProductLookup();}
+  }
+}
+let lookupDelay=null;
+function queueProductLookup(){
+  if(lookupDelay)clearTimeout(lookupDelay);
+  if(!scannerSession||!draftAvailable)return;
+  if(lookupBusy){pendingLookup=true;return;}
+  lookupDelay=setTimeout(()=>{lookupDelay=null;checkExistingProducts();},250);
+}
+checkButton.addEventListener('click',()=>{if(lookupDelay)clearTimeout(lookupDelay);lookupDelay=null;checkExistingProducts();});
 
 // Prepare a proposed new item only after both independent match services succeed.
 // This button never posts product writes or calls Lightspeed create endpoints.
@@ -246,13 +291,13 @@ createButton.addEventListener('click',()=>{
     invalidateVerification();createPreview.hidden=false;createPreview.textContent='Re-check the current product before preparing creation.';return;
   }
   const product=currentProduct();
-  if(!supplierInput.value.trim()){createPreview.hidden=false;createPreview.textContent='Confirm a supplier before preparing a new product.';return;}
+  if(!supplierMatched){createPreview.hidden=false;createPreview.textContent='Choose a verified existing supplier before preparing a new product. Unmatched suppliers need an administrator review.';return;}
   if(!product.name || (!product.upc && !product.sku && !product.supplierSku)){
     createPreview.hidden=false;createPreview.textContent='Enter a product name and at least one identifier first.';return;
   }
   createPreview.hidden=false;
   createPreview.textContent='Create Item — approval preview only. No Lightspeed changes will be made.\\n'+
-    JSON.stringify({supplierSuggestion:supplierInput.value.trim(),supplierWebsite:sourceDomain,supplierNotYetVerified:true,name:product.name,generalSku:product.sku,supplierReorderNumber:product.supplierSku,upc:product.upc,brand:product.brand,description:product.description,advertisedPrice:product.advertisedPrice,cost:product.cost,msrp:product.msrp,weight:product.weight},null,2)+
+    JSON.stringify({supplierSuggestion:supplierInput.value.trim(),supplierWebsite:sourceDomain,supplierId:supplierVerifiedId,supplierNotYetVerified:false,name:product.name,generalSku:product.sku,supplierReorderNumber:product.supplierSku,upc:product.upc,brand:product.brand,description:product.description,mapPrice:product.advertisedPrice,cost:product.cost,msrp:product.msrp,weight:product.weight},null,2)+
     '\\nCreation requires a separately approved, employee-authorized backend workflow.';
 });
 
@@ -308,7 +353,7 @@ scanOpenButton.addEventListener('click',async()=>{
     draft.supplierDomain=url.hostname.toLowerCase().replace(/^www\./,'');
     await chrome.storage.local.set({scannerDraft:draft});
     loadScannerDraft(draft);
-    status.textContent='Captured '+(draft.product.name||'supplier product')+'. Review the fields and check existing products.';
+    status.textContent='Captured '+(draft.product.name||'supplier product')+'. Review the fields; existing products are checked automatically.';
   }catch(error){status.textContent='Could not scan supplier page: '+error.message;}
   finally{scanOpenButton.disabled=false;}
 });
