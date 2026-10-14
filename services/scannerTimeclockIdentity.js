@@ -17,7 +17,7 @@ export function createTimeclockScannerIdentity({baseUrl,serviceSecret,fetchImpl=
     if(!response.ok)throw Object.assign(new Error('Timeclock employee verification denied.'),{status:response.status===401?401:response.status===403?403:503});
     const data=await response.json();
     if(!data?.employee?.id || typeof data.employee.canLookup!=='boolean'||typeof data.employee.canApprove!=='boolean')throw new Error('Invalid Timeclock identity response.');
-    return {id:data.employee.id,name:data.employee.name,canLookup:data.employee.canLookup,canApprove:data.employee.canApprove};
+    return {id:data.employee.id,name:data.employee.name,canLookup:data.employee.canLookup,canApprove:data.employee.canApprove,role:typeof data.employee.role==='string'?data.employee.role:null,permissionSource:typeof data.employee.permissionSource==='string'?data.employee.permissionSource:'read_only',permissionReason:typeof data.employee.permissionReason==='string'?data.employee.permissionReason:null};
   }
   return {
     verifyPin:pin=>request('/api/timeclock/integrations/scanner/verify-pin',{pin}),
