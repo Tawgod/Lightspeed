@@ -42,3 +42,17 @@ ACD-specific fallback reads visible `SKU:`, `UPC:`, `Manufacturer:`, `MSRP:`, `W
 
 GitHub Actions fixture test: https://github.com/Tawgod/Lightspeed/actions/runs/38598715417 (**passed**, including ACD SKU/UPC, inline MSRP, weight, invalid UPC rejection, unrelated supplier isolation and generic GTIN).
 Still needed: test the extension on a live ACD product page in Chrome to verify the site's actual DOM text and authenticated review window; if a detail does not populate, capture that page's visible DOM structure and refine extractor. No deployment or product write permitted by this change.
+
+## Supplier snapshot reference and proposed supplier defaults (2026-10-14)
+
+**Status: In Development, read-only preview only.** The scanner popup has a collapsed **Supplier snapshot (optional)** setting. If selected, scanning the active supplier tab captures the *visible tab* through Chrome's `captureVisibleTab` permission, resizes it to at most 900 × 650 pixels, and saves one JPEG per supplier domain in `chrome.storage.local` (up to eight domain snapshots per browser profile). No screenshot leaves the browser. Capture is explicit; employees should avoid pages displaying customer, account or employee information.
+
+The scanner review window has a collapsed **Supplier snapshot / template reference** section where an employee can view an existing snapshot, manually upload a JPG/PNG/WebP screenshot (resized and converted locally), or delete it. These are **reference images**, not executable extraction templates. They do not train a model or automatically change supplier field mappings.
+
+**Supplier default behavior:** The review window suggests a supplier name from known page metadata (e.g., `ACD Distribution`) or, when no supplier name is known, the supplier website domain. Employees can change it before preparing a new item. The suggestion is included in the **Prepare Create Item** proposal only after both local and remote product match services succeed and return zero matches. Any edits to the supplier invalidate the duplicate-check result and require a recheck.
+
+**Existing supplier verification is still required**: A domain-derived suggestion does **not** prove the supplier exists or is unique in the supplier database; this preview does not create suppliers or products automatically. Before enabling a future create endpoint, add an authenticated server-side supplier lookup resolving name, website/domain aliases and existing Lightspeed supplier IDs, with a conflict/ambiguity selection interface. Only after confirmation should a new supplier be created, and it must be deduplicated/idempotent.
+
+**Shared templates later:** For other store PCs to use the same snapshot or supplier-specific extraction selectors, add an approved Railway-backed template registry with role-gated uploads, explicit screenshot retention/deletion, size limits, and no sensitive account/customer data. A screenshot by itself is a human reference; field extraction rules should be confirmed on real DOM data before activation.
+
+Testing: GitHub Actions `38599555517` scanner UI and `38599555479` unpacked extension preview both passed. Browser acceptance and shared-template storage remain outstanding. No Railway production config, Lightspeed supplier or product records changed.
