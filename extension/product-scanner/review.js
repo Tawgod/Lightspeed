@@ -152,7 +152,27 @@ preorderCheckbox.addEventListener('change',()=>{
   if(preorderCheckbox.checked)loadPreorderCampaigns();
   stageEligibility();
 });
-preorderSelect.addEventListener('change',stageEligibility);
+async function refreshStagedItems(){
+  const panel=document.getElementById('preorder-queued-list');
+  panel.replaceChildren();
+  if(!preorderSelect.value||!scannerSession)return;
+  try{
+    const response=await fetch(SCANNER_API+'/preorder-campaigns/'+encodeURIComponent(preorderSelect.value)+'/staged',{
+      headers:{Authorization:'Bearer '+scannerSession.token},cache:'no-store'
+    });
+    if(!response.ok)throw new Error('Staged items could not be loaded.');
+    const result=await response.json();
+    const title=document.createElement('strong');
+    title.textContent=(result.items?.length||0)+' items staged for review';
+    panel.append(title);
+    for(const item of (result.items||[]).slice(0,10)){
+      const row=document.createElement('p');
+      row.textContent=(item.item_name||'Product')+(item.sku?' — '+item.sku:'')+' ('+(item.status||'pending')+')';
+      panel.append(row);
+    }
+  }catch(error){panel.textContent=error.message;}
+}
+preorderSelect.addEventListener('change',()=>{stageEligibility();refreshStagedItems();});
 stagePreorderButton.addEventListener('click',async()=>{
   if(stagePreorderButton.disabled||!preorderCheckbox.checked)return;
   stagePreorderButton.disabled=true;
@@ -174,7 +194,7 @@ stagePreorderButton.addEventListener('click',async()=>{
     const data=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(data.error||'Could not stage item ('+response.status+').');
     preorderStatus.textContent='Staged '+(data.item?.name||'product')+' for review in '+campaign.name+'. Nothing posted to Discord.';
-    preorderCheckbox.checked=false;preorderOptions.hidden=true;
+    await refreshStagedItems();
   }catch(error){preorderStatus.textContent=error.message;}
   stageEligibility();
 });
