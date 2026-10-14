@@ -102,6 +102,28 @@ document.getElementById('combine').addEventListener('click', async () => {
 
 detectContext();
 
+// One small image per supplier domain, saved only inside this Chrome profile.
+// No screenshot is sent to Railway, Lightspeed or a supplier.
+async function saveSupplierSnapshot(tab, domain) {
+  const raw = await chrome.tabs.captureVisibleTab(tab.windowId, {format:'jpeg',quality:55});
+  const image = new Image();
+  await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=()=>reject(new Error('Could not load snapshot'));image.src=raw;});
+  const scale=Math.min(1,900/image.width,650/image.height);
+  const canvas=document.createElement('canvas');
+  canvas.width=Math.max(1,Math.floor(image.width*scale));
+  canvas.height=Math.max(1,Math.floor(image.height*scale));
+  canvas.getContext('2d').drawImage(image,0,0,canvas.width,canvas.height);
+  const thumbnail=canvas.toDataURL('image/jpeg',0.58);
+  if(thumbnail.length>450000)throw new Error('Snapshot too large; try a smaller browser window.');
+  const key='supplierSnapshot:'+domain;
+  const indexKey='supplierSnapshotDomains';
+  const old=await chrome.storage.local.get([indexKey]);
+  const domains=[domain,...(Array.isArray(old[indexKey])?old[indexKey]:[]).filter(d=>d!==domain)];
+  const evicted=domains.slice(8);
+  if(evicted.length)await chrome.storage.local.remove(evicted.map(d=>'supplierSnapshot:'+d));
+  await chrome.storage.local.set({[key]:{domain,image:thumbnail,capturedAt:new Date().toISOString()},[indexKey]:domains.slice(0,8)});
+}
+
 document.getElementById('scan-page').addEventListener('click', async () => {
   setStatus('Capturing current product page…');
   try {
@@ -161,6 +183,17 @@ document.getElementById('scan-page').addEventListener('click', async () => {
         }:{name:meta('og:title')||document.title,description:meta('og:description')||meta('description'),sku:'',supplierSku:acdSupplierSku,upc:capturedUpc,brand:acdManufacturer,imageUrl:meta('og:image'),advertisedPrice:null,cost:acdPrice,msrp:acdMsrp,weight:acdWeight,supplierName:isAcd?'ACD Distribution':'',availabilityNote:acdStatus}};
       }
     });
+    try {
+      const url=new URL(tab.url);
+      draft.supplierDomain=url.hostname.toLowerCase().replace(/^www\./,'');
+      if(document.getElementById('save-supplier-snapshot')?.checked) {
+        await saveSupplierSnapshot(tab,draft.supplierDomain);
+        draft.snapshotSaved=true;
+      }
+    }catch(error){
+      // Snapshot failures must not prevent read-only scanning.
+      draft.snapshotWarning='Optional supplier snapshot was not saved: '+error.message;
+    }
     await chrome.storage.local.set({scannerDraft:draft});
     await chrome.windows.create({url:chrome.runtime.getURL('product-scanner/review.html'),type:'popup',width:1400,height:850});
     window.close();
