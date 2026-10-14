@@ -732,38 +732,38 @@ export function createSpecialOrdersRouter({
   }
 
   function parseGwListing(name='',description=''){
-    const sourceName=String(name||'').replace(/\\s+/g,' ').trim();
-    const desc=String(description||'').replace(/\\s+/g,' ').trim();
+    const sourceName=String(name||'').replace(/\s+/g,' ').trim();
+    const desc=String(description||'').replace(/\s+/g,' ').trim();
     const text=(sourceName+' '+desc).trim();
     const lower=text.toLowerCase();
     const reasons=[];
-    const french=/\\b(french|français|francais|version française|version francaise|québec|quebec)\\b/i.test(text);
-    const fixture=/\\b(fixture|display|rack|stockist|assortment|range\\s+set|launch\\s+set|paint\\s+range|counter\\s+unit|floor\\s+stand)\\b/i.test(lower);
-    const packMatch=text.match(/\\(\\s*x\\s*(\\d+)\\s*\\)|\\b(\\d+)\\s*[- ]?pack\\b|\\bpack\\s+of\\s+(\\d+)\\b|\\bcase\\s+of\\s+(\\d+)\\b/i);
+    const french=/\b(french|français|francais|version française|version francaise|québec|quebec)\b/i.test(text);
+    const fixture=/\b(fixture|display|rack|stockist|assortment|range\s+set|launch\s+set|paint\s+range|counter\s+unit|floor\s+stand)\b/i.test(lower);
+    const packMatch=text.match(/\(\s*x\s*(\d+)\s*\)|\b(\d+)\s*[- ]?pack\b|\bpack\s+of\s+(\d+)\b|\bcase\s+of\s+(\d+)\b/i);
     const casePackSize=Number(packMatch?.[1]||packMatch?.[2]||packMatch?.[3]||packMatch?.[4]||0)||null;
     let shortCode=null;
-    const codeMatch=text.match(/\\b(?:short\\s*code|product\\s*code|code|sku)\\s*[:#-]?\\s*([A-Z0-9][A-Z0-9_-]{2,20})\\b/i);
+    const codeMatch=text.match(/\b(?:short\s*code|product\s*code|code|sku)\s*[:#-]?\s*([A-Z0-9][A-Z0-9_-]{2,20})\b/i);
     if(codeMatch)shortCode=codeMatch[1].toUpperCase();
     let msrp=parseGwMoney('(?:MSRP|RRP|RETAIL(?:\\s+PRICE)?)',text);
     let cost=parseGwMoney('(?:COST|TRADE(?:\\s+PRICE)?|NET)',text);
-    const money=[...text.matchAll(/\\$(\\d+(?:\\.\\d{1,2})?)/g)].map(m=>Number(m[1])).filter(Number.isFinite);
+    const money=[...text.matchAll(/\$(\d+(?:\.\d{1,2})?)/g)].map(m=>Number(m[1])).filter(Number.isFinite);
     if(msrp==null && money.length)msrp=money[0];
     if(cost==null && money.length>1)cost=money[1];
     let itemDescription=sourceName
-      .replace(/\\b(?:short\\s*code|product\\s*code|code|sku)\\s*[:#-]?\\s*[A-Z0-9][A-Z0-9_-]{2,20}\\b/ig,'')
-      .replace(/\\b(?:MSRP|RRP|RETAIL(?:\\s+PRICE)?|COST|TRADE(?:\\s+PRICE)?|NET)\\s*[:\\-]?\\s*\\$?\\s*\\d+(?:\\.\\d{1,2})?/ig,'')
-      .replace(/\\s*[|•·]\\s*[|•·\\s]*/g,' ')
-      .replace(/\\s{2,}/g,' ')
+      .replace(/\b(?:short\s*code|product\s*code|code|sku)\s*[:#-]?\s*[A-Z0-9][A-Z0-9_-]{2,20}\b/ig,'')
+      .replace(/\b(?:MSRP|RRP|RETAIL(?:\s+PRICE)?|COST|TRADE(?:\s+PRICE)?|NET)\s*[:\-]?\s*\$?\s*\d+(?:\.\d{1,2})?/ig,'')
+      .replace(/\s*[|•·]\s*[|•·\s]*/g,' ')
+      .replace(/\s{2,}/g,' ')
       .trim()||sourceName;
     let suggestedSingleName=null;
     let suggestedSingleMsrp=null;
     if(casePackSize && casePackSize>1){
       suggestedSingleName=itemDescription
-        .replace(/\\(\\s*x\\s*\\d+\\s*\\)/ig,'')
-        .replace(/\\b\\d+\\s*[- ]?pack\\b/ig,'')
-        .replace(/\\bpack\\s+of\\s+\\d+\\b/ig,'')
-        .replace(/\\bcase\\s+of\\s+\\d+\\b/ig,'')
-        .replace(/\\s{2,}/g,' ').trim()||itemDescription;
+        .replace(/\(\s*x\s*\d+\s*\)/ig,'')
+        .replace(/\b\d+\s*[- ]?pack\b/ig,'')
+        .replace(/\bpack\s+of\s+\d+\b/ig,'')
+        .replace(/\bcase\s+of\s+\d+\b/ig,'')
+        .replace(/\s{2,}/g,' ').trim()||itemDescription;
       if(msrp!=null)suggestedSingleMsrp=Math.round((msrp/casePackSize)*100)/100;
       reasons.push('Case pack x'+casePackSize+' — review suggested single-item name/price before posting');
     }
