@@ -36,7 +36,7 @@ export function publicScannerMatch(row = {}, source) {
     brand: clean(row.brand, 250),
     weight: row.weight == null ? null : String(row.weight).slice(0,80),
     imageUrl: clean(row.image_url || row.imageUrl || row.image?.url || row.images?.[0]?.url || row.image, 500),
-    weightKnown: row.weight !== undefined && row.weight !== null,
+    weightKnown: Object.prototype.hasOwnProperty.call(row,'weight'),
     pictureKnown: row.image_url !== undefined || row.imageUrl !== undefined || row.image !== undefined || row.images !== undefined,
     score: Number.isFinite(Number(row.score)) ? Math.max(0, Math.min(100, Number(row.score))) : 0,
     reasons: Array.isArray(row.reasons) ? row.reasons.filter(s => typeof s === 'string').slice(0, 8) : []
