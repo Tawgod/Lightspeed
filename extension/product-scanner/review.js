@@ -124,7 +124,7 @@ let verifiedCampaigns=[];
 function stageEligibility(){
   const approved=!!scannerSession && scannerSession.expiresAt>Date.now() && scannerSession.canApprove===true;
   const valid=approved && !!verifiedProductSignature && verifiedProductSignature===signature() &&
-    Array.isArray(lastMatches) && lastMatches.length===0 && supplierMatched;
+    Array.isArray(lastMatches) && supplierMatched;
   stagePreorderButton.disabled=!(preorderCheckbox.checked&&preorderSelect.value&&valid);
 }
 async function loadPreorderCampaigns(){
@@ -159,8 +159,8 @@ stagePreorderButton.addEventListener('click',async()=>{
   if(!scannerSession || scannerSession.expiresAt<=Date.now() || !scannerSession.canApprove){
     preorderStatus.textContent='Manager or Admin approval required. Sign in again.';return;
   }
-  if(!verifiedProductSignature||verifiedProductSignature!==signature()||!Array.isArray(lastMatches)||lastMatches.length || !supplierMatched){
-    preorderStatus.textContent='Product and supplier must be verified with no existing product matches before staging.';stageEligibility();return;
+  if(!verifiedProductSignature||verifiedProductSignature!==signature()||!Array.isArray(lastMatches)||!supplierMatched){
+    preorderStatus.textContent='Product and supplier must pass duplicate verification before staging.';stageEligibility();return;
   }
   const campaign=verifiedCampaigns.find(c=>String(c.id)===preorderSelect.value);
   if(!campaign){preorderStatus.textContent='Select a valid existing campaign.';return;}
