@@ -2548,6 +2548,7 @@ export function createSpecialOrdersRouter({
               i.notes,i.created_at,i.updated_at,i.ordered_at,i.preferred_supplier_id,i.sourcing_department_id,
               o.customer_id,c.name AS customer_name,
               ps.name AS preferred_supplier_name,
+              p.product_category,
               d.name AS category_name,
               COALESCE(sp.supplier_sku,i.requested_sku) AS supplier_sku,
               sp.id AS supplier_product_id,
@@ -2560,6 +2561,7 @@ export function createSpecialOrdersRouter({
        JOIN special_orders o ON o.id=i.special_order_id
        LEFT JOIN customers c ON c.id=o.customer_id
        LEFT JOIN suppliers ps ON ps.id=i.preferred_supplier_id
+       LEFT JOIN products p ON p.id=i.product_id
        LEFT JOIN sourcing_departments d ON d.id=i.sourcing_department_id
        LEFT JOIN supplier_products sp ON sp.product_id=i.product_id AND sp.supplier_id=i.preferred_supplier_id
        LEFT JOIN LATERAL (
@@ -2570,7 +2572,7 @@ export function createSpecialOrdersRouter({
        WHERE i.status = ANY($1::text[])
        ORDER BY
          CASE WHEN $2='supplier' THEN COALESCE(ps.name,'ZZZ Unassigned') ELSE '' END,
-         CASE WHEN $2='category' THEN COALESCE(d.name,'ZZZ Unassigned') ELSE '' END,
+         CASE WHEN $2='category' THEN COALESCE(p.product_category,d.name,'ZZZ Unassigned') ELSE '' END,
          i.created_at,i.id`,
       [statuses,view]
     );
