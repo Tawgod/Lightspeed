@@ -49,23 +49,65 @@
   footer.append(summary,review);body.append(description,toolbar,notice,items);shell.append(header,body,footer);shadow.append(style,shell);document.documentElement.append(host);
   const {poCompanionContext:context,poCompanionDrafts:allDrafts={}}=await chrome.storage.local.get(['poCompanionContext','poCompanionDrafts']);
   if(!context?.poId){description.textContent='No PO selected.';notice.textContent='Open the Lightspeed purchase order and choose “Use Current PO” from the Hobby Corner extension first.';review.disabled=true;return;}
-  description.textContent='PO '+context.poId+' • Supplier and line data pending secure read-only API.';
-  notice.textContent='Read-only development prototype. Live PO line retrieval is not connected. No changes can be sent to Lightspeed.';
-  const key=String(context.poId)+':'+String(context.supplierId||'unresolved');
-  let draft=allDrafts[key]||{poId:context.poId,supplierId:context.supplierId||null,identifierMode:'supplierSku',items:{}};
-  mode.value=draft.identifierMode||'supplierSku';
-  const save=async()=>{draft.updatedAt=new Date().toISOString();const stored=(await chrome.storage.local.get('poCompanionDrafts')).poCompanionDrafts||{};stored[key]=draft;await chrome.storage.local.set({poCompanionDrafts:stored});};
-  mode.onchange=()=>{draft.identifierMode=mode.value;save();render();};
-  const lines=[]; // populated only by a future authenticated PO read endpoint.
+  description.textContent='PO '+context.poId+' • Sign in to load items.';
+  notice.textContent='Read-only test build. No PO or product changes can be submitted.';
+  const login=document.createElement('div');login.className='toolbar';
+  const pin=document.createElement('input');pin.type='password';pin.inputMode='numeric';pin.maxLength=4;pin.placeholder='Timeclock PIN';pin.setAttribute('aria-label','Employee Timeclock PIN');
+  const signIn=document.createElement('button');signIn.textContent='Sign in & Load PO';
+  const reload=document.createElement('button');reload.textContent='Reload PO';reload.hidden=true;
+  const signOut=document.createElement('button');signOut.textContent='Sign out';signOut.hidden=true;
+  login.append(pin,signIn,reload,signOut);body.insertBefore(login,toolbar);
+  let key=null,draft=null,lines=[];
+  const save=async()=>{
+    if(!key||!draft)return;
+    draft.updatedAt=new Date().toISOString();
+    const stored=(await chrome.storage.local.get('poCompanionDrafts')).poCompanionDrafts||{};
+    stored[key]=draft;await chrome.storage.local.set({poCompanionDrafts:stored});
+  };
+  mode.onchange=()=>{if(!draft)return;draft.identifierMode=mode.value;save();render();};
+  async function loadPo(){
+    const result=await chrome.runtime.sendMessage({type:'HCT_PO_LOAD',poId:String(context.poId)});
+    if(!result?.ok)throw new Error(result?.error||'PO load failed.');
+    const po=result.data.purchaseOrder;
+    const supplierId=po.supplier?.localId;
+    if(!supplierId) {
+      lines=[];render();
+      throw new Error('PO loaded but supplier is not mapped. Supplier-specific codes are blocked until mapping is fixed.');
+    }
+    key=String(context.poId)+':'+String(supplierId);
+    draft=(await chrome.storage.local.get('poCompanionDrafts')).poCompanionDrafts?.[key]||
+      {poId:context.poId,supplierId,identifierMode:'supplierSku',items:{}};
+    mode.value=draft.identifierMode||'supplierSku';
+    lines=result.data.items;description.textContent='PO '+context.poId+' • '+(po.supplier?.name||'Supplier '+supplierId);
+    const warnings=lines.reduce((n,x)=>n+(x.warnings?.length?1:0),0);
+    notice.textContent=lines.length+' PO items loaded. '+warnings+' with warnings. Review only — no writes enabled.';
+    await save();render();reload.hidden=false;signOut.hidden=false;signIn.hidden=true;pin.hidden=true;
+  }
+  signIn.onclick=async()=>{
+    signIn.disabled=true;
+    try{
+      const p=pin.value;pin.value='';
+      const result=await chrome.runtime.sendMessage({type:'HCT_PO_LOGIN',pin:p});
+      if(!result?.ok)throw new Error(result?.error||'Sign-in failed.');
+      await loadPo();
+    }catch(error){notice.textContent=error.message;}
+    finally{signIn.disabled=false;pin.value='';}
+  };
+  reload.onclick=async()=>{try{await loadPo()}catch(error){notice.textContent=error.message;}};
+  signOut.onclick=async()=>{
+    await chrome.runtime.sendMessage({type:'HCT_PO_LOGOUT'});
+    lines=[];key=null;draft=null;render();signIn.hidden=false;pin.hidden=false;reload.hidden=true;signOut.hidden=true;
+    description.textContent='PO '+context.poId+' • Signed out.';notice.textContent='Sign in to reload the PO.';
+  };
   function render(){
     items.replaceChildren();count.textContent=lines.length+' items';
     for (const item of lines) {
       const row=document.createElement('div');row.className='item';
-      const state=draft.items[item.lineId]||{selected:false,proposed:{}};
+      const state=draft?.items?.[item.lineId]||{selected:false,proposed:{}};
       const top=document.createElement('div');top.className='line';
       const check=document.createElement('input');check.type='checkbox';check.checked=!!state.selected;
       const code=document.createElement('span');code.className='code';
-      const id=state.identifierOverride||draft.identifierMode;
+      const id=state.identifierOverride||draft?.identifierMode||'supplierSku';
       const value=id==='upc'?item.upc:item.supplierSku;
       code.textContent=value||('Missing '+(id==='upc'?'UPC':'supplier SKU'));
       if(!value)code.classList.add('warning');
@@ -83,9 +125,12 @@
         l.append(input);fields.append(l);
       }
       check.onchange=()=>{state.selected=check.checked;draft.items[item.lineId]=state;fields.hidden=!check.checked;save();};
-      row.append(fields);items.append(row);
+      row.append(fields);
+      if(item.warnings?.length){const warning=document.createElement('div');warning.className='warning';warning.textContent='⚠ '+item.warnings.join(', ').replaceAll('_',' ').toLowerCase();row.append(warning);}
+      items.append(row);
     }
-    summary.textContent=Object.values(draft.items).filter(x=>x.selected).length+' selected';
+    summary.textContent=Object.values(draft?.items||{}).filter(x=>x.selected).length+' selected';
+    review.disabled=!draft||!Object.values(draft.items).some(x=>x.selected);
   }
-  await save();render();review.disabled=true;
+  render();review.disabled=true;
 })();
