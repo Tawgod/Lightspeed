@@ -1,0 +1,41 @@
+name: Scanner review UI regression
+on:
+  push:
+    branches: [feature/scanner-fields-create-preview]
+    paths:
+      - 'extension/**'
+      - '.github/workflows/scanner-ui-check.yml'
+jobs:
+  ui:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check extension JavaScript
+        run: |
+          node --check extension/popup.js
+          node --check extension/product-scanner/review.js
+          node --check extension/product-scanner/special-orders-adapter.js
+      - name: Assert revised UI fields and safe creation flow
+        run: |
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          const review=fs.readFileSync('extension/product-scanner/review.js','utf8');
+          const html=fs.readFileSync('extension/product-scanner/review.html','utf8');
+          const popup=fs.readFileSync('extension/popup.js','utf8');
+          assert.match(review,/supplierSku/);
+          assert.match(review,/const keys=\['name','sku','supplierSku','upc','brand','imageUrl','advertisedPrice'\]/);
+          assert.doesNotMatch(review,/manufacturerPartNumber|currency/i);
+          assert.match(html,/id="create-item"/);
+          assert.match(html,/id="create-preview"/);
+          assert.match(review,/lastMatches.length/);
+          assert.doesNotMatch(review,/fetch\([^)]*\/create/);
+          assert.match(popup,/upcCandidates/);
+          assert.match(popup,/supplierSku:str\(p.sku\)/);
+          console.log('Scanner UI field and read-only create proposal assertions passed');
+          JS
