@@ -2,7 +2,7 @@ name: Package Scanner Unpacked Preview
 on:
   workflow_dispatch:
   push:
-    branches: [feature/scanner-fields-create-preview]
+    branches: [feature/scanner-fields-create-preview, feature/scanner-review-auto-lookup]
     paths:
       - 'extension/**'
       - '.github/workflows/scanner-preview-package.yml'
@@ -18,9 +18,10 @@ jobs:
           node --check extension/popup.js
           node --check extension/content.js
           node --check extension/product-scanner/review.js
+          node --check timeclock/server.js
           node --test tests/scannerAcdCapture.test.cjs
       - uses: actions/upload-artifact@v4
         with:
-          name: Hobby-Corner-Scanner-v0.3.20-unpacked-preview
+          name: Hobby-Corner-Scanner-v0.3.22-unpacked-preview
           path: extension/
           retention-days: 30
