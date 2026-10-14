@@ -14,7 +14,8 @@ export function validateScannerLookup(body = {}) {
     sku: clean(body.sku, 128),
     supplier_sku: clean(body.supplier_sku, 128),
     name: clean(body.name, 250),
-    description: clean(body.description, 500)
+    description: clean(body.description, 500),
+    ...(Number.isSafeInteger(Number(body.supplier_id)) && Number(body.supplier_id)>0 ? {supplier_id:Number(body.supplier_id)} : {})
   };
   if (!input.product_code && !input.sku && !input.supplier_sku && !input.name) {
     throw Object.assign(new Error('Product UPC, SKU, or name is required.'), { status: 400 });
