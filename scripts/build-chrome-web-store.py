@@ -55,6 +55,10 @@ def build() -> Path:
     manifest = json.loads((SOURCE / "manifest.json").read_text(encoding="utf-8"))
     if manifest.get("manifest_version") != 3:
         raise RuntimeError("Chrome Web Store requires Manifest V3")
+    if len(manifest.get("description", "")) > 132:
+        raise RuntimeError("Chrome Web Store manifest description exceeds 132 characters")
+    if len(manifest.get("name", "")) > 45:
+        raise RuntimeError("Chrome Web Store manifest name exceeds 45 characters")
     version = manifest["version"]
     if not isinstance(version, str) or not all(p.isdigit() for p in version.split(".")):
         raise RuntimeError("Invalid manifest version")
