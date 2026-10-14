@@ -117,12 +117,17 @@ document.getElementById('scan-page').addEventListener('click', async () => {
         const p=products.length===1?products[0]:null;
         const offer=Array.isArray(p?.offers)?p.offers[0]:p?.offers;
         const image=Array.isArray(p?.image)?p.image[0]:p?.image;
+        // Never mistake a supplier's SKU/MPN for the store's general SKU or UPC.
+        const digits=v=>String(v??'').replace(/[^0-9]/g,'');
+        const validGtin=v=>{const n=digits(v);return [8,12,13,14].includes(n.length)?n:'';};
+        const upcCandidates=[p?.gtin12,p?.gtin13,p?.gtin14,p?.gtin8,p?.gtin,p?.upc,meta('product:upc'),meta('product:gtin'),meta('gtin'),document.querySelector('[itemprop="gtin12"],[itemprop="gtin13"],[itemprop="gtin14"],[itemprop="gtin8"],[itemprop="gtin"]')?.getAttribute('content')];
+        const capturedUpc=upcCandidates.map(validGtin).find(Boolean)||'';
         const str=v=>typeof v==='string'?v.trim():'';
         return {sourceUrl:location.href,capturedAt:new Date().toISOString(),candidates:products.length,requiresSelection:products.length>1,product:p?{
-          name:str(p.name),description:str(p.description),sku:str(p.sku),upc:str(p.gtin12||p.gtin13||p.gtin14||p.gtin8),
-          manufacturerPartNumber:str(p.mpn),brand:str(typeof p.brand==='string'?p.brand:p.brand?.name),
-          imageUrl:str(typeof image==='string'?image:image?.url),advertisedPrice:offer?.price??null,currency:str(offer?.priceCurrency)
-        }:{name:meta('og:title')||document.title,description:meta('og:description')||meta('description'),sku:'',upc:'',manufacturerPartNumber:'',brand:'',imageUrl:meta('og:image'),advertisedPrice:null,currency:''}};
+          name:str(p.name),description:str(p.description),sku:'',supplierSku:str(p.sku),upc:capturedUpc,
+          brand:str(typeof p.brand==='string'?p.brand:p.brand?.name),
+          imageUrl:str(typeof image==='string'?image:image?.url),advertisedPrice:offer?.price??null
+        }:{name:meta('og:title')||document.title,description:meta('og:description')||meta('description'),sku:'',supplierSku:'',upc:capturedUpc,brand:'',imageUrl:meta('og:image'),advertisedPrice:null}};
       }
     });
     await chrome.storage.local.set({scannerDraft:draft});
