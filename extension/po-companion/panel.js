@@ -70,17 +70,13 @@
     if(!result?.ok)throw new Error(result?.error||'PO load failed.');
     const po=result.data.purchaseOrder;
     const supplierId=po.supplier?.localId;
-    if(!supplierId) {
-      lines=[];render();
-      throw new Error('PO loaded but supplier is not mapped. Supplier-specific codes are blocked until mapping is fixed.');
-    }
-    key=String(context.poId)+':'+String(supplierId);
+    key=String(context.poId)+':'+String(supplierId||'unresolved');
     draft=(await chrome.storage.local.get('poCompanionDrafts')).poCompanionDrafts?.[key]||
-      {poId:context.poId,supplierId,identifierMode:'supplierSku',items:{}};
+      {poId:context.poId,supplierId:supplierId||null,identifierMode:'supplierSku',items:{}};
     mode.value=draft.identifierMode||'supplierSku';
     lines=result.data.items;description.textContent='PO '+context.poId+' • '+(po.supplier?.name||'Supplier '+supplierId);
     const warnings=lines.reduce((n,x)=>n+(x.warnings?.length?1:0),0);
-    notice.textContent=lines.length+' PO items loaded. '+warnings+' with warnings. Review only — no writes enabled.';
+    notice.textContent=(supplierId?'':'Supplier not mapped: supplier SKU is unavailable. ')+lines.length+' PO items loaded. '+warnings+' with warnings. Review only — no writes enabled.';
     await save();render();reload.hidden=false;signOut.hidden=false;signIn.hidden=true;pin.hidden=true;
   }
   signIn.onclick=async()=>{
