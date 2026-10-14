@@ -101,8 +101,8 @@ signInForm.addEventListener('submit',async event=>{
   }
 });
 
-const keys=['name','sku','supplierSku','upc','brand','cost','msrp','weight','imageUrl','advertisedPrice'];
-const labels={name:'Product name',sku:'General SKU (Lightspeed)',supplierSku:'Supplier reorder number',upc:'UPC / GTIN',brand:'Manufacturer / Brand',cost:'Supplier Cost (reference)',msrp:'MSRP (reference)',weight:'Weight (with unit)',imageUrl:'Image URL',advertisedPrice:'MAP price (verify with supplier)'};
+const keys=['name','sku','supplierSku','upc','brand','cost','msrp','weight','imageUrl','mapPrice'];
+const labels={name:'Product name',sku:'General SKU (Lightspeed)',supplierSku:'Supplier reorder number',upc:'UPC / GTIN',brand:'Manufacturer / Brand',cost:'Supplier Cost (reference)',msrp:'MSRP (reference)',weight:'Weight (with unit)',imageUrl:'Image URL',mapPrice:'MAP price (verify with supplier)'};
 const status=document.getElementById('status');
 const matchStatus=document.getElementById('match-status');
 const matchesElement=document.getElementById('matches');
@@ -297,7 +297,7 @@ createButton.addEventListener('click',()=>{
   }
   createPreview.hidden=false;
   createPreview.textContent='Create Item — approval preview only. No Lightspeed changes will be made.\\n'+
-    JSON.stringify({supplierSuggestion:supplierInput.value.trim(),supplierWebsite:sourceDomain,supplierId:supplierVerifiedId,supplierNotYetVerified:false,name:product.name,generalSku:product.sku,supplierReorderNumber:product.supplierSku,upc:product.upc,brand:product.brand,description:product.description,mapPrice:product.advertisedPrice,cost:product.cost,msrp:product.msrp,weight:product.weight},null,2)+
+    JSON.stringify({supplierSuggestion:supplierInput.value.trim(),supplierWebsite:sourceDomain,supplierId:supplierVerifiedId,supplierNotYetVerified:false,name:product.name,generalSku:product.sku,supplierReorderNumber:product.supplierSku,upc:product.upc,brand:product.brand,description:product.description,mapPrice:product.mapPrice,cost:product.cost,msrp:product.msrp,weight:product.weight},null,2)+
     '\\nCreation requires a separately approved, employee-authorized backend workflow.';
 });
 
