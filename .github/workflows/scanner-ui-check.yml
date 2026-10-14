@@ -1,7 +1,7 @@
 name: Scanner review UI regression
 on:
   push:
-    branches: [feature/scanner-fields-create-preview]
+    branches: [feature/scanner-fields-create-preview, feature/scanner-review-auto-lookup]
     paths:
       - 'extension/**'
       - 'services/scannerSupplierTemplates.js'
@@ -11,6 +11,13 @@ on:
       - 'tests/scannerLightspeedRoles.test.js'
       - 'tests/lightspeedOrderDetection.test.cjs'
       - 'tests/scannerAcdCapture.test.cjs'
+      - 'routes/scannerMatchGateway.js'
+      - 'tests/scannerReviewAutoMatch.test.js'
+      - 'services/scannerTimeclockGateway.js'
+      - 'services/scannerTimeclockIdentity.js'
+      - 'server.js'
+      - 'services/scannerPreorderStaging.js'
+      - 'tests/scannerPreorderStaging.test.js'
       - '.github/workflows/scanner-ui-check.yml'
 jobs:
   ui:
@@ -26,6 +33,11 @@ jobs:
         run: npm install --ignore-scripts --no-audit --no-fund
       - name: Check extension JavaScript
         run: |
+          node --check server.js
+          node --check services/scannerPreorderStaging.js
+          node --check routes/scannerMatchGateway.js
+          node --check services/scannerTimeclockGateway.js
+          node --check services/scannerTimeclockIdentity.js
           node --check timeclock/server.js
           node --check timeclock/scannerLightspeedRoles.js
           node --check extension/content.js
@@ -43,11 +55,18 @@ jobs:
           const popup=fs.readFileSync('extension/popup.js','utf8');
           const capture=fs.readFileSync('extension/product-scanner/page-capture.js','utf8');
           assert.match(review,/supplierSku/);
-          assert.match(review,/const keys=\['name','sku','supplierSku','upc','brand','cost','msrp','weight','imageUrl','advertisedPrice'\]/);
+          assert.match(review,/const keys=\['name','sku','supplierSku','upc','brand','cost','msrp','weight','imageUrl','mapPrice'\]/);
           assert.doesNotMatch(review,/manufacturerPartNumber|currency/i);
           assert.match(html,/id="create-item"/);
           assert.match(html,/id="create-preview"/);
           assert.match(review,/lastMatches.length/);
+          assert.match(review,/queueProductLookup/);
+          assert.match(review,/lookupSuppliers/);
+          assert.doesNotMatch(html,/id="original"|id="existing"/);
+          assert.match(html,/class="compact-sign-in"/);
+          assert.match(html,/id="add-to-preorder"/);
+          assert.match(html,/id="preorder-campaign"/);
+          assert.match(review,/loadPreorderCampaigns/);
           assert.doesNotMatch(review,/fetch\([^)]*\/create/);
           assert.match(capture,/upcCandidates/);
           assert.match(capture,/acdSupplierSku\|\|str\(p.sku\)/);
@@ -63,3 +82,7 @@ jobs:
         run: node --test tests/scannerLightspeedRoles.test.js
       - name: Verify Lightspeed sale and invoice detection
         run: node --test tests/lightspeedOrderDetection.test.cjs
+      - name: Verify automatic scanner product match metadata
+        run: node --test tests/scannerReviewAutoMatch.test.js
+      - name: Verify guarded preorder campaign staging
+        run: node --test tests/scannerPreorderStaging.test.js

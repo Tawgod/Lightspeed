@@ -1579,27 +1579,57 @@ function scannerServiceAuthorized(req) {
 // Resolve an employee's linked Lightspeed user on each authorization request.
 // Fail closed for automatic privilege if the API is unavailable or role is unknown.
 // Explicit, audited Timeclock grants remain independent.
+// Read the linked user directly from the documented current X-Series API.
+// This is useful if legacy /api/2.0/users or role list APIs aren't available.
+async function fetchLinkedLightspeedUser(userId){
+  if(!LIGHTSPEED_DOMAIN||!LIGHTSPEED_TOKEN||!userId)throw new Error('Lightspeed user API not configured.');
+  const url=`https://${LIGHTSPEED_DOMAIN}.retail.lightspeed.app/api/2026-07/users/${encodeURIComponent(String(userId))}`;
+  const response=await fetch(url,{method:'GET',redirect:'error',signal:AbortSignal.timeout(7000),
+    headers:{Authorization:`Bearer ${LIGHTSPEED_TOKEN}`,Accept:'application/json'}
+  });
+  if(!response.ok)throw Object.assign(new Error('Linked Lightspeed user lookup unavailable.'),{status:response.status});
+  const body=await response.json();
+  const user=body?.data||body?.user||body;
+  if(!user||typeof user!=='object'||String(user.id??user.user_id??'')!==String(userId))
+    throw new Error('Linked Lightspeed user ID mismatch.');
+  return user;
+}
+
 async function scannerEffectivePermissions(employee){
-  let approval={role:null,canApprove:false,verified:false,reason:'unavailable'};
+  let approval={role:null,canApprove:false,verified:false,reason:'lightspeed_unavailable'};
+  let lookupFailure='lightspeed_lookup_unavailable';
   if(employee.lightspeed_user_id){
     try{
-      const users=await fetchLightspeedUsers();
-      const direct=linkedScannerApproval({lightspeedUserId:employee.lightspeed_user_id,users});
-      if(direct.verified)approval=direct;
-      else {
-        // Legacy Lightspeed user payloads can expose only role_id.
-        // Never infer role privileges from the numeric/string ID alone.
-        const roles=await fetchLightspeedRoles();
-        approval=linkedScannerApproval({lightspeedUserId:employee.lightspeed_user_id,users,roles});
+      // Prefer per-user documented API; do not infer role from the service token.
+      const user=await fetchLinkedLightspeedUser(employee.lightspeed_user_id);
+      approval=linkedScannerApproval({lightspeedUserId:employee.lightspeed_user_id,users:[user]});
+      if(!approval.verified){
+        try{
+          const roles=await fetchLightspeedRoles();
+          approval=linkedScannerApproval({lightspeedUserId:employee.lightspeed_user_id,users:[user],roles});
+        }catch{
+          lookupFailure='lightspeed_role_not_recognized';
+        }
       }
     }catch(error){
-      console.warn('[scanner] Lightspeed role lookup unavailable; automatic approval withheld:',error?.status||'error');
+      // Compatibility fallback for stores that only expose the legacy user-list API.
+      try{
+        const users=await fetchLightspeedUsers();
+        approval=linkedScannerApproval({lightspeedUserId:employee.lightspeed_user_id,users});
+        if(!approval.verified){
+          const roles=await fetchLightspeedRoles();
+          approval=linkedScannerApproval({lightspeedUserId:employee.lightspeed_user_id,users,roles});
+        }
+      }catch{
+        console.warn('[scanner] Both linked-user role lookups unavailable; approval withheld:',error?.status||'unknown');
+      }
     }
   }
   const canLookup=employee.scanner_can_lookup===true;
   const canApprove=canLookup && (employee.scanner_can_approve===true || (approval.verified && approval.canApprove));
   return {
     id:employee.id,name:employee.name,canLookup,canApprove,
+    permissionReason:canApprove?null:(!employee.lightspeed_user_id?'lightspeed_account_not_linked':approval.reason==='unlinked'?'lightspeed_account_not_linked':approval.reason==='missing_or_duplicate'?'lightspeed_user_not_found':approval.reason==='unresolved_role_id'?'lightspeed_role_not_recognized':approval.reason==='lightspeed_unavailable'?lookupFailure:approval.verified?'role_read_only':'lightspeed_role_not_recognized'),
     role:approval.verified?approval.role:null,
     permissionSource:canApprove
       ? (approval.verified&&approval.canApprove?'lightspeed_role':'timeclock_admin')

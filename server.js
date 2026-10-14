@@ -16,6 +16,7 @@ import { createTimeclockScannerGateway } from './services/scannerTimeclockGatewa
 import { createTimeclockScannerIdentity } from './services/scannerTimeclockIdentity.js';
 import { createSpecialOrdersMatchLookup } from './services/scannerSpecialOrdersLookup.js';
 import { createScannerLoginLimiter } from './services/scannerLoginLimiter.js';
+import { initializeScannerPreorderStaging } from './services/scannerPreorderStaging.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -837,6 +838,7 @@ async function startServer() {
       connectionString:process.env.DATABASE_URL,
       ssl:process.env.PGSSL==='true'?{rejectUnauthorized:false}:undefined
     });
+    await initializeScannerPreorderStaging(scannerPool);
     const loginLimiter=await createScannerLoginLimiter({
       pool:scannerPool,secret:process.env.SCANNER_LOGIN_LIMIT_SECRET
     });
@@ -849,7 +851,11 @@ async function startServer() {
       adminKey:process.env.SPECIAL_ORDERS_ADMIN_KEY
     });
     const scannerGateway=createTimeclockScannerGateway({
-      identity,lookup,sessionSecret:process.env.SCANNER_SESSION_SECRET,loginLimiter
+      identity,lookup,sessionSecret:process.env.SCANNER_SESSION_SECRET,loginLimiter,preorderPool:scannerPool,
+      supplierLookup:async()=>{
+        const result=await scannerPool.query('SELECT id,name FROM suppliers WHERE is_active=TRUE ORDER BY name LIMIT 500');
+        return result.rows;
+      }
     });
     app.use('/api/scanner',(req,res,next)=>{
       const origin=String(req.get('origin')||'');

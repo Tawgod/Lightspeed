@@ -17,7 +17,7 @@ export function captureSupplierProductPage() {
         const isAcd=/(^|\.)acdd\.com$/i.test(location.hostname);
         const visible=isAcd?(document.body?.innerText||'').slice(0,150000):'';
         const lines=visible.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
-        const allLabels='SKU|UPC|EAN|GTIN|Manufacturer|MSRP|Shipping Weight|Item Weight|Weight|Category|Order By Date|Stock|Quantity';
+        const allLabels='SKU|UPC|EAN|GTIN|Manufacturer|MAP|MSRP|Shipping Weight|Item Weight|Weight|Category|Order By Date|Stock|Quantity';
         const fromLabel=label=>{
           if(!isAcd)return '';
           const re=new RegExp('(?:^|\\s)(?:'+label+')\\s*:\\s*(.*)$','i');
@@ -40,6 +40,8 @@ export function captureSupplierProductPage() {
         const acdSupplierSku=fromLabel('SKU');
         const acdManufacturer=fromLabel('Manufacturer');
         const acdMsrp=money(fromLabel('MSRP'));
+        const acdMap=money(fromLabel('MAP'));
+        const explicitMap=money(meta('product:map')||meta('map_price'));
         const acdWeight=fromLabel('Shipping Weight|Item Weight|Weight').match(/^[0-9]+(?:\.[0-9]+)?\s*(?:lbs?|ounces?|oz|kg|g)?\b/i)?.[0]||'';
         const acdPrice=money((isAcd?visible.match(/(?:^|\n)\s*\$\s*([0-9]+(?:\.[0-9]{2}))/m)?.[1]:null)||'');
         const acdStatus=fromLabel('Category');
@@ -48,6 +50,6 @@ export function captureSupplierProductPage() {
         return {sourceUrl:location.href,capturedAt:new Date().toISOString(),candidates:products.length,requiresSelection:products.length>1,product:p?{
           name:str(p.name),description:str(p.description),sku:'',supplierSku:acdSupplierSku||str(p.sku),upc:capturedUpc,
           brand:acdManufacturer||str(typeof p.brand==='string'?p.brand:p.brand?.name),
-          imageUrl:str(typeof image==='string'?image:image?.url),advertisedPrice:offer?.price??null,cost:acdPrice,msrp:acdMsrp,weight:acdWeight,supplierName:isAcd?'ACD Distribution':'',availabilityNote:acdStatus
-        }:{name:meta('og:title')||document.title,description:meta('og:description')||meta('description'),sku:'',supplierSku:acdSupplierSku,upc:capturedUpc,brand:acdManufacturer,imageUrl:meta('og:image'),advertisedPrice:null,cost:acdPrice,msrp:acdMsrp,weight:acdWeight,supplierName:isAcd?'ACD Distribution':'',availabilityNote:acdStatus}};
+          imageUrl:str(typeof image==='string'?image:image?.url),mapPrice:acdMap||explicitMap,cost:acdPrice,msrp:acdMsrp,weight:acdWeight,supplierName:isAcd?'ACD Distribution':'',availabilityNote:acdStatus
+        }:{name:meta('og:title')||document.title,description:meta('og:description')||meta('description'),sku:'',supplierSku:acdSupplierSku,upc:capturedUpc,brand:acdManufacturer,imageUrl:meta('og:image'),mapPrice:acdMap||explicitMap,cost:acdPrice,msrp:acdMsrp,weight:acdWeight,supplierName:isAcd?'ACD Distribution':'',availabilityNote:acdStatus}};
 }
