@@ -1213,8 +1213,6 @@ export function createSpecialOrdersRouter({
             autoMinutes,
             supplierDeadlineAt,
             autoSubmitAt,
-            autoEnabled,
-            autoMinutes,
             'Imported from Outlook: '+String(m.subject||'GW Trade News')
           ]
         );
@@ -1233,6 +1231,8 @@ export function createSpecialOrdersRouter({
             canonicalFormUrl,
             supplierDeadlineAt,
             autoSubmitAt,
+            autoEnabled,
+            autoMinutes,
             'Imported from Outlook: '+String(m.subject||'GW Trade News')
           ]
         );
