@@ -1,356 +1,65 @@
 const api='/api/special-orders';
-let noticeTimer=null;
-let lastPreviewCampaignId=null;
-let lastPreview=null;
+let noticeTimer=null,lastPreviewCampaignId=null,lastPreview=null;
 
-function showNotice(text,autoHideMs=0){
-  const el=document.getElementById('notice');
-  if(noticeTimer){clearTimeout(noticeTimer);noticeTimer=null}
-  el.textContent=text;el.style.display='block';
-  if(autoHideMs>0)noticeTimer=setTimeout(()=>{el.style.display='none';el.textContent='';noticeTimer=null},autoHideMs);
-}
+function showNotice(text,ms=0){const e=document.getElementById('notice');if(noticeTimer)clearTimeout(noticeTimer);e.textContent=text;e.style.display='block';if(ms)noticeTimer=setTimeout(()=>{e.style.display='none'},ms)}
 function accessKey(){return sessionStorage.getItem('hcSpecialOrdersKey')||''}
-function setAuthState(ok,msg=''){
-  const s=document.getElementById('authStatus');
-  s.textContent=ok?'Unlocked':'Locked';
-  s.style.background=ok?'#dcfce7':'#fee2e2';s.style.color=ok?'#166534':'#991b1b';
-  document.querySelectorAll('button:not(#unlockButton), input:not(#accessKey), select, textarea').forEach(el=>{el.disabled=!ok});
-  document.getElementById('gwPublishButton').disabled=true;
-  if(msg)showNotice(msg);
+function setAuthState(ok,msg=''){document.getElementById('authStatus').textContent=ok?'Unlocked':'Locked';document.querySelectorAll('button:not(#unlockButton), input:not(#accessKey), select').forEach(e=>e.disabled=!ok);document.getElementById('gwPublishButton').disabled=true;if(msg)showNotice(msg)}
+async function getJson(url,opts={}){const headers={...(opts.headers||{}),'x-hobby-corner-key':accessKey()};const r=await fetch(url,{...opts,headers,cache:'no-store'});let d={};try{d=await r.json()}catch{}if(r.status===401){sessionStorage.removeItem('hcSpecialOrdersKey');setAuthState(false,'Access key required.');throw new Error('Access key missing or incorrect.')}if(!r.ok){const e=new Error(d.error||r.statusText);e.details=d;e.status=r.status;throw e}return d}
+async function saveKey(){const v=document.getElementById('accessKey').value.trim();if(!v)return;sessionStorage.setItem('hcSpecialOrdersKey',v);try{await getJson(api+'/auth-check');setAuthState(true);await loadGwCampaigns();showNotice('GW Preorders ready.',1200)}catch(e){sessionStorage.removeItem('hcSpecialOrdersKey');setAuthState(false,e.message)}}
+
+function chicagoLocal(iso){if(!iso)return'';const d=new Date(iso);const p=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(d);const g=t=>p.find(x=>x.type===t)?.value||'';return g('year')+'-'+g('month')+'-'+g('day')+'T'+g('hour')+':'+g('minute')}
+function setTiming(c){if(c.gw_supplier_deadline_at)document.getElementById('gwSupplierDeadline').value=chicagoLocal(c.gw_supplier_deadline_at);if(c.order_due_at){document.getElementById('gwCustomerCutoff').value=chicagoLocal(c.order_due_at);document.getElementById('gwOrderDue').value=chicagoLocal(c.order_due_at)}if(c.gw_auto_submit_at)document.getElementById('gwAutoSubmitAt').value=chicagoLocal(c.gw_auto_submit_at);if([10,15,20,30,60].includes(Number(c.auto_submit_minutes_before)))document.getElementById('gwSubmitLeadMinutes').value=String(c.auto_submit_minutes_before)}
+
+async function loadGwCampaigns(){const s=document.getElementById('gwCampaignSelect'),cur=s.value;const rows=await getJson(api+'/preorders/campaigns?type=GW_WEEKLY');s.innerHTML='<option value="">Select GW campaign…</option>';for(const c of rows){const o=document.createElement('option');o.value=c.id;o.textContent=(c.name||'GW campaign')+' — '+(c.external_submission_status||'NOT_SUBMITTED');s.appendChild(o)}if(cur&&[...s.options].some(o=>o.value===cur))s.value=cur}
+
+function money(v){return v==null||v===''?'':Number(v).toFixed(2)}
+async function patchItem(id,patch){const d=await getJson(api+'/preorders/gw/products/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({...patch,gw_reviewed_by:'gw-web'})});lastPreview=null;lastPreviewCampaignId=null;document.getElementById('gwPublishButton').disabled=true;return d}
+
+function renderCleanup(products){
+ const box=document.getElementById('gwCleanupItems');box.replaceChildren();
+ if(!products.length){box.textContent='No scraped items were saved for this campaign.';return}
+ const table=document.createElement('table'),h=document.createElement('tr');
+ for(const x of ['Item Description','Short Code','MSRP','Cost','Post Y/N']){const th=document.createElement('th');th.textContent=x;h.appendChild(th)}table.appendChild(h);
+ for(const p of products){
+   const tr=document.createElement('tr');
+   const nameTd=document.createElement('td'),name=document.createElement('input');name.value=p.gw_case_pack_size>1?(p.gw_single_item_name||p.item_description):p.item_description;name.style.minWidth='260px';
+   if(p.gw_case_pack_size>1){const note=document.createElement('div');note.className='form-note';note.textContent='Pack x'+p.gw_case_pack_size+' · suggested single from '+(p.gw_source_item_description||p.item_description);nameTd.append(name,note);name.addEventListener('change',()=>patchItem(p.id,{gw_single_item_name:name.value}))}else{nameTd.appendChild(name);name.addEventListener('change',()=>patchItem(p.id,{item_description:name.value}))}
+   const codeTd=document.createElement('td'),code=document.createElement('input');code.value=p.sku||'';code.style.width='110px';code.addEventListener('change',()=>patchItem(p.id,{sku:code.value}));codeTd.appendChild(code);
+   const msrpTd=document.createElement('td'),msrp=document.createElement('input');msrp.type='number';msrp.step='0.01';msrp.min='0';msrp.style.width='90px';msrp.value=money(p.gw_case_pack_size>1?p.gw_single_msrp:p.msrp);msrp.addEventListener('change',()=>patchItem(p.id,p.gw_case_pack_size>1?{gw_single_msrp:Number(msrp.value)}:{msrp:Number(msrp.value)}));msrpTd.appendChild(msrp);
+   if(p.gw_case_pack_size>1&&p.msrp!=null){const note=document.createElement('div');note.className='form-note';note.textContent='Pack MSRP $'+money(p.msrp);msrpTd.appendChild(note)}
+   const costTd=document.createElement('td'),cost=document.createElement('input');cost.type='number';cost.step='0.01';cost.min='0';cost.style.width='90px';cost.value=money(p.cost);cost.addEventListener('change',()=>patchItem(p.id,{cost:Number(cost.value)}));costTd.appendChild(cost);
+   const postTd=document.createElement('td'),post=document.createElement('input');post.type='checkbox';post.checked=p.gw_post_enabled!==false;post.addEventListener('change',()=>patchItem(p.id,{gw_post_enabled:post.checked}));postTd.appendChild(post);
+   if(p.gw_review_note){const n=document.createElement('div');n.className='form-note';n.textContent=p.gw_review_note;postTd.appendChild(n)}
+   tr.append(nameTd,codeTd,msrpTd,costTd,postTd);table.appendChild(tr);
+ }
+ box.appendChild(table);
 }
-async function getJson(url,opts={}){
-  const headers={...(opts.headers||{}),'x-hobby-corner-key':accessKey()};
-  const fetchOpts={...opts,headers};
-  if(!fetchOpts.method || String(fetchOpts.method).toUpperCase()==='GET')fetchOpts.cache='no-store';
-  const r=await fetch(url,fetchOpts);let d={};try{d=await r.json()}catch{}
-  if(r.status===401){
-    sessionStorage.removeItem('hcSpecialOrdersKey');
-    setAuthState(false,'GW Preorders is locked. Enter the internal access key and click Unlock.');
-    throw Object.assign(new Error('Access key missing or incorrect.'),{details:d,status:r.status});
-  }
-  if(!r.ok){const err=new Error(d.error||r.statusText);err.details=d;err.status=r.status;throw err}
-  return d;
+
+async function syncAndScrapeGw(){
+ document.getElementById('gwSourceStatus').textContent='Syncing latest GW email, scraping form, and saving items…';
+ try{
+   const d=await getJson(api+'/preorders/gw/sync-draft',{method:'POST'});
+   const c=d.campaign;document.getElementById('gwCampaignName').value=c.name||'';document.getElementById('gwFormUrl').value=c.source_form_url||'';document.getElementById('gwReleaseDate').value=String(c.release_date||'').slice(0,10);document.getElementById('gwAutoSubmit').checked=c.auto_submit_enabled!==false;setTiming(c);
+   await loadGwCampaigns();document.getElementById('gwCampaignSelect').value=String(c.id);
+   const full=await getJson(api+'/preorders/campaigns/'+c.id);renderCleanup(full.products);
+   document.getElementById('gwSourceStatus').textContent=(d.created?'Created':'Refreshed')+' '+c.name+' · '+full.products.length+' saved item(s) · '+full.products.filter(x=>x.gw_post_enabled!==false).length+' set to post.';
+   await loadGwCampaign();
+ }catch(e){document.getElementById('gwSourceStatus').textContent='Sync & Scrape failed: '+e.message}
 }
-async function saveKey(){
-  const v=document.getElementById('accessKey').value.trim();
-  if(!v)return setAuthState(false,'Enter the internal access key first.');
-  sessionStorage.setItem('hcSpecialOrdersKey',v);
-  try{
-    await getJson(api+'/auth-check');setAuthState(true,'Access key accepted. Loading GW Preorders…');
-    await loadGwCampaigns();showNotice('GW Preorders ready.',1800);
-  }catch(e){
-    sessionStorage.removeItem('hcSpecialOrdersKey');
-    setAuthState(false,e.message==='Access key missing or incorrect.'?'Access key was not accepted.':'Special Orders service is not ready: '+e.message);
-  }
-}
-function chicagoDatetimeLocal(iso){
-  if(!iso)return '';
-  const d=new Date(iso);
-  if(Number.isNaN(d.getTime()))return '';
-  const parts=new Intl.DateTimeFormat('en-CA',{
-    timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit',
-    hour:'2-digit',minute:'2-digit',hourCycle:'h23'
-  }).formatToParts(d);
-  const get=type=>parts.find(p=>p.type===type)?.value||'';
-  return get('year')+'-'+get('month')+'-'+get('day')+'T'+get('hour')+':'+get('minute');
-}
-function setGwTimingValues({supplierDeadlineAt=null,customerCutoffAt=null,autoSubmitAt=null}={}){
-  const supplier=document.getElementById('gwSupplierDeadline');
-  const customer=document.getElementById('gwCustomerCutoff');
-  const auto=document.getElementById('gwAutoSubmitAt');
-  const summary=document.getElementById('gwOrderDue');
-  if(supplierDeadlineAt)supplier.value=chicagoDatetimeLocal(supplierDeadlineAt);
-  if(customerCutoffAt)customer.value=chicagoDatetimeLocal(customerCutoffAt);
-  if(autoSubmitAt)auto.value=chicagoDatetimeLocal(autoSubmitAt);
-  if(supplierDeadlineAt&&autoSubmitAt){
-    const diff=Math.round((Date.parse(supplierDeadlineAt)-Date.parse(autoSubmitAt))/60000);
-    if([10,15,20,30,60].includes(diff))document.getElementById('gwSubmitLeadMinutes').value=String(diff);
-  }
-  summary.value=customer.value||'';
-}
-function gwSubmitLeadMinutes(){
-  const n=Number(document.getElementById('gwSubmitLeadMinutes')?.value||15);
-  return [10,15,20,30,60].includes(n)?n:15;
-}
-function recomputeGwTimingFromSupplier(){
-  const v=document.getElementById('gwSupplierDeadline').value;
-  if(!v)return;
-  const t=new Date(v).getTime();
-  if(Number.isNaN(t))return;
-  document.getElementById('gwCustomerCutoff').value=chicagoDatetimeLocal(new Date(t-30*60*1000).toISOString());
-  recomputeGwAutoSubmitTime();
-  document.getElementById('gwOrderDue').value=document.getElementById('gwCustomerCutoff').value;
-}
-function recomputeGwAutoSubmitTime(){
-  const v=document.getElementById('gwSupplierDeadline').value;
-  if(!v)return;
-  const t=new Date(v).getTime();
-  if(Number.isNaN(t))return;
-  document.getElementById('gwAutoSubmitAt').value=
-    chicagoDatetimeLocal(new Date(t-gwSubmitLeadMinutes()*60*1000).toISOString());
-}
-function setSourceStatus(text){document.getElementById('gwSourceStatus').textContent=text||''}
-function setDiscordStatus(text){document.getElementById('gwDiscordStatus').textContent=text||''}
-function resetDiscordPreview(){
-  lastPreviewCampaignId=null;lastPreview=null;
-  document.getElementById('gwDiscordPreview').replaceChildren();
-  document.getElementById('gwPublishButton').disabled=true;setDiscordStatus('');
-}
-async function loadGwCampaigns(){
-  const sel=document.getElementById('gwCampaignSelect'), current=sel.value;
-  try{
-    const rows=await getJson(api+'/preorders/campaigns?type=GW_WEEKLY');
-    sel.innerHTML='<option value="">Select GW campaign…</option>';
-    for(const x of rows){
-      const o=document.createElement('option');o.value=x.id;
-      o.textContent=(x.name||'GW campaign')+' — '+(x.external_submission_status||x.status||'OPEN');sel.appendChild(o);
-    }
-    if(current && Array.from(sel.options).some(o=>o.value===current))sel.value=current;
-  }catch(e){document.getElementById('gwCampaignStatus').textContent='GW campaigns unavailable: '+e.message}
-}
-function appendSummaryTable(box,items){
-  const table=document.createElement('table'), head=document.createElement('tr');
-  for(const label of ['Item','Disposition','Pack','Reason']){const th=document.createElement('th');th.textContent=label;head.appendChild(th)}
-  table.appendChild(head);
-  for(const item of (items||[]).slice(0,120)){
-    const tr=document.createElement('tr');
-    for(const value of [item.name||item.item_description||'—',item.disposition||item.gw_post_disposition||'REVIEW',
-      item.case_pack_size||item.gw_case_pack_size||'—',(item.reasons||[]).join('; ')||item.gw_review_note||'—']){
-      const td=document.createElement('td');td.textContent=value;tr.appendChild(td);
-    }
-    table.appendChild(tr);
-  }
-  box.appendChild(table);
-}
-async function syncLatestGwEmail(){
-  const box=document.getElementById('gwSourcePreview');setSourceStatus('Finding latest GW Want Number Form email and scraping it…');box.replaceChildren();
-  try{
-    const d=await getJson(api+'/preorders/gw/sync-preview'),email=d.email||{},scrape=d.scrape||{};
-    if(email.form_url)document.getElementById('gwFormUrl').value=email.form_url;
-    if(email.release_date_iso)document.getElementById('gwReleaseDate').value=email.release_date_iso;
-    setGwTimingValues({
-      supplierDeadlineAt:email.supplier_deadline_at,
-      customerCutoffAt:email.cutoff_at,
-      autoSubmitAt:email.auto_submit_at
-    });
-    if(email.release_date)document.getElementById('gwCampaignName').value='GW Release '+email.release_date;
-    setSourceStatus(['Latest GW email found',email.subject||'—',email.received_at?new Date(email.received_at).toLocaleString():'—',
-      email.due_text?'GW deadline: '+email.due_text:'GW deadline not parsed',
-      email.cutoff_at?'Customer cutoff: '+new Date(email.cutoff_at).toLocaleString():'Customer cutoff not parsed','Scraped '+Number(scrape.counts?.items||0)+' item candidate(s)'].join(' · '));
-    const summary=document.createElement('div');summary.className='form-note';
-    summary.textContent=(scrape.title||'GW form')+' · '+Number(scrape.counts?.ready||0)+' ready · '+Number(scrape.counts?.review||0)+
-      ' review · '+Number(scrape.counts?.filtered||0)+' filtered · '+Number(scrape.counts?.images||0)+' image(s)';
-    box.appendChild(summary);appendSummaryTable(box,scrape.items||[]);
-  }catch(e){
-    setSourceStatus('GW email sync preview failed: '+e.message);
-    const p=document.createElement('p');p.textContent='No campaign was created, no Discord post was sent, and no vendor form was submitted.';box.appendChild(p);
-  }
-}
-async function testGwGraphMailbox(){
-  const box=document.getElementById('gwSourcePreview');setSourceStatus('Testing Microsoft Graph mailbox access…');box.replaceChildren();
-  try{
-    const d=await getJson(api+'/preorders/gw/graph-test'),exp=d.credential_expiration||{};
-    const lines=['Graph mailbox access: OK','Mailbox reference: '+(d.mailbox_reference||'unknown'),'Folder: '+(d.folder_path||'—'),
-      'Matching GW messages: '+Number(d.matching_messages||0)];
-    if(exp.configured&&exp.valid)lines.push('Graph secret expires: '+new Date(exp.expires_at).toLocaleDateString()+' ('+exp.days_remaining+' days remaining)');
-    else if(exp.configured)lines.push('Graph secret expiration value could not be parsed.');else lines.push('Graph secret expiration tracking is not configured.');
-    setSourceStatus(lines.join(' · '));
-    const msgs=Array.isArray(d.messages)?d.messages:[];
-    if(!msgs.length){const p=document.createElement('p');p.textContent='Graph connected successfully, but no matching Games Workshop messages were returned.';box.appendChild(p);return}
-    const table=document.createElement('table'),head=document.createElement('tr');
-    for(const label of ['Received','Subject','Form','Cutoff','Preorder','Release']){const th=document.createElement('th');th.textContent=label;head.appendChild(th)}
-    table.appendChild(head);
-    for(const m of msgs){
-      const tr=document.createElement('tr');
-      for(const v of [m.received_at?new Date(m.received_at).toLocaleString():'—',m.subject||'—',m.form_url?'Found':'—',m.due_text||'—',m.preorder_date||'—',m.release_date||'—']){
-        const td=document.createElement('td');td.textContent=v;tr.appendChild(td);
-      }table.appendChild(tr);
-    }box.appendChild(table);
-  }catch(e){
-    const d=e.details||{},bits=['Graph mailbox test failed: '+e.message];
-    if(d.stage)bits.push('Stage: '+d.stage);if(typeof d.has_mail_read==='boolean')bits.push('Token Mail.Read: '+(d.has_mail_read?'YES':'NO'));
-    if(Array.isArray(d.token_roles)&&d.token_roles.length)bits.push('Token roles: '+d.token_roles.join(', '));setSourceStatus(bits.join(' · '));
-  }
-}
-async function scrapeGwFormPreview(){
-  const url=document.getElementById('gwFormUrl').value.trim(),box=document.getElementById('gwSourcePreview');
-  if(!url)return showNotice('Paste the GW Want Number Form URL first.');box.textContent='Scraping GW form…';
-  try{
-    const d=await getJson(api+'/preorders/gw/scrape-preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source_url:url})});
-    box.replaceChildren();const summary=document.createElement('div');summary.className='form-note';
-    summary.textContent=(d.title||'GW form')+' · '+d.counts.items+' item candidate(s) · '+d.counts.ready+' ready · '+d.counts.review+
-      ' review · '+d.counts.filtered+' filtered · '+d.counts.images+' image(s)';box.appendChild(summary);
-    if(!d.items.length){const p=document.createElement('p');p.textContent='No product candidates were extracted. Questions found: '+d.counts.questions+'.';box.appendChild(p);return}
-    appendSummaryTable(box,d.items);
-  }catch(e){box.textContent='Scrape failed: '+e.message}
-}
-async function importLatestGwDraft(){
-  setSourceStatus('Importing latest GW email and scraped products as a draft…');
-  try{
-    const d=await getJson(api+'/preorders/gw/sync-draft',{method:'POST'});await loadGwCampaigns();
-    document.getElementById('gwCampaignSelect').value=String(d.campaign.id);
-    if(d.campaign.release_date)document.getElementById('gwReleaseDate').value=String(d.campaign.release_date).slice(0,10);
-    if(d.campaign.source_form_url)document.getElementById('gwFormUrl').value=d.campaign.source_form_url;
-    document.getElementById('gwAutoSubmit').checked=d.campaign.auto_submit_enabled!==false;
-    if([10,15,20,30,60].includes(Number(d.campaign.auto_submit_minutes_before))){
-      document.getElementById('gwSubmitLeadMinutes').value=String(d.campaign.auto_submit_minutes_before);
-    }
-    setGwTimingValues({
-      supplierDeadlineAt:d.campaign.gw_supplier_deadline_at,
-      customerCutoffAt:d.campaign.order_due_at,
-      autoSubmitAt:d.campaign.gw_auto_submit_at
-    });
-    setSourceStatus((d.created?'Created':'Updated')+' GW draft · '+d.products.total+' product(s) · '+Number(d.scrape_counts?.ready||0)+
-      ' ready · '+Number(d.scrape_counts?.review||0)+' review · '+Number(d.scrape_counts?.filtered||0)+' filtered');await loadGwCampaign();
-  }catch(e){setSourceStatus('GW draft import failed: '+e.message)}
-}
-async function updateGwProductReview(id,patch){
-  try{
-    await getJson(api+'/preorders/gw/products/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({...patch,gw_reviewed_by:'gw-web'})});
-    resetDiscordPreview();showNotice('GW product review saved.',1000);
-  }catch(e){showNotice('Could not save GW product review: '+e.message);throw e}
-}
-function renderGwCampaignProducts(products){
-  const box=document.getElementById('gwCampaignProducts');box.replaceChildren();
-  if(!products.length){const p=document.createElement('p');p.textContent='No products in this GW campaign yet.';box.appendChild(p);return}
-  const table=document.createElement('table'),head=document.createElement('tr');
-  for(const label of ['Image','Item','Disposition','Pack','Single item name','Single MSRP','Review note']){const th=document.createElement('th');th.textContent=label;head.appendChild(th)}
-  table.appendChild(head);
-  for(const item of products){
-    const tr=document.createElement('tr'),imageTd=document.createElement('td'),imageUrl=item.image_url||item.source_image_url||'';
-    if(imageUrl){const img=document.createElement('img');img.src=imageUrl;img.alt=item.item_description||'GW product';img.loading='lazy';img.style.width='72px';
-      img.style.height='72px';img.style.objectFit='contain';img.onerror=()=>{img.style.display='none'};imageTd.appendChild(img)}else imageTd.textContent='—';
-    const name=document.createElement('td');name.textContent=item.item_description||'—';
-    const dispTd=document.createElement('td'),sel=document.createElement('select');
-    for(const value of ['REVIEW','POST_AS_IS','SPLIT_TO_SINGLES','DO_NOT_POST']){
-      const o=document.createElement('option');o.value=value;o.textContent=value.replaceAll('_',' ');if(value===item.gw_post_disposition)o.selected=true;sel.appendChild(o)}
-    sel.addEventListener('change',()=>updateGwProductReview(item.id,{gw_post_disposition:sel.value}));dispTd.appendChild(sel);
-    const packTd=document.createElement('td'),pack=document.createElement('input');pack.type='number';pack.min='1';pack.style.width='5rem';pack.value=item.gw_case_pack_size||'';
-    pack.addEventListener('change',()=>updateGwProductReview(item.id,{gw_case_pack_size:pack.value?Number(pack.value):null}));packTd.appendChild(pack);
-    const singleNameTd=document.createElement('td'),singleName=document.createElement('input');singleName.value=item.gw_single_item_name||'';singleName.placeholder='Optional';
-    singleName.addEventListener('change',()=>updateGwProductReview(item.id,{gw_single_item_name:singleName.value}));singleNameTd.appendChild(singleName);
-    const singleMsrpTd=document.createElement('td'),singleMsrp=document.createElement('input');singleMsrp.type='number';singleMsrp.min='0';singleMsrp.step='0.01';
-    singleMsrp.style.width='7rem';singleMsrp.value=item.gw_single_msrp??'';
-    singleMsrp.addEventListener('change',()=>updateGwProductReview(item.id,{gw_single_msrp:singleMsrp.value===''?null:Number(singleMsrp.value)}));singleMsrpTd.appendChild(singleMsrp);
-    const noteTd=document.createElement('td'),note=document.createElement('input');note.value=item.gw_review_note||'';note.placeholder='Why flagged / instructions';
-    note.addEventListener('change',()=>updateGwProductReview(item.id,{gw_review_note:note.value}));noteTd.appendChild(note);
-    tr.append(imageTd,name,dispTd,packTd,singleNameTd,singleMsrpTd,noteTd);table.appendChild(tr);
-  }box.appendChild(table);
-}
-async function createGwCampaign(){
-  const name=document.getElementById('gwCampaignName').value.trim();
-  const sourceFormUrl=document.getElementById('gwFormUrl').value.trim();
-  const due=document.getElementById('gwCustomerCutoff').value||document.getElementById('gwOrderDue').value;
-  const supplier=document.getElementById('gwSupplierDeadline').value;
-  const autoSubmitAt=document.getElementById('gwAutoSubmitAt').value;
-  if(!name||!sourceFormUrl||!due)return showNotice('Campaign name, GW form URL, and customer cutoff are required.');
-  try{
-    const row=await getJson(api+'/preorders/gw/campaigns',{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        name,
-        source_form_url:sourceFormUrl,
-        order_due_at:new Date(due).toISOString(),
-        release_date:document.getElementById('gwReleaseDate').value||null,
-        auto_submit_enabled:Boolean(document.getElementById('gwAutoSubmit').checked),
-        auto_submit_minutes_before:gwSubmitLeadMinutes(),
-        gw_supplier_deadline_at:supplier?new Date(supplier).toISOString():null,
-        gw_auto_submit_at:autoSubmitAt?new Date(autoSubmitAt).toISOString():null
-      })
-    });
-    if(row.source_form_url)document.getElementById('gwFormUrl').value=row.source_form_url;
-    showNotice('GW preorder campaign created.',1800);
-    await loadGwCampaigns();
-    document.getElementById('gwCampaignSelect').value=String(row.id);
-    await loadGwCampaign();
-  }catch(e){showNotice('Could not create GW campaign: '+e.message)}
-}
+
 async function loadGwCampaign(){
-  const id=document.getElementById('gwCampaignSelect').value;
-  const status=document.getElementById('gwCampaignStatus');
-  const submission=document.getElementById('gwSubmissionStatus');
-  resetDiscordPreview();
-  if(!id){
-    status.textContent='';submission.replaceChildren();
-    document.getElementById('gwCampaignProducts').replaceChildren();return;
-  }
-  try{
-    const d=await getJson(api+'/preorders/campaigns/'+id),c=d.campaign;
-    submission.replaceChildren();
-    const label=document.createElement('span');label.textContent='Submission:';
-    const pill=document.createElement('span');
-    const submissionStatus=String(c.external_submission_status||'NOT_SUBMITTED').toUpperCase();
-    pill.className='gw-status-pill '+(submissionStatus==='SUBMITTED'?'submitted':(submissionStatus==='FAILED'?'failed':''));
-    pill.textContent=submissionStatus.replaceAll('_',' ');
-    submission.append(label,pill);
-    if(c.submitted_at){
-      const when=document.createElement('span');when.className='form-note';when.textContent='Submitted '+new Date(c.submitted_at).toLocaleString();submission.appendChild(when);
-    }
-    status.textContent='Customer cutoff: '+(c.order_due_at?new Date(c.order_due_at).toLocaleString():'—')+
-      ' · GW deadline: '+(c.gw_supplier_deadline_at?new Date(c.gw_supplier_deadline_at).toLocaleString():'—')+
-      ' · Auto-submit: '+(c.auto_submit_enabled?(c.gw_auto_submit_at?new Date(c.gw_auto_submit_at).toLocaleString():'enabled'):'OFF')+
-      ' · Products: '+d.products.length+' · Requests: '+d.products.reduce((n,x)=>n+Number(x.requested_total||0),0)+
-      (c.discord_published_at?' · Discord published '+new Date(c.discord_published_at).toLocaleString():'');
-    document.getElementById('gwAutoSubmit').checked=c.auto_submit_enabled!==false;
-    if([10,15,20,30,60].includes(Number(c.auto_submit_minutes_before))){
-      document.getElementById('gwSubmitLeadMinutes').value=String(c.auto_submit_minutes_before);
-    }
-    if(c.source_form_url)document.getElementById('gwFormUrl').value=c.source_form_url;
-    if(c.release_date)document.getElementById('gwReleaseDate').value=String(c.release_date).slice(0,10);
-    setGwTimingValues({
-      supplierDeadlineAt:c.gw_supplier_deadline_at,
-      customerCutoffAt:c.order_due_at,
-      autoSubmitAt:c.gw_auto_submit_at
-    });
-    renderGwCampaignProducts(d.products);
-  }catch(e){
-    submission.replaceChildren();
-    status.textContent='GW campaign load failed: '+e.message;
-  }
+ const id=document.getElementById('gwCampaignSelect').value;if(!id)return;
+ const d=await getJson(api+'/preorders/campaigns/'+id),c=d.campaign;
+ document.getElementById('gwCampaignName').value=c.name||'';document.getElementById('gwFormUrl').value=c.source_form_url||'';document.getElementById('gwReleaseDate').value=String(c.release_date||'').slice(0,10);document.getElementById('gwAutoSubmit').checked=c.auto_submit_enabled!==false;setTiming(c);renderCleanup(d.products);
+ document.getElementById('gwSubmissionStatus').textContent='Submission: '+String(c.external_submission_status||'NOT_SUBMITTED').replaceAll('_',' ')+(c.submitted_at?' · '+new Date(c.submitted_at).toLocaleString():'');
+ document.getElementById('gwCampaignStatus').textContent='Customer cutoff: '+(c.order_due_at?new Date(c.order_due_at).toLocaleString():'—')+' · GW deadline: '+(c.gw_supplier_deadline_at?new Date(c.gw_supplier_deadline_at).toLocaleString():'—')+' · Auto-submit: '+(c.gw_auto_submit_at?new Date(c.gw_auto_submit_at).toLocaleString():'—')+' · Products: '+d.products.length+' · Requests: '+d.products.reduce((n,x)=>n+Number(x.requested_total||0),0);
+ document.getElementById('gwResponseStatus').textContent='Discord reactions will be recorded passively after the reaction-capture migration is enabled.';
 }
-function renderDiscordPreview(d){
-  const box=document.getElementById('gwDiscordPreview');box.replaceChildren();
-  if(d.blocked.length){const warn=document.createElement('div');warn.className='notice';warn.textContent='Blocked: '+d.blocked.map(x=>'#'+x.product_id+' '+x.reason).join(' | ');box.appendChild(warn)}
-  for(const post of d.posts){
-    const card=document.createElement('div');card.style.border='1px solid var(--border, #777)';card.style.borderRadius='8px';card.style.padding='12px';card.style.margin='10px 0';
-    const title=document.createElement('strong');title.textContent=post.title;card.appendChild(title);
-    const desc=document.createElement('pre');desc.style.whiteSpace='pre-wrap';desc.style.margin='8px 0';desc.textContent=post.description||'';card.appendChild(desc);
-    if(post.image_url){const img=document.createElement('img');img.src=post.image_url;img.alt=post.title;img.loading='lazy';img.style.maxWidth='320px';img.style.maxHeight='240px';
-      img.style.objectFit='contain';img.style.display='block';img.style.margin='8px 0';img.onerror=()=>{img.style.display='none'};card.appendChild(img)}
-    const footer=document.createElement('div');footer.className='form-note';footer.textContent=post.footer+(post.image_url?' · image attached':' · no image');card.appendChild(footer);box.appendChild(card);
-  }
-  if(d.suppressed.length){const p=document.createElement('p');p.className='form-note';p.textContent=d.suppressed.length+' product(s) are intentionally suppressed and will not be posted.';box.appendChild(p)}
-}
-async function previewGwDiscordPosts(){
-  const id=document.getElementById('gwCampaignSelect').value;if(!id)return showNotice('Select a GW campaign first.');
-  setDiscordStatus('Building Discord preview…');document.getElementById('gwPublishButton').disabled=true;
-  try{
-    const d=await getJson(api+'/preorders/gw/campaigns/'+id+'/discord-preview');lastPreview=d;lastPreviewCampaignId=String(id);renderDiscordPreview(d);
-    const pub=d.publication,pubText=pub?' · Publication status: '+pub.status+(pub.published_at?' at '+new Date(pub.published_at).toLocaleString():''):'';
-    setDiscordStatus('Discord preview for channel '+(d.test_channel_id||'not configured')+' · '+d.counts.posts+' post(s) · '+d.counts.blocked+' blocked · '+
-      d.counts.suppressed+' suppressed · '+(d.ready_to_publish?'Ready to publish':'Not ready to publish')+pubText);
-    document.getElementById('gwPublishButton').disabled=!(d.ready_to_publish && !pub);
-  }catch(e){setDiscordStatus('Discord preview failed: '+e.message)}
-}
-async function publishGwDiscordPosts(){
-  const id=document.getElementById('gwCampaignSelect').value;
-  if(!id||lastPreviewCampaignId!==String(id)||!lastPreview?.ready_to_publish)return showNotice('Preview this campaign immediately before publishing.');
-  if(lastPreview.publication)return showNotice('This campaign already has a Discord publication record.');
-  const count=Number(lastPreview.counts?.posts||0);
-  if(!window.confirm('Publish '+count+' approved GW preorder post(s) to Discord channel '+lastPreview.test_channel_id+' now?'))return;
-  const button=document.getElementById('gwPublishButton');button.disabled=true;setDiscordStatus('Publishing '+count+' approved GW preorder post(s)…');
-  try{
-    const d=await getJson(api+'/preorders/gw/campaigns/'+id+'/discord-publish',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({published_by:'gw-web'})});
-    setDiscordStatus('Published '+d.published_count+' GW preorder post(s) to Discord. Publication ID '+d.publication_id+'.');
-    showNotice('GW preorder posts published to Discord.',2500);await loadGwCampaign();await previewGwDiscordPosts();
-  }catch(e){
-    const details=e.details||{},extra=details.published_count!=null?' '+details.published_count+' post(s) were sent before the failure.':'';
-    setDiscordStatus('Discord publish failed: '+e.message+extra);showNotice('Discord publish did not complete. Review the status before retrying.');
-  }
-}
+
+function renderDiscordPreview(d){const b=document.getElementById('gwDiscordPreview');b.replaceChildren();for(const p of d.posts){const card=document.createElement('div');card.style.border='1px solid var(--border)';card.style.borderRadius='8px';card.style.padding='10px';card.style.margin='8px 0';const t=document.createElement('strong');t.textContent=p.title;const desc=document.createElement('div');desc.textContent=p.description||'';card.append(t,desc);b.appendChild(card)}}
+async function previewGwDiscordPosts(){const id=document.getElementById('gwCampaignSelect').value;if(!id)return showNotice('Sync & Scrape or select a campaign first.');try{const d=await getJson(api+'/preorders/gw/campaigns/'+id+'/discord-preview');lastPreview=d;lastPreviewCampaignId=String(id);renderDiscordPreview(d);document.getElementById('gwDiscordStatus').textContent=d.counts.posts+' post(s) ready · '+d.counts.blocked+' blocked · '+d.counts.suppressed+' not posting';document.getElementById('gwPublishButton').disabled=!d.ready_to_publish}catch(e){document.getElementById('gwDiscordStatus').textContent='Preview failed: '+e.message}}
+async function publishGwDiscordPosts(){const id=document.getElementById('gwCampaignSelect').value;if(!lastPreview||lastPreviewCampaignId!==String(id)||!lastPreview.ready_to_publish)return showNotice('Preview immediately before posting.');if(!confirm('Post '+lastPreview.counts.posts+' GW item(s) to Discord now?'))return;try{const d=await getJson(api+'/preorders/gw/campaigns/'+id+'/discord-publish',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({published_by:'gw-web'})});document.getElementById('gwDiscordStatus').textContent='Posted '+d.published_count+' item(s) to Discord.';document.getElementById('gwPublishButton').disabled=true;await loadGwCampaign()}catch(e){document.getElementById('gwDiscordStatus').textContent='Post failed: '+e.message}}
 
 document.getElementById('gwSubmitLeadMinutes').value='15';
-document.getElementById('gwAutoSubmit').checked=true;
 document.getElementById('accessKey').value=accessKey();setAuthState(false);
-if(accessKey())saveKey();else showNotice('GW Preorders is locked. Enter the internal access key above and click Unlock.');
+if(accessKey())saveKey();else showNotice('Enter the Special Orders access key to begin.');

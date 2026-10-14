@@ -7,18 +7,10 @@
 </head>
 <body><div class="wrap">
   <div class="toolbar" style="justify-content:flex-end;margin-bottom:10px">
-    <a href="/special-orders"
-       style="display:inline-block;padding:9px 12px;border-radius:8px;background:#0f766e;color:#fff;text-decoration:none;font-weight:700">
-      Back to Special Orders
-    </a>
-    <a href="https://lightspeed-api-production-c087.up.railway.app/extension" target="_blank" rel="noopener"
-       style="display:inline-block;padding:9px 12px;border-radius:8px;background:#1f3a5f;color:#fff;text-decoration:none;font-weight:700">
-      Open Lightspeed Toolkit
-    </a>
+    <a href="/special-orders" style="display:inline-block;padding:9px 12px;border-radius:8px;background:#0f766e;color:#fff;text-decoration:none;font-weight:700">Back to Special Orders</a>
   </div>
-
   <h1>GW Preorders</h1>
-  <div class="sub">Games Workshop weekly preorder intake, review, Discord publishing, and supplier submission.</div>
+  <div class="sub">Sync & Scrape → Cleanup Items → Post to Discord → Record Responses → Confirm Customers → Submit to GW</div>
   <div id="notice" class="notice"></div>
 
   <div class="panel">
@@ -27,27 +19,28 @@
       <button id="unlockButton" onclick="saveKey()">Unlock</button>
       <span id="authStatus" class="pill">Locked</span>
     </div>
-    <div class="form-note">Uses the same Special Orders access key as the main dashboard.</div>
   </div>
 
   <div class="panel">
     <div class="section-heading">
       <div>
-        <h2 style="margin:0">Weekly GW Source</h2>
-        <p class="form-note">Pull the latest Games Workshop email, inspect the form, and create or refresh a draft campaign.</p>
+        <h2 style="margin:0">1. Sync, Scrape & Cleanup</h2>
+        <p class="form-note">Sync the latest GW email, scrape its form, create/refresh the campaign, and save the items in one step.</p>
       </div>
     </div>
+
     <div class="form-grid form-grid-4">
-      <label class="field"><span>Campaign name</span><input id="gwCampaignName" placeholder="GW — week of 10/11"></label>
-      <label class="field"><span>GW form URL</span><input id="gwFormUrl" placeholder="Paste weekly Google Form link"></label>
+      <label class="field"><span>Campaign name</span><input id="gwCampaignName" readonly></label>
+      <label class="field"><span>GW form URL</span><input id="gwFormUrl" readonly></label>
       <label class="field"><span>Customer order cutoff</span><input id="gwOrderDue" type="datetime-local" readonly></label>
-      <label class="field"><span>Release date</span><input id="gwReleaseDate" type="date"></label>
+      <label class="field"><span>Release date</span><input id="gwReleaseDate" type="date" readonly></label>
     </div>
+
     <div class="toolbar">
       <label><input id="gwAutoSubmit" type="checkbox" checked> Auto-submit enabled</label>
       <label class="field" style="min-width:190px">
         <span>Submit Before Deadline</span>
-        <select id="gwSubmitLeadMinutes" onchange="recomputeGwAutoSubmitTime()">
+        <select id="gwSubmitLeadMinutes">
           <option value="10">10 minutes</option>
           <option value="15" selected>15 minutes</option>
           <option value="20">20 minutes</option>
@@ -55,45 +48,31 @@
           <option value="60">1 hour</option>
         </select>
       </label>
-      <button type="button" onclick="testGwGraphMailbox()">Test Outlook/Graph</button>
-      <button type="button" onclick="syncLatestGwEmail()">Sync latest GW email</button>
-      <button type="button" onclick="scrapeGwFormPreview()">Scrape form preview</button>
-      <button type="button" onclick="importLatestGwDraft()">Import latest as draft</button>
-      <button type="button" onclick="createGwCampaign()">Create GW campaign</button>
+      <button type="button" onclick="syncAndScrapeGw()">Sync &amp; Scrape</button>
+      <button type="button" onclick="previewGwDiscordPosts()">Preview Discord</button>
+      <button id="gwPublishButton" type="button" onclick="publishGwDiscordPosts()" disabled>Post to Discord</button>
     </div>
+
     <div id="gwSourceStatus" class="form-note"></div>
-    <div id="gwSourcePreview"></div>
+    <div id="gwCleanupItems"></div>
+    <div id="gwDiscordStatus" class="form-note"></div>
+    <div id="gwDiscordPreview"></div>
   </div>
 
   <div class="panel">
     <div class="section-heading">
       <div>
-        <h2 style="margin:0">Campaign Review</h2>
-        <p class="form-note">Approve each item as-is, split case packs to singles, or suppress it before Discord publishing.</p>
+        <h2 style="margin:0">2. Campaign Status</h2>
+        <p class="form-note">Customer response, confirmation, and GW submission status.</p>
       </div>
     </div>
     <div class="toolbar">
       <select id="gwCampaignSelect" onchange="loadGwCampaign()"><option value="">Select GW campaign…</option></select>
-      <button type="button" onclick="loadGwCampaign()">Refresh campaign</button>
+      <button type="button" onclick="loadGwCampaign()">Refresh</button>
     </div>
     <div id="gwSubmissionStatus" class="gw-submission-status"></div>
     <div id="gwCampaignStatus" class="form-note"></div>
-    <div id="gwCampaignProducts"></div>
-  </div>
-
-  <div class="panel">
-    <div class="section-heading">
-      <div>
-        <h2 style="margin:0">Discord Preview & Publish</h2>
-        <p class="form-note">Preview exactly what customers will see. Publishing is blocked if any product still needs review and duplicate campaign publication is prevented server-side.</p>
-      </div>
-    </div>
-    <div class="toolbar">
-      <button type="button" onclick="previewGwDiscordPosts()">Preview Discord posts</button>
-      <button id="gwPublishButton" type="button" onclick="publishGwDiscordPosts()" disabled>Publish approved posts to Discord</button>
-    </div>
-    <div id="gwDiscordStatus" class="form-note"></div>
-    <div id="gwDiscordPreview"></div>
+    <div id="gwResponseStatus" class="form-note"></div>
   </div>
 </div>
 
@@ -101,5 +80,4 @@
 <input id="gwCustomerCutoff" type="hidden">
 <input id="gwAutoSubmitAt" type="hidden">
 <script src="/gw-preorders-client.js"></script>
-</body>
-</html>
+</body></html>
