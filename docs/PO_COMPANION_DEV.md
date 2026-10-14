@@ -29,3 +29,27 @@ Branch: `feature/po-companion-readonly-foundation` based on `integration/hobby-c
 
 ## Safety
 No backend write endpoint exists for this feature. The review approval button is disabled. The panel cannot scrape, type, or submit on a supplier website.
+
+## 2026-10-14 read-only PO loading work
+
+Implemented on the isolated feature branch:
+- `services/lightspeedApi.js`: getConsignment / getConsignmentProducts.
+- `routes/poCompanion.js`: GET /api/scanner/purchase-orders/:poId mounted only behind the scanner session and Timeclock authorization.
+- Supplier mapping uses Lightspeed PO supplier ID -> local suppliers.lightspeed_supplier_id -> supplier_products for that supplier, never another supplier's SKU.
+- `extension/po-companion/background.js`: extension worker holds the signed Timeclock session in memory; supplier page only sees sanitized PO data. No PIN or bearer token goes into supplier page DOM/storage.
+- `extension/po-companion/panel.js`: sign in with Timeclock PIN, load/reload actual PO data, show warnings, copy identifier and stage drafts.
+- Extension manifest version 0.3.20 with a test name so staff can identify it.
+
+**NOT DEPLOYED.** Current running scanner service does not contain this new GET route. It will return 404 until a separately approved controlled backend deployment. The Chrome test build can be loaded locally for UI evaluation, but live PO fetch cannot yet succeed.
+
+### Test installation (only after backend deployment approval)
+1. Download source archive of the feature branch from GitHub, extract it.
+2. In Chrome extensions, enable Developer mode then Load unpacked and select the extracted `extension` folder.
+3. To avoid competing buttons/scripts, disable the production Hobby Corner extension during the test, or use a separate Chrome profile.
+4. Open a Lightspeed purchase order; click the test extension -> Use Current Lightspeed PO.
+5. Navigate to the supplier website; open test extension -> Open PO Companion on Supplier Page.
+6. Enter employee Timeclock PIN in the panel -> Sign in & Load PO.
+7. Verify PO ID, supplier, quantities, supplier SKU, UPC, warnings; test copy/expand/collapse and Review Changes. Approval is permanently disabled.
+8. Do not use this on an actual supplier checkout; the extension never enters/places orders.
+
+Remaining critical checks: Lightspeed PO response shape, pagination, supplier ID and supplier field normalization; real employee auth, missing supplier mapping, Chrome browser behavior. No live API calls were performed during branch implementation.
