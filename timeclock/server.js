@@ -1580,7 +1580,7 @@ function scannerServiceAuthorized(req) {
 // Fail closed for automatic privilege if the API is unavailable or role is unknown.
 // Explicit, audited Timeclock grants remain independent.
 async function scannerEffectivePermissions(employee){
-  let approval={role:null,canApprove:false,verified:false,reason:'unavailable'};
+  let approval={role:null,canApprove:false,verified:false,reason:'lightspeed_unavailable'};
   if(employee.lightspeed_user_id){
     try{
       const users=await fetchLightspeedUsers();
@@ -1600,6 +1600,7 @@ async function scannerEffectivePermissions(employee){
   const canApprove=canLookup && (employee.scanner_can_approve===true || (approval.verified && approval.canApprove));
   return {
     id:employee.id,name:employee.name,canLookup,canApprove,
+    permissionReason:canApprove?null:(!employee.lightspeed_user_id?'lightspeed_account_not_linked':approval.reason==='unlinked'?'lightspeed_account_not_linked':approval.reason==='missing_or_duplicate'?'lightspeed_user_not_found':approval.reason==='unresolved_role_id'?'lightspeed_role_not_recognized':approval.reason==='lightspeed_unavailable'?'lightspeed_lookup_unavailable':approval.verified?'role_read_only':'lightspeed_role_not_recognized'),
     role:approval.verified?approval.role:null,
     permissionSource:canApprove
       ? (approval.verified&&approval.canApprove?'lightspeed_role':'timeclock_admin')
