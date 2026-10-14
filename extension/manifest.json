@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Hobby Corner Lightspeed Toolkit",
-  "version": "0.3.21",
+  "version": "0.3.22",
   "description": "Hobby Corner tools for Lightspeed orders, PO labels, Timeclock, and supplier product review.",
   "permissions": [
     "activeTab",
