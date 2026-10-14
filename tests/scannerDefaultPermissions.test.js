@@ -19,6 +19,7 @@ test('scanner sign-in does not persist PIN or session in Chrome storage',()=>{
   assert.match(review,/scannerSession=null/);
 });
 test('extension still keeps create/update disabled',()=>{
-  assert.match(html,/<button disabled>Create New<\/button>/);
-  assert.match(html,/<button disabled>Update Existing<\/button>/);
+  assert.match(html,/<button type="button" id="create-item" disabled>Prepare Create Item<\/button>/);
+  assert.doesNotMatch(html,/id="product-create-submit"|id="product-update-submit"/);
+  assert.match(review,/No Lightspeed changes will be made|No Lightspeed changes|No Lightspeed changes will be made/i);
 });
