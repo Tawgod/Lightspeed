@@ -16,6 +16,8 @@ on:
       - 'services/scannerTimeclockGateway.js'
       - 'services/scannerTimeclockIdentity.js'
       - 'server.js'
+      - 'services/scannerPreorderStaging.js'
+      - 'tests/scannerPreorderStaging.test.js'
       - '.github/workflows/scanner-ui-check.yml'
 jobs:
   ui:
@@ -32,6 +34,7 @@ jobs:
       - name: Check extension JavaScript
         run: |
           node --check server.js
+          node --check services/scannerPreorderStaging.js
           node --check routes/scannerMatchGateway.js
           node --check services/scannerTimeclockGateway.js
           node --check services/scannerTimeclockIdentity.js
@@ -61,6 +64,9 @@ jobs:
           assert.match(review,/lookupSuppliers/);
           assert.doesNotMatch(html,/id="original"|id="existing"/);
           assert.match(html,/class="compact-sign-in"/);
+          assert.match(html,/id="add-to-preorder"/);
+          assert.match(html,/id="preorder-campaign"/);
+          assert.match(review,/loadPreorderCampaigns/);
           assert.doesNotMatch(review,/fetch\([^)]*\/create/);
           assert.match(capture,/upcCandidates/);
           assert.match(capture,/acdSupplierSku\|\|str\(p.sku\)/);
@@ -78,3 +84,5 @@ jobs:
         run: node --test tests/lightspeedOrderDetection.test.cjs
       - name: Verify automatic scanner product match metadata
         run: node --test tests/scannerReviewAutoMatch.test.js
+      - name: Verify guarded preorder campaign staging
+        run: node --test tests/scannerPreorderStaging.test.js
