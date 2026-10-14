@@ -1,0 +1,26 @@
+name: GW parser startup syntax check
+on:
+  push:
+    branches: [fix/gw-preorder-parser-startup]
+    paths:
+      - special-orders.js
+      - .github/workflows/gw-parser-startup-check.yml
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check special-orders.js
+      - name: Ensure GW parser recognizes fields
+        run: |
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          const src=fs.readFileSync('special-orders.js','utf8');
+          assert.match(src, /function parseGwListing/);
+          assert.match(src, /shortCode=codeMatch/);
+          assert.match(src, /suggestedSingleMsrp/);
+          JS
