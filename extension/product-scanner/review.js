@@ -114,7 +114,7 @@ chrome.storage.local.get('scannerDraft',({scannerDraft:d})=>{
   document.getElementById('original').textContent=JSON.stringify({capturedAt:d.capturedAt,candidates:d.candidates,product:p},null,2);
   const fields=document.getElementById('fields');
   for(const k of keys){const label=document.createElement('label');label.textContent=labels[k];const input=document.createElement('input');input.id='field-'+k;
-    input.value=k==='supplierSku'?(p.supplierSku??p.sku??''):k==='sku'?(p.supplierSku? p.sku??'':'' : ''):(p[k]??'');
+    input.value=k==='supplierSku' ? (p.supplierSku??p.sku??'') : k==='sku' ? (p.supplierSku ? (p.sku??'') : '') : (p[k]??'');
     input.addEventListener('input',invalidateVerification);label.append(input);fields.append(label);}
   document.getElementById('description').value=p.description||'';
   document.getElementById('description').addEventListener('input',invalidateVerification);
