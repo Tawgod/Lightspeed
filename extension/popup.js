@@ -120,7 +120,7 @@ document.getElementById('scan-page').addEventListener('click', async () => {
         // Never mistake a supplier's SKU/MPN for the store's general SKU or UPC.
         const digits=v=>String(v??'').replace(/[^0-9]/g,'');
         const validGtin=v=>{const n=digits(v);return [8,12,13,14].includes(n.length)?n:'';};
-        const upcCandidates=[p?.gtin12,p?.gtin13,p?.gtin14,p?.gtin8,p?.gtin,p?.upc,meta('product:upc'),meta('product:gtin'),meta('gtin'),document.querySelector('[itemprop="gtin12"],[itemprop="gtin13"],[itemprop="gtin14"],[itemprop="gtin8"],[itemprop="gtin"]')?.getAttribute('content')];
+        const upcCandidates=[p?.gtin12,p?.gtin13,p?.gtin14,p?.gtin8,p?.gtin,p?.upc,meta('product:upc'),meta('product:gtin'),meta('gtin'),(document.querySelector('[itemprop="gtin12"],[itemprop="gtin13"],[itemprop="gtin14"],[itemprop="gtin8"],[itemprop="gtin"]')?.getAttribute('content')||document.querySelector('[itemprop="gtin12"],[itemprop="gtin13"],[itemprop="gtin14"],[itemprop="gtin8"],[itemprop="gtin"]')?.textContent)];
         const capturedUpc=upcCandidates.map(validGtin).find(Boolean)||'';
         const str=v=>typeof v==='string'?v.trim():'';
         return {sourceUrl:location.href,capturedAt:new Date().toISOString(),candidates:products.length,requiresSelection:products.length>1,product:p?{
