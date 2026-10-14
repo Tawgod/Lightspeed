@@ -64,12 +64,18 @@ signInForm.addEventListener('submit',async event=>{
   }
 });
 
-const keys=['name','sku','upc','manufacturerPartNumber','brand','imageUrl','advertisedPrice','currency'];
-const labels={name:'Product name',sku:'SKU',upc:'UPC / GTIN',manufacturerPartNumber:'Manufacturer part number',brand:'Brand',imageUrl:'Image URL',advertisedPrice:'Supplier advertised price (reference only)',currency:'Currency'};
+const keys=['name','sku','supplierSku','upc','brand','imageUrl','advertisedPrice'];
+const labels={name:'Product name',sku:'General SKU (Lightspeed)',supplierSku:'Supplier reorder number',upc:'UPC / GTIN',brand:'Brand',imageUrl:'Image URL',advertisedPrice:'Supplier advertised price (reference only)'};
 const status=document.getElementById('status');
 const matchStatus=document.getElementById('match-status');
 const matchesElement=document.getElementById('matches');
 const checkButton=document.getElementById('check-matches');
+const createButton=document.getElementById('create-item');
+const createPreview=document.getElementById('create-preview');
+let verifiedProductSignature=null;
+let lastMatches=null;
+function signature(){return JSON.stringify(currentProduct());}
+function invalidateVerification(){verifiedProductSignature=null;lastMatches=null;createButton.disabled=true;createPreview.hidden=true;matchStatus.textContent='Product changed — check existing products again before preparing creation.';}
 
 function currentProduct(){
   const product=Object.fromEntries(keys.map(k=>[k,document.getElementById('field-'+k).value.trim()]));
@@ -107,10 +113,13 @@ chrome.storage.local.get('scannerDraft',({scannerDraft:d})=>{
   document.getElementById('source').textContent=d.sourceUrl||'Unknown source';
   document.getElementById('original').textContent=JSON.stringify({capturedAt:d.capturedAt,candidates:d.candidates,product:p},null,2);
   const fields=document.getElementById('fields');
-  for(const k of keys){const label=document.createElement('label');label.textContent=labels[k];const input=document.createElement('input');input.id='field-'+k;input.value=p[k]??'';label.append(input);fields.append(label);}
+  for(const k of keys){const label=document.createElement('label');label.textContent=labels[k];const input=document.createElement('input');input.id='field-'+k;
+    input.value=k==='supplierSku'?(p.supplierSku??p.sku??''):k==='sku'?(p.supplierSku? p.sku??'':'' : ''):(p[k]??'');
+    input.addEventListener('input',invalidateVerification);label.append(input);fields.append(label);}
   document.getElementById('description').value=p.description||'';
-  const missing=['name','sku','upc'].filter(k=>!p[k]);
-  document.getElementById('warnings').textContent=missing.length?'Check missing fields: '+missing.join(', '):'';
+  document.getElementById('description').addEventListener('input',invalidateVerification);
+  const missing=['name','upc'].filter(k=>!p[k]);
+  document.getElementById('warnings').textContent=missing.length?'Not found on supplier page — enter or verify manually: '+missing.join(', ')+'. Supplier reorder number is separate from general SKU.':'';
 });
 document.getElementById('copy').addEventListener('click',async()=>{
   try{await navigator.clipboard.writeText(JSON.stringify(currentProduct(),null,2));status.textContent='Proposed data copied. No Lightspeed changes made.';}
@@ -118,7 +127,7 @@ document.getElementById('copy').addEventListener('click',async()=>{
 });
 
 checkButton.addEventListener('click',async()=>{
-  checkButton.disabled=true;matchStatus.textContent='Checking…';matchesElement.replaceChildren();
+  checkButton.disabled=true;createButton.disabled=true;createPreview.hidden=true;verifiedProductSignature=null;lastMatches=null;matchStatus.textContent='Checking…';matchesElement.replaceChildren();
   try{
     if(!scannerSession || scannerSession.expiresAt<=Date.now()) {
       clearScannerSession();
@@ -146,7 +155,28 @@ checkButton.addEventListener('click',async()=>{
     const result=await checkProductMatches(currentProduct(),lookup);
     if(!result.verified)throw new Error('Incomplete verification');
     showMatches(result.matches);
-    matchStatus.textContent='Both matching services returned successfully. Review matches before taking action.';
+    verifiedProductSignature=signature();lastMatches=result.matches;
+    createButton.disabled=result.matches.length!==0;
+    matchStatus.textContent=result.matches.length ? 'Potential matches found. Review them; create is unavailable.' : 'No matches found by both services. You may prepare a creation request for review; nothing will be saved.';
   }catch(e){matchStatus.textContent='Not verified: '+e.message;}
   finally{checkButton.disabled=false;}
+});
+
+// Prepare a proposed new item only after both independent match services succeed.
+// This button never posts product writes or calls Lightspeed create endpoints.
+createButton.addEventListener('click',()=>{
+  if(!scannerSession || scannerSession.expiresAt<=Date.now()){
+    invalidateVerification();createPreview.hidden=false;createPreview.textContent='Session expired. Sign in and re-check products.';return;
+  }
+  if(!verifiedProductSignature || verifiedProductSignature!==signature() || !Array.isArray(lastMatches) || lastMatches.length){
+    invalidateVerification();createPreview.hidden=false;createPreview.textContent='Re-check the current product before preparing creation.';return;
+  }
+  const product=currentProduct();
+  if(!product.name || (!product.upc && !product.sku && !product.supplierSku)){
+    createPreview.hidden=false;createPreview.textContent='Enter a product name and at least one identifier first.';return;
+  }
+  createPreview.hidden=false;
+  createPreview.textContent='Create Item — approval preview only. No Lightspeed changes will be made.\\n'+
+    JSON.stringify({name:product.name,generalSku:product.sku,supplierReorderNumber:product.supplierSku,upc:product.upc,brand:product.brand,description:product.description,advertisedPrice:product.advertisedPrice},null,2)+
+    '\\nCreation requires a separately approved, employee-authorized backend workflow.';
 });
