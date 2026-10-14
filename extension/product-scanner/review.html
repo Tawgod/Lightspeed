@@ -35,6 +35,16 @@
     <button type="button" id="check-matches" disabled>Recheck products</button>
     <p id="match-status" role="status">Sign in to check the captured product.</p>
     <div id="matches"></div>
+    <div id="preorder-selector" class="preorder-selector">
+      <label class="preorder-check"><input type="checkbox" id="add-to-preorder"> Add to preorder campaign</label>
+      <div id="preorder-options" hidden>
+        <label for="preorder-campaign">Choose campaign</label>
+        <select id="preorder-campaign"><option value="">Select an existing campaign</option></select>
+        <p id="preorder-status" role="status">Sign in to load campaigns.</p>
+        <button id="stage-preorder" type="button" disabled>Stage in Campaign</button>
+        <p class="hint">Staged for review in Hobby Corner; not yet a published campaign product or Discord post.</p>
+      </div>
+    </div>
     <button type="button" id="create-item" disabled>Prepare Create Item</button>
     <pre id="create-preview" role="status" hidden></pre>
     <p class="hint">Creation and updates are disabled. No supplier values automatically overwrite Lightspeed records.</p>
