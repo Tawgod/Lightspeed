@@ -3036,6 +3036,15 @@ export function createSpecialOrdersRouter({
     `, [req.params.id]);
     const order = orderResult.rows[0];
     if (!order) return res.status(404).json({ error:'Supplier order not found.' });
+    if (order.lightspeed_consignment_id || String(order.lightspeed_sync_status||'').toUpperCase()==='SYNCED') {
+      return res.status(409).json({
+        error:'This supplier order is already linked to a Lightspeed purchase order and cannot be pushed again.',
+        lightspeed_consignment_id:order.lightspeed_consignment_id||null
+      });
+    }
+    if (String(order.status||'DRAFT').toUpperCase()!=='DRAFT') {
+      return res.status(409).json({ error:'Only draft supplier orders can be pushed to Lightspeed.' });
+    }
 
     const itemsResult = await pool.query(`
       SELECT soi.*, p.lightspeed_product_id
@@ -3062,6 +3071,11 @@ export function createSpecialOrdersRouter({
         method:'POST', body:JSON.stringify(payload)
       });
       const consignment = created?.data || created;
+      if (!consignment?.id) throw Object.assign(new Error('Lightspeed did not return a purchase-order id.'),{status:502});
+      await pool.query(
+        "UPDATE supplier_orders SET lightspeed_consignment_id=$1,lightspeed_sync_status='PENDING_LINES',updated_at=now() WHERE id=$2",
+        [consignment.id,req.params.id]
+      );
 
       const bulk = itemsResult.rows.map(x => ({
         product_id:x.lightspeed_product_id,
