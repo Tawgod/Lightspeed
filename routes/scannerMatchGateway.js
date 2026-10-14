@@ -33,6 +33,10 @@ export function publicScannerMatch(row = {}, source) {
     upc: clean(row.upc, 128),
     description: clean(row.description, 2000),
     brand: clean(row.brand, 250),
+    weight: row.weight == null ? null : String(row.weight).slice(0,80),
+    imageUrl: clean(row.image_url || row.imageUrl || row.image?.url || row.images?.[0]?.url || row.image, 500),
+    weightKnown: row.weight !== undefined && row.weight !== null,
+    pictureKnown: row.image_url !== undefined || row.imageUrl !== undefined || row.image !== undefined || row.images !== undefined,
     score: Number.isFinite(Number(row.score)) ? Math.max(0, Math.min(100, Number(row.score))) : 0,
     reasons: Array.isArray(row.reasons) ? row.reasons.filter(s => typeof s === 'string').slice(0, 8) : []
   };
@@ -44,12 +48,22 @@ export function publicScannerMatch(row = {}, source) {
  * lookup(kind, payload) must call the existing Special Orders match-local/match-remote
  * service through a backend-only credential. Neither is provided here.
  */
-export function createScannerMatchGateway({ verifyEmployee, lookup } = {}) {
+export function createScannerMatchGateway({ verifyEmployee, lookup, supplierLookup } = {}) {
   const router = express.Router();
   router.use(express.json({ limit: '16kb' }));
   router.use((req, res, next) => {
     res.set('Cache-Control', 'no-store');
     next();
+  });
+  router.get('/suppliers',async(req,res)=>{
+    try{
+      const employee=await verifyEmployee(req);
+      if(!employee?.id||!employee.canLookup)return res.status(403).json({error:'Scanner lookup denied.'});
+      if(typeof supplierLookup!=='function')return res.status(503).json({error:'Supplier lookup unavailable.'});
+      const suppliers=await supplierLookup();
+      if(!Array.isArray(suppliers))throw new Error('Invalid supplier response');
+      return res.json({suppliers:suppliers.slice(0,500).map(row=>({id:String(row.id),name:clean(row.name,160)}))});
+    }catch(error){return res.status([401,403].includes(error?.status)?error.status:503).json({error:'Supplier lookup unavailable.'});}
   });
   router.post('/matches', async (req, res) => {
     if (typeof verifyEmployee !== 'function' || typeof lookup !== 'function') {
