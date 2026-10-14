@@ -1177,8 +1177,11 @@ export function createSpecialOrdersRouter({
       const preorderDate=parseUsDateToIsoDate(m.metadata.preorder_date);
       const supplierDeadlineAt=parseGwCutoffToIso(m.metadata.due_text,m.metadata.release_date,m.receivedDateTime);
       const cutoffAt=gwCustomerCutoffFromSupplierDeadline(supplierDeadlineAt);
+      const requestedLead=Number(req.body?.auto_submit_minutes_before||15);
+      const autoMinutes=[10,15,20,30,60].includes(requestedLead)?requestedLead:15;
+      const autoEnabled=req.body?.auto_submit_enabled!==false;
       const autoSubmitAt=supplierDeadlineAt
-        ? new Date(Date.parse(supplierDeadlineAt)-15*60*1000).toISOString()
+        ? new Date(Date.parse(supplierDeadlineAt)-autoMinutes*60*1000).toISOString()
         : null;
       if(!releaseDate)throw Object.assign(new Error('GW release date could not be parsed safely.'),{status:422});
       if(!supplierDeadlineAt||!cutoffAt||!autoSubmitAt){
@@ -1198,7 +1201,7 @@ export function createSpecialOrdersRouter({
           "(name,game,campaign_type,order_due_at,release_date,status,allocation_method,"+
           "source_form_url,source_email_message_id,external_submission_status,"+
           "auto_submit_enabled,auto_submit_minutes_before,gw_supplier_deadline_at,gw_auto_submit_at,notes) "+
-          "VALUES ($1,'Games Workshop','GW_WEEKLY',$2,$3,'OPEN','QUEUE',$4,$5,'NOT_SUBMITTED',true,15,$6,$7,$8) "+
+          "VALUES ($1,'Games Workshop','GW_WEEKLY',$2,$3,'OPEN','QUEUE',$4,$5,'NOT_SUBMITTED',$6,$7,$8,$9,$10) "+
           "RETURNING *",
           [
             'GW Release '+m.metadata.release_date,
@@ -1206,8 +1209,12 @@ export function createSpecialOrdersRouter({
             releaseDate,
             canonicalFormUrl,
             m.id,
+            autoEnabled,
+            autoMinutes,
             supplierDeadlineAt,
             autoSubmitAt,
+            autoEnabled,
+            autoMinutes,
             'Imported from Outlook: '+String(m.subject||'GW Trade News')
           ]
         );
@@ -1217,7 +1224,7 @@ export function createSpecialOrdersRouter({
           "UPDATE preorder_campaigns SET "+
           "order_due_at=$2,release_date=$3,source_form_url=$4,"+
           "gw_supplier_deadline_at=$5,gw_auto_submit_at=$6,"+
-          "auto_submit_enabled=true,auto_submit_minutes_before=15,notes=$7,updated_at=now() "+
+          "auto_submit_enabled=$7,auto_submit_minutes_before=$8,notes=$9,updated_at=now() "+
           "WHERE id=$1 RETURNING *",
           [
             campaign.id,

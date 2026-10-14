@@ -38,7 +38,7 @@ function renderCleanup(products){
 async function syncAndScrapeGw(){
  document.getElementById('gwSourceStatus').textContent='Syncing latest GW email, scraping form, and saving items…';
  try{
-   const d=await getJson(api+'/preorders/gw/sync-draft',{method:'POST'});
+   const d=await getJson(api+'/preorders/gw/sync-draft',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({auto_submit_enabled:document.getElementById('gwAutoSubmit').checked,auto_submit_minutes_before:Number(document.getElementById('gwSubmitLeadMinutes').value||15)})});
    const c=d.campaign;document.getElementById('gwCampaignName').value=c.name||'';document.getElementById('gwFormUrl').value=c.source_form_url||'';document.getElementById('gwReleaseDate').value=String(c.release_date||'').slice(0,10);document.getElementById('gwAutoSubmit').checked=c.auto_submit_enabled!==false;setTiming(c);
    await loadGwCampaigns();document.getElementById('gwCampaignSelect').value=String(c.id);
    const full=await getJson(api+'/preorders/campaigns/'+c.id);renderCleanup(full.products);
