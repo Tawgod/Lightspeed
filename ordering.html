@@ -8,18 +8,48 @@
     <a href="/preorders" style="display:inline-block;padding:9px 12px;border-radius:8px;background:#7c2d12;color:#fff;text-decoration:none;font-weight:700">Preorder Campaigns</a>
   </div>
   <h1>Ordering</h1>
-  <div class="sub">Work the items that need supplier action. Group by supplier, category, or see one general queue.</div>
+  <div class="sub">Build supplier drafts from Special Order demand, add floor stock, review quantities and costs, then explicitly push approved drafts to Lightspeed.</div>
   <div id="notice" class="notice"></div>
+
   <div class="panel"><div class="toolbar">
-    <input id="accessKey" type="password" placeholder="Internal access key" size="24"><button id="unlockButton" onclick="saveKey()">Unlock</button><span id="authStatus" class="pill">Locked</span>
+    <input id="accessKey" type="password" placeholder="Internal access key" size="24">
+    <button id="unlockButton" onclick="saveKey()">Unlock</button>
+    <span id="authStatus" class="pill">Locked</span>
   </div></div>
+
   <div class="panel">
+    <div class="section-heading"><div>
+      <h2 style="margin:0">1. Ordering Work Queue</h2>
+      <p class="form-note">Choose one supplier's lines, add any floor-stock quantity, then create a local draft supplier order.</p>
+    </div></div>
     <div class="toolbar">
-      <label>View <select id="orderView" onchange="loadOrdering()"><option value="general">General</option><option value="supplier">By supplier</option><option value="category">By category</option></select></label>
-      <label>Status <select id="statusScope" onchange="loadOrdering()"><option value="OOS,READY_TO_ORDER,ORDERED,BACKORDERED">Needs action + active orders</option><option value="OOS,READY_TO_ORDER">Needs ordering only</option><option value="ORDERED,BACKORDERED">Already ordered / backordered</option></select></label>
+      <label>View <select id="orderView" onchange="loadOrdering()">
+        <option value="supplier" selected>By supplier</option><option value="category">By category</option><option value="general">General</option>
+      </select></label>
+      <label>Status <select id="statusScope" onchange="loadOrdering()">
+        <option value="OOS,READY_TO_ORDER">Needs ordering only</option>
+        <option value="OOS,READY_TO_ORDER,ORDERED,BACKORDERED">Needs action + active orders</option>
+        <option value="ORDERED,BACKORDERED">Already ordered / backordered</option>
+      </select></label>
       <button onclick="loadOrdering()">Refresh</button>
+      <button id="createDraftButton" onclick="createDraftFromSelection()" disabled>Create Draft From Selected</button>
     </div>
+    <div id="selectionSummary" class="form-note">No lines selected.</div>
     <div id="orderingSummary" class="form-note"></div>
     <div id="orderingRows"></div>
   </div>
-</div><script src="/ordering-client.js"></script></body></html>
+
+  <div class="panel">
+    <div class="section-heading"><div>
+      <h2 style="margin:0">2. Supplier Order Drafts</h2>
+      <p class="form-note">Drafts stay local until someone explicitly pushes them to Lightspeed.</p>
+    </div></div>
+    <div class="toolbar">
+      <select id="draftOrderSelect" onchange="loadDraftOrder()"><option value="">Select draft supplier order…</option></select>
+      <button onclick="loadDraftOrders()">Refresh drafts</button>
+    </div>
+    <div id="draftOrderMeta"></div>
+    <div id="draftOrderLines"></div>
+  </div>
+</div>
+<script src="/ordering-client.js"></script></body></html>
