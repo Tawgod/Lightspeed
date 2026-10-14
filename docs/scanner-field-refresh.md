@@ -69,3 +69,19 @@ Testing: GitHub Actions `38599555517` scanner UI and `38599555479` unpacked exte
 - The current Chrome preview still saves optional supplier screenshots **locally to each PC only**. It can be tested now without waiting for shared template rollout.
 
 Next: inspect Lightspeed staff API capability and employee identifiers in a read-only integration test; establish reliable employee mapping and permission refresh, introduce authenticated supplier search with existing supplier IDs, then wire shared templates and choose authorization policy for template editors. Keep write flags disabled until approved.
+
+## Lightspeed-linked automatic scanner permissions (2026-10-14)
+
+**Decision:** All verified native Lightspeed **Admin and Manager** users (also Account Owner) receive scanner approval entitlement automatically. Cashiers and unknown/custom roles do not receive automatic approval. Existing explicit, audited Timeclock `scanner_can_approve` grants remain independent. Active employees still need `scanner_can_lookup` and a valid Timeclock PIN.
+
+**Existing link used:** `timeclock.employees.lightspeed_user_id`, already populated by existing Lightspeed user synchronization. No hidden custom field has been created or is necessary for the normal case.
+
+**Code:** `timeclock/scannerLightspeedRoles.js` implements conservative ID-based role resolution. `timeclock/server.js` resolves the role against the existing server-side Lightspeed `/api/2.0/users` fetch for both scanner PIN verification and session reauthorization. No role field or secret from the Chrome browser is accepted. Automatic approval is denied if the link is absent, user is inactive, ID is missing/ambiguous, Lightspeed is unavailable, or role is not a recognizable native role. Role checks do not write to Lightspeed.
+
+**Important acceptance caveat:** Actual Lightspeed users API role-property shape for Hobby Corner has not been confirmed from a sanitized response. Resolver currently supports a named `role`, `user_role`, `role_name` or `roleName`. If Lightspeed returns numeric role IDs, approval remains denied until a vetted role ID->name mapping is implemented. Product role permissions may also be customized; before writes, confirm any relevant detailed product permission flags for the assigned role rather than assuming the role alone is sufficient.
+
+**Permission semantics:** `canApprove` in scanner session indicates eligibility for future approval; Create Item still generates only an unsaved proposal and no Lightspeed write endpoints are enabled. Revoking an explicit Timeclock grant does not override native Admin/Manager entitlement, per the automatic-roles decision; for full scanner denial, an administrator can revoke `scanner_can_lookup`, which also blocks approval.
+
+**Testing:** `tests/scannerLightspeedRoles.test.js` verifies Admin/Manager/Owner allow, Cashier/custom/inactive deny, name-only and duplicate ID deny, and missing or malformed role deny. GitHub Actions `38600826210` passed. Live PIN-to-Lightspeed role mapping has not been verified; no Railway deployment or Web Store submission.
+
+**Next:** Verify actual sanitized role schema from Lightspeed, exercise an authorized Manager PIN, a Cashier PIN, role revocation/unknown schema handling, then approve merge/release. No extra hidden Lightspeed field required unless the existing ID mapping is demonstrably absent.
