@@ -3,14 +3,9 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
 
-// Execute the actual function injected via chrome.scripting.executeScript.
-// No supplier login, network access, Lightspeed writes, or stored credentials.
-const source=fs.readFileSync('extension/popup.js','utf8');
-const start='      func: () => {';
-const end='\n      }\n    });';
-const i=source.indexOf(start), j=source.indexOf(end,i);
-assert.ok(i>=0&&j>i,'injected capture function must exist');
-const functionSource='(() => {'+source.slice(i+start.length,j)+'\n})';
+// Test the single page capture function used by both scanner windows.
+const source=fs.readFileSync('extension/product-scanner/page-capture.js','utf8');
+const functionSource='('+source.replace('export function captureSupplierProductPage()', 'function')+')';
 function capture(text,{host='www.acdd.com',jsonLd=[]}={}){
   const tags={};
   const document={
