@@ -29,3 +29,14 @@ test('ignores role hints outside supported role-name properties',()=>{
  assert.equal(scannerRoleFromLightspeedUser({permissions:['all'],role_id:1}).canApprove,false);
  assert.equal(scannerRoleFromLightspeedUser({role:'manager',status:'disabled'}).canApprove,false);
 });
+test('verifies a Lightspeed Manager from role_id only with authoritative role catalog',()=>{
+ const users=[{id:'900',role_id:'mgr-7',active:true}];
+ assert.equal(linkedScannerApproval({lightspeedUserId:'900',users}).canApprove,false);
+ const valid=linkedScannerApproval({lightspeedUserId:'900',users,roles:[{id:'mgr-7',name:'Manager'}]});
+ assert.equal(valid.canApprove,true);
+ assert.equal(valid.verified,true);
+ const unknown=linkedScannerApproval({lightspeedUserId:'900',users,roles:[{id:'mgr-7',name:'Custom Cashier'}]});
+ assert.equal(unknown.canApprove,false);
+ const ambiguous=linkedScannerApproval({lightspeedUserId:'900',users,roles:[{id:'mgr-7',name:'Manager'},{id:'mgr-7',name:'Admin'}]});
+ assert.equal(ambiguous.canApprove,false);
+});
