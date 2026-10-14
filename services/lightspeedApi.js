@@ -41,6 +41,12 @@ export function createLightspeedClient({ domain, token }) {
   }
 
   return {
+    getConsignment(poId) {
+      return request(`/api/2.0/consignments/${encodeURIComponent(poId)}`);
+    },
+    getConsignmentProducts(poId) {
+      return request(`/api/2.0/consignments/${encodeURIComponent(poId)}/products`);
+    },
     getSale(saleId) {
       return request(`/api/${DEFAULT_API_VERSION}/sales/${encodeURIComponent(saleId)}`);
     },
