@@ -56,3 +56,16 @@ The scanner review window has a collapsed **Supplier snapshot / template referen
 **Shared templates later:** For other store PCs to use the same snapshot or supplier-specific extraction selectors, add an approved Railway-backed template registry with role-gated uploads, explicit screenshot retention/deletion, size limits, and no sensitive account/customer data. A screenshot by itself is a human reference; field extraction rules should be confirmed on real DOM data before activation.
 
 Testing: GitHub Actions `38599555517` scanner UI and `38599555479` unpacked extension preview both passed. Browser acceptance and shared-template storage remain outstanding. No Railway production config, Lightspeed supplier or product records changed.
+
+## Lightspeed roles and shared template groundwork (2026-10-14)
+
+**Native roles:** Lightspeed X-Series distinguishes Admin, Manager, Cashier and configurable roles; Managers generally have product-editing rights, while Cashiers do not. The current backend uses a retailer-level Lightspeed API credential, **not** a verified Lightspeed identity corresponding to the employee's Timeclock PIN. Never translate that API credential's scopes to an employee's edit authority. We have not established an authoritative staff role/permission endpoint or verified Timeclock-to-Lightspeed employee ID mapping. Scanner remains per-employee Timeclock `scanner_can_lookup`/`scanner_can_approve` until verified role sync is built and approved. Permissions must be evaluated server-side before every future write, with default-deny on missing/stale identity; allow explicit administrator overrides with audit logging. Product writes remain disabled.
+
+**Shared supplier template registry:** Added `services/scannerSupplierTemplates.js` and `tests/scannerSupplierTemplates.test.js` to `feature/scanner-fields-create-preview`.
+- Dedicated PostgreSQL `scanner_supplier_templates` table; domain identity, supplier display name, capped JPEG snapshot, reference selectors (JSON), `REFERENCE` vs `REVIEWED`, editor ID and timestamps.
+- Read endpoints for authenticated scanner users, write endpoint requiring `canApprove`. Uploads validate domain, supplier name, image type/size, and selector field names. All writes stay `REFERENCE` (never automatically active scraping templates).
+- **Not mounted on the running scanner gateway, no database migration run, no shared images uploaded, no production deployment.** Backend is an inert foundation pending separate authenticated integration, screenshot governance/retention design, proper staff mapping, and browser UI read/write wiring.
+- Node API tests executed in GitHub Actions run `38600156022` with successful result, including read-only rejection and approved-user reference-write behavior.
+- The current Chrome preview still saves optional supplier screenshots **locally to each PC only**. It can be tested now without waiting for shared template rollout.
+
+Next: inspect Lightspeed staff API capability and employee identifiers in a read-only integration test; establish reliable employee mapping and permission refresh, introduce authenticated supplier search with existing supplier IDs, then wire shared templates and choose authorization policy for template editors. Keep write flags disabled until approved.
