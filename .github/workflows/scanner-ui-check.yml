@@ -26,6 +26,8 @@ jobs:
         run: |
           node --check timeclock/server.js
           node --check timeclock/scannerLightspeedRoles.js
+          node --check extension/content.js
+          node --check extension/product-scanner/page-capture.js
           node --check extension/popup.js
           node --check extension/product-scanner/review.js
           node --check extension/product-scanner/special-orders-adapter.js
@@ -37,6 +39,7 @@ jobs:
           const review=fs.readFileSync('extension/product-scanner/review.js','utf8');
           const html=fs.readFileSync('extension/product-scanner/review.html','utf8');
           const popup=fs.readFileSync('extension/popup.js','utf8');
+          const capture=fs.readFileSync('extension/product-scanner/page-capture.js','utf8');
           assert.match(review,/supplierSku/);
           assert.match(review,/const keys=\['name','sku','supplierSku','upc','brand','cost','msrp','weight','imageUrl','advertisedPrice'\]/);
           assert.doesNotMatch(review,/manufacturerPartNumber|currency/i);
@@ -44,8 +47,10 @@ jobs:
           assert.match(html,/id="create-preview"/);
           assert.match(review,/lastMatches.length/);
           assert.doesNotMatch(review,/fetch\([^)]*\/create/);
-          assert.match(popup,/upcCandidates/);
-          assert.match(popup,/acdSupplierSku\|\|str\(p.sku\)/);
+          assert.match(capture,/upcCandidates/);
+          assert.match(capture,/acdSupplierSku\|\|str\(p.sku\)/);
+          assert.match(popup,/captureSupplierProductPage/);
+          assert.match(review,/id\('scan-open-supplier'\)|getElementById\('scan-open-supplier'\)/);
           console.log('Scanner UI field and read-only create proposal assertions passed');
           JS
       - name: Verify ACD screenshot-based extraction fixtures
