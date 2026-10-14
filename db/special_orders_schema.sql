@@ -486,3 +486,48 @@ CREATE TABLE IF NOT EXISTS preorder_discord_publications (
 CREATE INDEX IF NOT EXISTS idx_preorder_discord_publications_status
 ON preorder_discord_publications (status, updated_at DESC);
 
+
+
+ALTER TABLE notifications
+  ADD COLUMN IF NOT EXISTS not_before TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS metadata JSONB;
+
+CREATE TABLE IF NOT EXISTS preorder_discord_messages (
+  id BIGSERIAL PRIMARY KEY,
+  preorder_campaign_id BIGINT NOT NULL REFERENCES preorder_campaigns(id) ON DELETE CASCADE,
+  preorder_product_id BIGINT NOT NULL REFERENCES preorder_products(id) ON DELETE CASCADE,
+  publication_id BIGINT REFERENCES preorder_discord_publications(id) ON DELETE SET NULL,
+  channel_id TEXT NOT NULL,
+  message_id TEXT NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_preorder_discord_messages_campaign
+ON preorder_discord_messages (preorder_campaign_id, preorder_product_id);
+
+CREATE TABLE IF NOT EXISTS preorder_discord_reactions (
+  id BIGSERIAL PRIMARY KEY,
+  preorder_campaign_id BIGINT NOT NULL REFERENCES preorder_campaigns(id) ON DELETE CASCADE,
+  preorder_product_id BIGINT NOT NULL REFERENCES preorder_products(id) ON DELETE CASCADE,
+  message_id TEXT NOT NULL,
+  discord_user_id TEXT NOT NULL,
+  discord_username TEXT,
+  customer_id BIGINT REFERENCES customers(id) ON DELETE SET NULL,
+  action TEXT NOT NULL CHECK (action IN ('ADD','REMOVE')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_preorder_discord_reactions_lookup
+ON preorder_discord_reactions (preorder_campaign_id, discord_user_id, created_at DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_gw_confirmation_pending
+ON notifications (preorder_campaign_id, customer_id, channel)
+WHERE preorder_campaign_id IS NOT NULL
+  AND customer_id IS NOT NULL
+  AND channel='DISCORD_GW_ORDER_CONFIRMATION'
+  AND status IN ('PENDING','QUEUED');
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_gw_update_pending
+ON notifications (preorder_campaign_id, customer_id, channel)
+WHERE preorder_campaign_id IS NOT NULL
+  AND customer_id IS NOT NULL
+  AND channel='DISCORD_GW_ORDER_UPDATE'
+  AND status IN ('PENDING','QUEUED');
