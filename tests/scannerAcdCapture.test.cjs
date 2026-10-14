@@ -5,7 +5,7 @@ const vm=require('node:vm');
 
 // Test the single page capture function used by both scanner windows.
 const source=fs.readFileSync('extension/product-scanner/page-capture.js','utf8');
-const functionSource='('+source.replace('export function captureSupplierProductPage()', 'function')+')';
+const functionSource='('+source.replace('export function captureSupplierProductPage()', 'function()')+')';
 function capture(text,{host='www.acdd.com',jsonLd=[]}={}){
   const tags={};
   const document={
