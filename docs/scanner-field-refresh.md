@@ -25,3 +25,20 @@ Extension development version: `0.3.20`.
 
 - GitHub Actions: https://github.com/Tawgod/Lightspeed/actions/runs/38597687416 (JavaScript syntax checks and UI guard assertions passed).
 - Remaining acceptance: capture real supplier SKU and UPC; verify exact general SKU/supplier reorder distinction, authorized Timeclock sign-in, matched/unmatched cases, edit-invalidates-review, and browser popup behavior. Approval remains disabled.
+
+## ACD Distribution page example (2026-10-14)
+
+Based on supplied screenshot: "Mechs vs. Minions: Bandle City Edition" on `acdd.com`. Expected values from visible details:
+- Supplier reorder number: `IDRAYA4102100EN`, not a general Lightspeed SKU.
+- UPC / GTIN: `850052382605`. Preserve string formatting and leading zeroes when present.
+- Manufacturer: Incredible Dream.
+- Supplier displayed price: `$41.24` (reference only; price/discount interpretation must be confirmed before storing as Lightspeed cost).
+- MSRP: `$74.99`.
+- Category: Preorder. Display as supplier status / informational warning, not proof of available stock.
+- Weight: optional; when present, capture numerical value with original units rather than guessing or converting.
+- General SKU: blank for user confirmation; do not infer from supplier reorder number.
+
+ACD-specific fallback reads visible `SKU:`, `UPC:`, `Manufacturer:`, `MSRP:`, `Weight:` and `Category:` labels when structured metadata is incomplete. Handles multiple fields on one line. Other supplier sites continue using existing schema.org extraction, without reusing ACD-specific field selectors.
+
+GitHub Actions fixture test: https://github.com/Tawgod/Lightspeed/actions/runs/38598715417 (**passed**, including ACD SKU/UPC, inline MSRP, weight, invalid UPC rejection, unrelated supplier isolation and generic GTIN).
+Still needed: test the extension on a live ACD product page in Chrome to verify the site's actual DOM text and authenticated review window; if a detail does not populate, capture that page's visible DOM structure and refine extractor. No deployment or product write permitted by this change.
