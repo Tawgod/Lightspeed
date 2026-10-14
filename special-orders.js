@@ -2836,6 +2836,15 @@ export function createSpecialOrdersRouter({
         const qty = Number(item.quantity || 0);
         if (qty <= 0) continue;
         if (!item.product_id && !item.placeholder_name) continue;
+        if (item.special_order_item_id) {
+          const attached = await client.query(
+            'SELECT supplier_order_id FROM supplier_order_items WHERE special_order_item_id=$1 LIMIT 1',
+            [item.special_order_item_id]
+          );
+          if (attached.rows[0]) {
+            throw new Error('Special Order line '+item.special_order_item_id+' is already attached to supplier order #'+attached.rows[0].supplier_order_id+'.');
+          }
+        }
         const specialQty = Math.max(0, Number(item.special_order_quantity || 0));
         const floorQty = Math.max(0, Number(item.floor_quantity ?? (qty - specialQty)));
         await client.query(`
@@ -2925,6 +2934,41 @@ export function createSpecialOrdersRouter({
     await pool.query('UPDATE supplier_orders SET updated_at=now() WHERE id=$1',[line.supplier_order_id]);
     res.json({ok:true,supplier_order_id:line.supplier_order_id});
   });
+  router.post('/supplier-orders/:id/items', requireDb, async (req,res)=>{
+    const items=Array.isArray(req.body?.items)?req.body.items:[];
+    if(!items.length)return res.status(400).json({error:'At least one item is required.'});
+    const client=await pool.connect();
+    try{
+      await client.query('BEGIN');
+      const orderResult=await client.query('SELECT * FROM supplier_orders WHERE id=$1 FOR UPDATE',[req.params.id]);
+      const order=orderResult.rows[0];
+      if(!order){await client.query('ROLLBACK');return res.status(404).json({error:'Supplier order not found.'});}
+      if(String(order.status).toUpperCase()!=='DRAFT'){await client.query('ROLLBACK');return res.status(409).json({error:'Items can only be added to a draft supplier order.'});}
+      let added=0;
+      for(const item of items){
+        const qty=Math.max(0,Math.floor(Number(item.quantity)||0));
+        if(qty<=0)continue;
+        if(item.special_order_item_id){
+          const soi=await client.query('SELECT preferred_supplier_id FROM special_order_items WHERE id=$1',[item.special_order_item_id]);
+          if(!soi.rows[0])throw new Error('Special Order line '+item.special_order_item_id+' was not found.');
+          if(soi.rows[0].preferred_supplier_id && Number(soi.rows[0].preferred_supplier_id)!==Number(order.supplier_id))throw new Error('Special Order line '+item.special_order_item_id+' belongs to a different preferred supplier.');
+          const attached=await client.query('SELECT supplier_order_id FROM supplier_order_items WHERE special_order_item_id=$1 LIMIT 1',[item.special_order_item_id]);
+          if(attached.rows[0])throw new Error('Special Order line '+item.special_order_item_id+' is already attached to supplier order #'+attached.rows[0].supplier_order_id+'.');
+        }
+        const specialQty=Math.max(0,Math.floor(Number(item.special_order_quantity)||0));
+        const floorQty=Math.max(0,Math.floor(Number(item.floor_quantity??(qty-specialQty))||0));
+        await client.query(
+          'INSERT INTO supplier_order_items (supplier_order_id,product_id,supplier_product_id,quantity,unit_cost,special_order_item_id,special_order_quantity,floor_quantity,placeholder_name,placeholder_sku,source_url) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
+          [order.id,item.product_id||null,item.supplier_product_id||null,qty,item.unit_cost??null,item.special_order_item_id||null,specialQty,floorQty,item.placeholder_name||null,item.placeholder_sku||null,item.source_url||null]
+        );
+        added++;
+      }
+      await client.query('UPDATE supplier_orders SET updated_at=now() WHERE id=$1',[order.id]);
+      await client.query('COMMIT');
+      res.status(201).json({order_id:order.id,added});
+    }catch(error){await client.query('ROLLBACK');res.status(400).json({error:error.message});}
+    finally{client.release()}
+  });
   router.get('/supplier-orders/:id', requireDb, async (req, res) => {
     const order = await pool.query(`
       SELECT so.*, s.name AS supplier_name, s.lightspeed_supplier_id
@@ -2959,7 +3003,7 @@ export function createSpecialOrdersRouter({
 
     const itemsResult = await pool.query(`
       SELECT soi.*, p.lightspeed_product_id
-      FROM supplier_order_items soi JOIN products p ON p.id=soi.product_id
+      FROM supplier_order_items soi LEFT JOIN products p ON p.id=soi.product_id
       WHERE soi.supplier_order_id=$1
     `, [req.params.id]);
     const missing = itemsResult.rows.filter(x => !x.lightspeed_product_id);
