@@ -53,7 +53,7 @@ signInForm.addEventListener('submit',async event=>{
     pinField.disabled=true;
     signInButton.hidden=true;
     signOutButton.hidden=false;
-    employeeStatus.textContent='Signed in as '+(data.employee.name||'employee')+'. Read-only product lookup enabled.';
+    employeeStatus.textContent='Signed in as '+(data.employee.name||'employee')+'. '+(data.employee.canApprove===true?'Scanner approval permission verified. Product creation remains disabled until the write workflow is approved.':'Read-only product lookup enabled.');
     checkButton.disabled=!draftAvailable;
   }catch(error){
     scannerSession=null;
