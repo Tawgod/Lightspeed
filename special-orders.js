@@ -2944,10 +2944,14 @@ export function createSpecialOrdersRouter({
     const line=current.rows[0];
     if(!line)return res.status(404).json({error:'Supplier-order line not found.'});
     if(String(line.order_status).toUpperCase()!=='DRAFT')return res.status(409).json({error:'Only draft supplier-order lines can be edited.'});
-    const specialQty=req.body?.special_order_quantity==null?Number(line.special_order_quantity||0):Math.max(0,Math.floor(Number(req.body.special_order_quantity)||0));
+    let specialQty=req.body?.special_order_quantity==null?Number(line.special_order_quantity||0):Math.max(0,Math.floor(Number(req.body.special_order_quantity)||0));
+    if(line.special_order_item_id){
+      const linked=await pool.query('SELECT quantity FROM special_order_items WHERE id=$1',[line.special_order_item_id]);
+      if(!linked.rows[0])return res.status(409).json({error:'Linked Special Order line no longer exists.'});
+      specialQty=Math.max(1,Number(linked.rows[0].quantity||1));
+    }
     const floorQty=req.body?.floor_quantity==null?Number(line.floor_quantity||0):Math.max(0,Math.floor(Number(req.body.floor_quantity)||0));
-    const quantity=req.body?.quantity==null?(specialQty+floorQty):Math.max(1,Math.floor(Number(req.body.quantity)||1));
-    if(quantity<specialQty+floorQty)return res.status(400).json({error:'Total quantity cannot be less than special-order plus floor quantity.'});
+    const quantity=specialQty+floorQty;
     const unitCost=req.body?.unit_cost===undefined?line.unit_cost:(req.body.unit_cost==null||req.body.unit_cost===''?null:Math.max(0,Number(req.body.unit_cost)||0));
     const {rows}=await pool.query(
       'UPDATE supplier_order_items SET quantity=$1,special_order_quantity=$2,floor_quantity=$3,unit_cost=$4 WHERE id=$5 RETURNING *',
@@ -2991,11 +2995,15 @@ export function createSpecialOrdersRouter({
           const attached=await client.query('SELECT supplier_order_id FROM supplier_order_items WHERE special_order_item_id=$1 LIMIT 1',[item.special_order_item_id]);
           if(attached.rows[0])throw new Error('Special Order line '+item.special_order_item_id+' is already attached to supplier order #'+attached.rows[0].supplier_order_id+'.');
         }
-        const specialQty=Math.max(0,Math.floor(Number(item.special_order_quantity)||0));
-        const floorQty=Math.max(0,Math.floor(Number(item.floor_quantity??(qty-specialQty))||0));
+        let specialQty=Math.max(0,Math.floor(Number(item.special_order_quantity)||0));
+        if(item.special_order_item_id){
+          const linkedQty=await client.query('SELECT quantity FROM special_order_items WHERE id=$1',[item.special_order_item_id]);
+          specialQty=Math.max(1,Number(linkedQty.rows[0]?.quantity||1));
+        }
+        const floorQty=Math.max(0,Math.floor(Number(item.floor_quantity??Math.max(0,qty-specialQty))||0));
         await client.query(
           'INSERT INTO supplier_order_items (supplier_order_id,product_id,supplier_product_id,quantity,unit_cost,special_order_item_id,special_order_quantity,floor_quantity,placeholder_name,placeholder_sku,source_url) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
-          [order.id,item.product_id||null,item.supplier_product_id||null,qty,item.unit_cost??null,item.special_order_item_id||null,specialQty,floorQty,item.placeholder_name||null,item.placeholder_sku||null,item.source_url||null]
+          [order.id,item.product_id||null,item.supplier_product_id||null,specialQty+floorQty,item.unit_cost??null,item.special_order_item_id||null,specialQty,floorQty,item.placeholder_name||null,item.placeholder_sku||null,item.source_url||null]
         );
         added++;
       }
