@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Hobby Corner Lightspeed Toolkit",
-  "version": "0.3.19",
-  "description": "Hobby Corner tools for Lightspeed X-Series order splitting, work-order combining, and PO labels. Includes read-only supplier page scanner preview.",
+  "version": "0.3.20",
+  "description": "Hobby Corner tools for Lightspeed orders, PO labels, Timeclock, and supplier product review.",
   "permissions": [
     "activeTab",
     "tabs",
