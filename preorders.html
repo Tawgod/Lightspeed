@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hobby Corner Preorder Campaigns</title><link rel="stylesheet" href="/special-orders.css"></head>
+<body><div class="wrap">
+  <div class="toolbar" style="justify-content:flex-end;margin-bottom:10px">
+    <a href="/special-orders" style="display:inline-block;padding:9px 12px;border-radius:8px;background:#0f766e;color:#fff;text-decoration:none;font-weight:700">Special Orders</a>
+    <a href="/gw-preorders" style="display:inline-block;padding:9px 12px;border-radius:8px;background:#7c3aed;color:#fff;text-decoration:none;font-weight:700">GW Preorders</a>
+    <a href="/ordering" style="display:inline-block;padding:9px 12px;border-radius:8px;background:#0369a1;color:#fff;text-decoration:none;font-weight:700">Ordering</a>
+  </div>
+  <h1>Preorder Campaigns & Allocations</h1>
+  <div class="sub">Manage preorder campaign demand, allocation suggestions, and received inventory separately from normal Special Orders.</div>
+  <div id="notice" class="notice"></div>
+  <div class="panel">
+    <div class="toolbar">
+      <input id="accessKey" type="password" placeholder="Internal access key" size="24">
+      <button id="unlockButton" onclick="saveKey()">Unlock</button><span id="authStatus" class="pill">Locked</span>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="toolbar">
+      <select id="preorderCampaign" onchange="loadPreorderCampaign()"><option value="">Select preorder campaign…</option></select>
+      <button onclick="loadPreorders()">Refresh campaigns</button>
+    </div>
+    <div id="campaignSummary" class="form-note"></div>
+    <div id="preorderProducts"></div>
+    <div id="allocationSuggestions" style="margin-top:14px"></div>
+  </div>
+</div><script src="/preorders-client.js"></script></body></html>

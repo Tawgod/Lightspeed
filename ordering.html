@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hobby Corner Ordering</title><link rel="stylesheet" href="/special-orders.css"></head>
+<body><div class="wrap">
+  <div class="toolbar" style="justify-content:flex-end;margin-bottom:10px">
+    <a href="/special-orders" style="display:inline-block;padding:9px 12px;border-radius:8px;background:#0f766e;color:#fff;text-decoration:none;font-weight:700">Special Orders</a>
+    <a href="/preorders" style="display:inline-block;padding:9px 12px;border-radius:8px;background:#7c2d12;color:#fff;text-decoration:none;font-weight:700">Preorder Campaigns</a>
+  </div>
+  <h1>Ordering</h1>
+  <div class="sub">Work the items that need supplier action. Group by supplier, category, or see one general queue.</div>
+  <div id="notice" class="notice"></div>
+  <div class="panel"><div class="toolbar">
+    <input id="accessKey" type="password" placeholder="Internal access key" size="24"><button id="unlockButton" onclick="saveKey()">Unlock</button><span id="authStatus" class="pill">Locked</span>
+  </div></div>
+  <div class="panel">
+    <div class="toolbar">
+      <label>View <select id="orderView" onchange="loadOrdering()"><option value="general">General</option><option value="supplier">By supplier</option><option value="category">By category</option></select></label>
+      <label>Status <select id="statusScope" onchange="loadOrdering()"><option value="OOS,READY_TO_ORDER,ORDERED,BACKORDERED">Needs action + active orders</option><option value="OOS,READY_TO_ORDER">Needs ordering only</option><option value="ORDERED,BACKORDERED">Already ordered / backordered</option></select></label>
+      <button onclick="loadOrdering()">Refresh</button>
+    </div>
+    <div id="orderingSummary" class="form-note"></div>
+    <div id="orderingRows"></div>
+  </div>
+</div><script src="/ordering-client.js"></script></body></html>

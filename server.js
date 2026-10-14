@@ -178,6 +178,24 @@ app.get('/special-orders-client.js', (req, res) => {
   res.type('application/javascript').sendFile(path.join(__dirname, 'special-orders-client.js'));
 });
 
+app.get('/preorders', (req, res) => {
+  res.sendFile(path.join(__dirname, 'preorders.html'));
+});
+
+app.get('/preorders-client.js', (req, res) => {
+  res.set('Cache-Control','no-store');
+  res.type('application/javascript').sendFile(path.join(__dirname, 'preorders-client.js'));
+});
+
+app.get('/ordering', (req, res) => {
+  res.sendFile(path.join(__dirname, 'ordering.html'));
+});
+
+app.get('/ordering-client.js', (req, res) => {
+  res.set('Cache-Control','no-store');
+  res.type('application/javascript').sendFile(path.join(__dirname, 'ordering-client.js'));
+});
+
 app.get('/gw-preorders', (req, res) => {
   res.sendFile(path.join(__dirname, 'gw-preorders.html'));
 });

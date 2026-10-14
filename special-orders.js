@@ -2540,6 +2540,40 @@ export function createSpecialOrdersRouter({
     }
   });
 
+  router.get('/ordering/work-queue', requireDb, async (req,res)=>{
+    const view=String(req.query.view||'general').toLowerCase();
+    const statuses=String(req.query.status||'OOS,READY_TO_ORDER,ORDERED,BACKORDERED').split(',').map(x=>x.trim().toUpperCase()).filter(Boolean);
+    const {rows}=await pool.query(
+      `SELECT i.id,i.special_order_id,i.product_id,i.requested_name,i.requested_sku,i.requested_upc,i.quantity,i.status,
+              i.notes,i.created_at,i.updated_at,i.ordered_at,i.preferred_supplier_id,i.sourcing_department_id,
+              o.customer_id,c.name AS customer_name,
+              ps.name AS preferred_supplier_name,
+              d.name AS category_name,
+              COALESCE(sp.supplier_sku,i.requested_sku) AS supplier_sku,
+              sp.supply_price AS supplier_cost,
+              CASE WHEN so_line.id IS NULL THEN false ELSE true END AS on_supplier_order,
+              so.status AS supplier_order_status,
+              so.id AS supplier_order_id
+       FROM special_order_items i
+       JOIN special_orders o ON o.id=i.special_order_id
+       LEFT JOIN customers c ON c.id=o.customer_id
+       LEFT JOIN suppliers ps ON ps.id=i.preferred_supplier_id
+       LEFT JOIN sourcing_departments d ON d.id=i.sourcing_department_id
+       LEFT JOIN supplier_products sp ON sp.product_id=i.product_id AND sp.supplier_id=i.preferred_supplier_id
+       LEFT JOIN LATERAL (
+         SELECT soi.id,soi.supplier_order_id FROM supplier_order_items soi
+         WHERE soi.special_order_item_id=i.id ORDER BY soi.id DESC LIMIT 1
+       ) so_line ON true
+       LEFT JOIN supplier_orders so ON so.id=so_line.supplier_order_id
+       WHERE i.status = ANY($1::text[])
+       ORDER BY
+         CASE WHEN $2='supplier' THEN COALESCE(ps.name,'ZZZ Unassigned') ELSE '' END,
+         CASE WHEN $2='category' THEN COALESCE(d.name,'ZZZ Unassigned') ELSE '' END,
+         i.created_at,i.id`,
+      [statuses,view]
+    );
+    res.json({view,rows});
+  });
   router.get('/departments', requireDb, async (req, res) => {
     const { rows } = await pool.query(`
       SELECT d.*, count(sd.supplier_id)::int AS supplier_count
