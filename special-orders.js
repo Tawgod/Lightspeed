@@ -2881,15 +2881,21 @@ export function createSpecialOrdersRouter({
             throw new Error('Special Order line '+item.special_order_item_id+' is already attached to supplier order #'+attached.rows[0].supplier_order_id+'.');
           }
         }
-        const specialQty = Math.max(0, Number(item.special_order_quantity || 0));
-        const floorQty = Math.max(0, Number(item.floor_quantity ?? (qty - specialQty)));
+        let specialQty = Math.max(0, Number(item.special_order_quantity || 0));
+        if (item.special_order_item_id) {
+          const linkedQty = await client.query('SELECT quantity FROM special_order_items WHERE id=$1',[item.special_order_item_id]);
+          if (!linkedQty.rows[0]) throw new Error('Special Order line '+item.special_order_item_id+' was not found.');
+          specialQty = Math.max(1, Number(linkedQty.rows[0].quantity || 1));
+        }
+        const floorQty = Math.max(0, Number(item.floor_quantity ?? Math.max(0, qty - specialQty)));
+        const totalQty = specialQty + floorQty;
         await client.query(`
           INSERT INTO supplier_order_items
             (supplier_order_id,product_id,supplier_product_id,quantity,unit_cost,
              special_order_item_id,special_order_quantity,floor_quantity,
              placeholder_name,placeholder_sku,source_url)
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-        `, [order.rows[0].id, item.product_id || null, item.supplier_product_id || null, qty,
+        `, [order.rows[0].id, item.product_id || null, item.supplier_product_id || null, totalQty,
              item.unit_cost || null, item.special_order_item_id || null, specialQty, floorQty,
              item.placeholder_name || null, item.placeholder_sku || null, item.source_url || null]);
       }
