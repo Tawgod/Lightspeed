@@ -12,6 +12,7 @@ on:
       - 'tests/lightspeedOrderDetection.test.cjs'
       - 'tests/scannerAcdCapture.test.cjs'
       - 'routes/scannerMatchGateway.js'
+      - 'tests/scannerReviewAutoMatch.test.js'
       - 'services/scannerTimeclockGateway.js'
       - 'services/scannerTimeclockIdentity.js'
       - 'server.js'
@@ -75,3 +76,5 @@ jobs:
         run: node --test tests/scannerLightspeedRoles.test.js
       - name: Verify Lightspeed sale and invoice detection
         run: node --test tests/lightspeedOrderDetection.test.cjs
+      - name: Verify automatic scanner product match metadata
+        run: node --test tests/scannerReviewAutoMatch.test.js
