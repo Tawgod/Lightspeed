@@ -4,6 +4,8 @@ on:
     branches: [feature/scanner-fields-create-preview]
     paths:
       - 'extension/**'
+      - 'services/scannerSupplierTemplates.js'
+      - 'tests/scannerSupplierTemplates.test.js'
       - '.github/workflows/scanner-ui-check.yml'
 jobs:
   ui:
@@ -15,6 +17,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Install dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
       - name: Check extension JavaScript
         run: |
           node --check extension/popup.js
@@ -41,3 +45,5 @@ jobs:
           JS
       - name: Verify ACD screenshot-based extraction fixtures
         run: node --test tests/scannerAcdCapture.test.cjs
+      - name: Verify permission-gated supplier template registry
+        run: node --test tests/scannerSupplierTemplates.test.js
