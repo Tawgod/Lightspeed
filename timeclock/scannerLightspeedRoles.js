@@ -17,10 +17,18 @@ export function scannerRoleFromLightspeedUser(user){
     !['inactive','disabled','deleted','archived'].includes(String(user.status||'').toLowerCase());
   return {role:normalized,canApprove:Boolean(named&&active),verified:Boolean((named||cashier)&&active)};
 }
-export function linkedScannerApproval({lightspeedUserId,users}={}){
+export function linkedScannerApproval({lightspeedUserId,users,roles=[]}={}){
   const id=String(lightspeedUserId||'').trim();
   if(!id||!Array.isArray(users))return {role:null,canApprove:false,verified:false,reason:'unlinked'};
   const matches=users.filter(user=>String(user?.id??user?.user_id??user?.userId??'').trim()===id);
   if(matches.length!==1)return {role:null,canApprove:false,verified:false,reason:'missing_or_duplicate'};
-  return {...scannerRoleFromLightspeedUser(matches[0]),reason:'matched_id'};
+  const selected=matches[0];
+  const named=scannerRoleFromLightspeedUser(selected);
+  if(named.verified||!Array.isArray(roles))return {...named,reason:'matched_id'};
+  const roleId=String(selected.role_id??selected.roleId??selected.user_role_id??selected.role?.id??'').trim();
+  if(!roleId)return {...named,reason:'matched_id'};
+  const matchingRoles=roles.filter(r=>String(r?.id??r?.role_id??'').trim()===roleId);
+  if(matchingRoles.length!==1)return {...named,reason:'unresolved_role_id'};
+  const resolved=scannerRoleFromLightspeedUser({...selected,role_name:matchingRoles[0].name||matchingRoles[0].role_name});
+  return {...resolved,reason:'matched_role_id'};
 }
