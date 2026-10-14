@@ -10,6 +10,7 @@ on:
       - 'timeclock/server.js'
       - 'tests/scannerLightspeedRoles.test.js'
       - 'tests/lightspeedOrderDetection.test.cjs'
+      - 'tests/scannerAcdCapture.test.cjs'
       - '.github/workflows/scanner-ui-check.yml'
 jobs:
   ui:
