@@ -1,4 +1,5 @@
 import {checkProductMatches,toSpecialOrderMatchRequest} from './special-orders-adapter.js';
+import {captureSupplierProductPage} from './page-capture.js';
 
 
 // Keep PIN and signed session strictly in this review window's memory.
@@ -164,7 +165,9 @@ function showMatches(matches){
   }
 }
 
-chrome.storage.local.get('scannerDraft',({scannerDraft:d})=>{
+function loadScannerDraft(d){
+  verifiedProductSignature=null;lastMatches=null;createButton.disabled=true;createPreview.hidden=true;matchesElement.replaceChildren();
+  document.getElementById('fields').replaceChildren();
   if(!d){status.textContent='No product has been captured. Use Scan Current Page in the extension.';checkButton.disabled=true;return;}
   status.textContent=d.requiresSelection?'Multiple products detected — automatic selection is disabled. Verify manually.':'Review extracted information; no changes have been sent to Lightspeed.';
   draftAvailable=true;
@@ -189,7 +192,9 @@ chrome.storage.local.get('scannerDraft',({scannerDraft:d})=>{
   if(p.availabilityNote)document.getElementById('supplier-status').textContent='Supplier listing: '+p.availabilityNote+' (confirm availability before ordering).';
   if(p.supplierName)document.getElementById('supplier-name').textContent='Supplier: '+p.supplierName;
   document.getElementById('warnings').textContent=missing.length?'Not found on supplier page — enter or verify manually: '+missing.join(', ')+'. Supplier reorder number is separate from general SKU.':'';
-});
+  checkButton.disabled=!scannerSession || scannerSession.expiresAt<=Date.now();
+}
+chrome.storage.local.get('scannerDraft',({scannerDraft:d})=>loadScannerDraft(d));
 document.getElementById('copy').addEventListener('click',async()=>{
   try{await navigator.clipboard.writeText(JSON.stringify(currentProduct(),null,2));status.textContent='Proposed data copied. No Lightspeed changes made.';}
   catch(e){status.textContent='Clipboard failed: '+e.message;}
@@ -250,3 +255,61 @@ createButton.addEventListener('click',()=>{
     JSON.stringify({supplierSuggestion:supplierInput.value.trim(),supplierWebsite:sourceDomain,supplierNotYetVerified:true,name:product.name,generalSku:product.sku,supplierReorderNumber:product.supplierSku,upc:product.upc,brand:product.brand,description:product.description,advertisedPrice:product.advertisedPrice,cost:product.cost,msrp:product.msrp,weight:product.weight},null,2)+
     '\\nCreation requires a separately approved, employee-authorized backend workflow.';
 });
+
+// Work from an existing supplier tab without closing the scanner review popup.
+// Request site access explicitly on click; do not silently read unrelated tabs.
+const supplierTabSelect=document.getElementById('supplier-tab');
+const scanOpenButton=document.getElementById('scan-open-supplier');
+async function supplierTabs(){
+  const tabs=await chrome.tabs.query({});
+  const eligible=tabs.filter(tab=>{
+    if(!Number.isInteger(tab.id)||!/^https?:\/\//i.test(tab.url||''))return false;
+    try{
+      const host=new URL(tab.url).hostname;
+      return !/(^|\.)retail\.lightspeed\.app$/i.test(host);
+    }catch{return false;}
+  });
+  const previous=supplierTabSelect.value;
+  supplierTabSelect.replaceChildren();
+  for(const tab of eligible){
+    const option=document.createElement('option');
+    option.value=String(tab.id);
+    option.textContent=(tab.title||new URL(tab.url).hostname).slice(0,80)+' — '+new URL(tab.url).hostname;
+    supplierTabSelect.append(option);
+  }
+  const prior=eligible.find(t=>String(t.id)===previous);
+  const matching=eligible.find(t=>sourceDomain && new URL(t.url).hostname.replace(/^www\./,'')===sourceDomain);
+  const chosen=prior||matching||eligible.filter(t=>t.active).sort((a,b)=>(b.lastAccessed||0)-(a.lastAccessed||0))[0]||eligible[0];
+  if(chosen)supplierTabSelect.value=String(chosen.id);
+  scanOpenButton.disabled=!eligible.length;
+  return eligible;
+}
+document.getElementById('refresh-supplier-tabs').addEventListener('click',()=>{
+  supplierTabs().catch(error=>{status.textContent='Could not list supplier tabs: '+error.message;});
+});
+scanOpenButton.addEventListener('click',async()=>{
+  scanOpenButton.disabled=true;
+  status.textContent='Scanning selected supplier tab…';
+  try{
+    const tabId=Number(supplierTabSelect.value);
+    const tab=await chrome.tabs.get(tabId);
+    if(!tab?.id||!/^https?:\/\//i.test(tab.url||''))throw new Error('Select an open supplier website.');
+    const url=new URL(tab.url);
+    if(/(^|\.)retail\.lightspeed\.app$/i.test(url.hostname))throw new Error('Choose a supplier page, not Lightspeed.');
+    // This request must happen in this click handler for Chrome user-gesture authorization.
+    const origin=url.origin+'/*';
+    const hasAccess=await chrome.permissions.contains({origins:[origin]});
+    if(!hasAccess){
+      const granted=await chrome.permissions.request({origins:[origin]});
+      if(!granted)throw new Error('Supplier website access was not granted.');
+    }
+    const [{result:draft}]=await chrome.scripting.executeScript({target:{tabId:tab.id},func:captureSupplierProductPage});
+    if(!draft||!draft.product)throw new Error('No product information was returned.');
+    draft.supplierDomain=url.hostname.toLowerCase().replace(/^www\./,'');
+    await chrome.storage.local.set({scannerDraft:draft});
+    loadScannerDraft(draft);
+    status.textContent='Captured '+(draft.product.name||'supplier product')+'. Review the fields and check existing products.';
+  }catch(error){status.textContent='Could not scan supplier page: '+error.message;}
+  finally{scanOpenButton.disabled=false;}
+});
+supplierTabs().catch(error=>{status.textContent='Supplier tabs unavailable: '+error.message;});
