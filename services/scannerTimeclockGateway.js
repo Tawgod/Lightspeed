@@ -3,8 +3,9 @@
 import express from 'express';
 import {createScannerMatchGateway} from '../routes/scannerMatchGateway.js';
 import {createScannerSessions} from './scannerSessions.js';
+import {createScannerPreorderRouter} from './scannerPreorderStaging.js';
 
-export function createTimeclockScannerGateway({identity,lookup,sessionSecret,clock=()=>Date.now(),loginLimiter,supplierLookup}={}){
+export function createTimeclockScannerGateway({identity,lookup,sessionSecret,clock=()=>Date.now(),loginLimiter,supplierLookup,preorderPool}={}){
   const router=express.Router();
   router.use((req,res,next)=>{res.set('Cache-Control','no-store');next();});
   if(!identity?.verifyPin||!identity?.authorize||typeof lookup!=='function'||typeof loginLimiter!=='function'){
@@ -33,5 +34,6 @@ export function createTimeclockScannerGateway({identity,lookup,sessionSecret,clo
     return employee;
   };
   router.use(createScannerMatchGateway({verifyEmployee,lookup,supplierLookup}));
+  if(preorderPool)router.use(createScannerPreorderRouter({pool:preorderPool,verifyEmployee}));
   return router;
 }
