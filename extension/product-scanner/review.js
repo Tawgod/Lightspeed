@@ -301,7 +301,7 @@ createButton.addEventListener('click',()=>{
   }
   createPreview.hidden=false;
   createPreview.textContent='Create Item — approval preview only. No Lightspeed changes will be made.\\n'+
-    JSON.stringify({supplierSuggestion:supplierInput.value.trim(),supplierWebsite:sourceDomain,supplierId:supplierVerifiedId,supplierNotYetVerified:false,name:product.name,generalSku:product.sku,supplierReorderNumber:product.supplierSku,upc:product.upc,brand:product.brand,description:product.description,mapPrice:product.mapPrice,cost:product.cost,msrp:product.msrp,weight:product.weight},null,2)+
+    JSON.stringify({supplierSuggestion:supplierInput.value.trim(),supplierWebsite:sourceDomain,supplierVerified:true,name:product.name,generalSku:product.sku,supplierReorderNumber:product.supplierSku,upc:product.upc,brand:product.brand,description:product.description,mapPrice:product.mapPrice,cost:product.cost,msrp:product.msrp,weight:product.weight},null,2)+
     '\\nCreation requires a separately approved, employee-authorized backend workflow.';
 });
 
