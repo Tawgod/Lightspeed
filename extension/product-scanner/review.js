@@ -56,7 +56,7 @@ function clearScannerSession(){
   signInButton.hidden=false;
   pinField.disabled=false;
   checkButton.disabled=true;
-  lookupGeneration++;pendingLookup=false;createButton.disabled=true;
+  lookupGeneration++;pendingLookup=false;createButton.disabled=true;stagePreorderButton.disabled=true;
   employeeStatus.textContent='Not signed in. Use your Timeclock PIN.';
 }
 signOutButton.addEventListener('click',clearScannerSession);
@@ -85,7 +85,7 @@ signInForm.addEventListener('submit',async event=>{
     if(!data?.token || !Number.isFinite(data.expiresIn) || data.expiresIn<=0 || data.employee?.canLookup!==true){
       throw new Error('Scanner sign-in returned an invalid session.');
     }
-    scannerSession={token:data.token,expiresAt:Date.now()+data.expiresIn*1000};
+    scannerSession={token:data.token,expiresAt:Date.now()+data.expiresIn*1000,canApprove:data.employee.canApprove===true};
     pinField.disabled=true;
     signInButton.hidden=true;
     signOutButton.hidden=false;
@@ -94,6 +94,7 @@ signInForm.addEventListener('submit',async event=>{
     employeeStatus.textContent='Signed in as '+(data.employee.name||'employee')+role+'. '+(data.employee.canApprove===true?'Approval access verified (product writes disabled).':'Read-only: '+(reasons[data.employee.permissionReason]||'Approval permission not verified.'));
     checkButton.disabled=!draftAvailable;
     await lookupSuppliers();
+    if(preorderCheckbox.checked)await loadPreorderCampaigns();
     if(draftAvailable)queueProductLookup();
   }catch(error){
     scannerSession=null;
@@ -112,6 +113,72 @@ const matchesElement=document.getElementById('matches');
 const checkButton=document.getElementById('check-matches');
 const createButton=document.getElementById('create-item');
 const createPreview=document.getElementById('create-preview');
+
+const preorderCheckbox=document.getElementById('add-to-preorder');
+const preorderOptions=document.getElementById('preorder-options');
+const preorderSelect=document.getElementById('preorder-campaign');
+const preorderStatus=document.getElementById('preorder-status');
+const stagePreorderButton=document.getElementById('stage-preorder');
+let campaignsLoaded=false;
+let verifiedCampaigns=[];
+function stageEligibility(){
+  const approved=!!scannerSession && scannerSession.expiresAt>Date.now() && scannerSession.canApprove===true;
+  const valid=approved && !!verifiedProductSignature && verifiedProductSignature===signature() &&
+    Array.isArray(lastMatches) && lastMatches.length===0 && supplierMatched;
+  stagePreorderButton.disabled=!(preorderCheckbox.checked&&preorderSelect.value&&valid);
+}
+async function loadPreorderCampaigns(){
+  preorderSelect.replaceChildren();
+  const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Select an existing campaign';preorderSelect.append(placeholder);
+  if(!scannerSession||scannerSession.expiresAt<=Date.now()){preorderStatus.textContent='Sign in to load campaigns.';return;}
+  preorderStatus.textContent='Loading available campaigns…';
+  try{
+    const response=await fetch(SCANNER_API+'/preorder-campaigns',{headers:{Authorization:'Bearer '+scannerSession.token},cache:'no-store'});
+    if(!response.ok)throw new Error('Could not retrieve campaigns ('+response.status+').');
+    const result=await response.json();
+    verifiedCampaigns=Array.isArray(result.campaigns)?result.campaigns:[];
+    for(const c of verifiedCampaigns){
+      const option=document.createElement('option');option.value=String(c.id);option.textContent=String(c.name||'Campaign').slice(0,130);preorderSelect.append(option);
+    }
+    campaignsLoaded=true;
+    preorderStatus.textContent=verifiedCampaigns.length
+      ? 'Select a campaign; items stay pending review until separately approved.'
+      : 'No open preorder campaigns found.';
+  }catch(error){verifiedCampaigns=[];campaignsLoaded=false;preorderStatus.textContent=error.message;}
+  stageEligibility();
+}
+preorderCheckbox.addEventListener('change',()=>{
+  preorderOptions.hidden=!preorderCheckbox.checked;
+  if(preorderCheckbox.checked)loadPreorderCampaigns();
+  stageEligibility();
+});
+preorderSelect.addEventListener('change',stageEligibility);
+stagePreorderButton.addEventListener('click',async()=>{
+  if(stagePreorderButton.disabled||!preorderCheckbox.checked)return;
+  stagePreorderButton.disabled=true;
+  if(!scannerSession || scannerSession.expiresAt<=Date.now() || !scannerSession.canApprove){
+    preorderStatus.textContent='Manager or Admin approval required. Sign in again.';return;
+  }
+  if(!verifiedProductSignature||verifiedProductSignature!==signature()||!Array.isArray(lastMatches)||lastMatches.length || !supplierMatched){
+    preorderStatus.textContent='Product and supplier must be verified with no existing product matches before staging.';stageEligibility();return;
+  }
+  const campaign=verifiedCampaigns.find(c=>String(c.id)===preorderSelect.value);
+  if(!campaign){preorderStatus.textContent='Select a valid existing campaign.';return;}
+  const draft=(await chrome.storage.local.get('scannerDraft')).scannerDraft;
+  try{
+    const response=await fetch(SCANNER_API+'/preorder-campaigns/'+encodeURIComponent(preorderSelect.value)+'/staged',{
+      method:'POST',cache:'no-store',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+scannerSession.token},
+      body:JSON.stringify({supplierId:supplierVerifiedId,product:currentProduct(),sourceUrl:draft?.sourceUrl||''})
+    });
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.error||'Could not stage item ('+response.status+').');
+    preorderStatus.textContent='Staged '+(data.item?.name||'product')+' for review in '+campaign.name+'. Nothing posted to Discord.';
+    preorderCheckbox.checked=false;preorderOptions.hidden=true;
+  }catch(error){preorderStatus.textContent=error.message;}
+  stageEligibility();
+});
+
 
 const supplierInput=document.getElementById('supplier-default');
 const supplierVerification=document.getElementById('supplier-verification');
@@ -175,7 +242,7 @@ let verifiedProductSignature=null;
 let lastMatches=null;
 function signature(){return JSON.stringify({...currentProduct(),supplier:supplierInput.value.trim()});}
 supplierInput.addEventListener('input',()=>{invalidateVerification();resolveSupplier();queueProductLookup();});
-function invalidateVerification(){lookupGeneration++;verifiedProductSignature=null;lastMatches=null;createButton.disabled=true;createPreview.hidden=true;matchStatus.textContent='Product changed — checking for existing products…';}
+function invalidateVerification(){stagePreorderButton.disabled=true;lookupGeneration++;verifiedProductSignature=null;lastMatches=null;createButton.disabled=true;createPreview.hidden=true;matchStatus.textContent='Product changed — checking for existing products…';}
 
 function currentProduct(){
   const product=Object.fromEntries(keys.map(k=>[k,document.getElementById('field-'+k).value.trim()]));
@@ -206,7 +273,7 @@ function showMatches(matches){
 }
 
 function loadScannerDraft(d){
-  verifiedProductSignature=null;lastMatches=null;createButton.disabled=true;createPreview.hidden=true;matchesElement.replaceChildren();
+  verifiedProductSignature=null;lastMatches=null;createButton.disabled=true;stagePreorderButton.disabled=true;createPreview.hidden=true;matchesElement.replaceChildren();
   document.getElementById('fields').replaceChildren();
   if(!d){status.textContent='No product has been captured. Use Scan Current Page in the extension.';checkButton.disabled=true;return;}
   status.textContent=d.requiresSelection?'Multiple products detected — automatic selection is disabled. Verify manually.':'Review extracted information; no changes have been sent to Lightspeed.';
@@ -266,6 +333,7 @@ async function checkExistingProducts(){
     showMatches(result.matches);
     verifiedProductSignature=currentSignature;lastMatches=result.matches;
     createButton.disabled=result.matches.length!==0||!supplierMatched;
+    stageEligibility();
     matchStatus.textContent=result.matches.length
       ? result.matches.length+' potential product match(es). Review missing information below.'
       : supplierMatched?'No existing products matched. You can prepare a new-item proposal.':'No product matched, but supplier selection needs review.';
