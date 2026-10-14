@@ -26,3 +26,15 @@ Status: **In Development**. Not merged or deployed. Base: `Tawgod/Lightspeed:int
 - Unpacked Chrome preview: `Package Scanner Unpacked Preview` workflow, artifact named `Hobby-Corner-Scanner-v0.3.22-unpacked-preview`.
 - Browser acceptance needed: Manager PIN diagnostics, ACD auto UPC lookup, second page scan while signed in, no-match Create Item proposal, supplier exact and unmatched cases, weight/picture completeness flags.
 - **No merge, Railway deploy or Chrome Web Store publication has been carried out for this version.** Backend changes and role fix will not affect deployed PIN behavior until authorized rollout.
+
+## Preorder campaign scanner staging — 2026-10-14
+
+**Added in v0.3.23 on this branch:**
+- An unchecked **Add to preorder campaign** checkbox in scanner review. When enabled, an existing campaign dropdown appears; campaigns are retrieved through the authenticated scanner API from `preorder_campaigns` with inactive/closed campaigns excluded.
+- Employees can queue multiple existing or newly scanned products against the same campaign. Each staged row has campaign ID foreign key, verified supplier ID, normalized UPC/SKU deduplication key, source URL, cost/MSRP/MAP and employee audit ID. The staging request requires current Timeclock `canApprove` authorization (verified native Admin/Manager or explicit Timeclock permission) and a successful product duplicate lookup in the browser.
+- The new `scanner_preorder_staged_items` PostgreSQL table is initialized only when the existing scanner gateway is enabled. The `POST /api/scanner/preorder-campaigns/:id/staged` endpoint persists records as `PENDING_REVIEW` using a unique `(campaign_id,item_key)` safeguard; duplicate attempts return conflict, never overwrite a staged row.
+- `GET /api/scanner/preorder-campaigns/:id/staged` displays currently queued product names and SKUs in scanner, allowing multiple items to be staged before publication.
+- **Important workflow boundary:** The staging table is separate from live `preorder_products`. It does not create a Lightspeed product, alter inventory, finalize supplier associations or add items to existing Discord publication queues. A future explicit review/approval promotion from staged rows to `preorder_products` is required before regular preorder/Discord workflows include them. This separation prevents accidental publication through the GW Discord publisher.
+- No Discord messages are sent by scanner actions. There is no automatic post/upload action tied to the checkbox.
+- Tests: `tests/scannerPreorderStaging.test.js` cover campaign listing, role-denied writes, idempotent staging, validation and draft-only storage. Shared CI / integration tests passed on development branch.
+- Browser acceptance remaining: Admin/Manager PIN with verified role, staged list refresh, duplicate warning, multiple distinct products to same campaign and supplier selection.
