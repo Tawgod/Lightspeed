@@ -38,6 +38,7 @@ test('ACD visible product detail labels populate supplier fields, even without J
  assert.equal(result.upc,'850052382605');
  assert.equal(result.brand,'Incredible Dream');
  assert.equal(result.msrp,'74.99');
+ assert.equal(result.mapPrice,''); // Advertised supplier price is not proof of MAP.
  assert.equal(result.cost,'41.24');
  assert.equal(result.availabilityNote,'Preorder');
  assert.equal(result.supplierName,'ACD Distribution');
@@ -59,4 +60,10 @@ test('Structured GTIN continues working independently of ACD labels',()=>{
  const result=capture('',{host:'supplier.example.com',jsonLd:[{'@type':'Product',name:'Sample',sku:'SUP-1',gtin12:'850052382605'}]});
  assert.equal(result.upc,'850052382605');
  assert.equal(result.supplierSku,'SUP-1');
+});
+
+test('explicit MAP is captured only when supplier labels it MAP',()=>{
+ const result=capture('SKU: IDRAYA4102100EN\nUPC: 850052382605\nMAP: $59.99\nMSRP: $74.99');
+ assert.equal(result.mapPrice,'59.99');
+ assert.equal(result.msrp,'74.99');
 });
