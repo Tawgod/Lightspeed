@@ -2550,7 +2550,9 @@ export function createSpecialOrdersRouter({
               ps.name AS preferred_supplier_name,
               d.name AS category_name,
               COALESCE(sp.supplier_sku,i.requested_sku) AS supplier_sku,
+              sp.id AS supplier_product_id,
               sp.supply_price AS supplier_cost,
+              sp.order_url AS supplier_order_url,
               CASE WHEN so_line.id IS NULL THEN false ELSE true END AS on_supplier_order,
               so.status AS supplier_order_status,
               so.id AS supplier_order_id
@@ -2857,6 +2859,72 @@ export function createSpecialOrdersRouter({
     }
   });
 
+  router.get('/supplier-orders', requireDb, async (req,res)=>{
+    const status=String(req.query.status||'').trim().toUpperCase();
+    const params=[];
+    let where='';
+    if(status){params.push(status);where='WHERE so.status=$1';}
+    const sql="SELECT so.*,s.name AS supplier_name,s.lightspeed_supplier_id,"+
+      "count(soi.id)::int AS line_count,COALESCE(sum(soi.quantity),0)::int AS unit_count,"+
+      "COALESCE(sum(soi.special_order_quantity),0)::int AS special_order_units,"+
+      "COALESCE(sum(soi.floor_quantity),0)::int AS floor_units,"+
+      "COALESCE(sum(soi.quantity*COALESCE(soi.unit_cost,0)),0)::numeric(12,2) AS estimated_cost "+
+      "FROM supplier_orders so JOIN suppliers s ON s.id=so.supplier_id "+
+      "LEFT JOIN supplier_order_items soi ON soi.supplier_order_id=so.id "+where+
+      " GROUP BY so.id,s.id ORDER BY CASE WHEN so.status='DRAFT' THEN 0 ELSE 1 END,so.updated_at DESC,so.id DESC";
+    const {rows}=await pool.query(sql,params);
+    res.json(rows);
+  });
+
+  router.patch('/supplier-orders/:id', requireDb, async (req,res)=>{
+    const current=await pool.query('SELECT * FROM supplier_orders WHERE id=$1',[req.params.id]);
+    const order=current.rows[0];
+    if(!order)return res.status(404).json({error:'Supplier order not found.'});
+    if(String(order.status).toUpperCase()!=='DRAFT')return res.status(409).json({error:'Only draft supplier orders can be edited.'});
+    const supplierOrderNumber=req.body?.supplier_order_number===undefined?order.supplier_order_number:(String(req.body.supplier_order_number||'').trim()||null);
+    const notes=req.body?.notes===undefined?order.notes:(String(req.body.notes||'').trim()||null);
+    const expectedAt=req.body?.expected_at===undefined?order.expected_at:(req.body.expected_at||null);
+    const {rows}=await pool.query(
+      'UPDATE supplier_orders SET supplier_order_number=$1,notes=$2,expected_at=$3,updated_at=now() WHERE id=$4 RETURNING *',
+      [supplierOrderNumber,notes,expectedAt,req.params.id]
+    );
+    res.json(rows[0]);
+  });
+
+  router.patch('/supplier-order-items/:id', requireDb, async (req,res)=>{
+    const current=await pool.query(
+      'SELECT soi.*,so.status AS order_status FROM supplier_order_items soi JOIN supplier_orders so ON so.id=soi.supplier_order_id WHERE soi.id=$1',
+      [req.params.id]
+    );
+    const line=current.rows[0];
+    if(!line)return res.status(404).json({error:'Supplier-order line not found.'});
+    if(String(line.order_status).toUpperCase()!=='DRAFT')return res.status(409).json({error:'Only draft supplier-order lines can be edited.'});
+    const specialQty=req.body?.special_order_quantity==null?Number(line.special_order_quantity||0):Math.max(0,Math.floor(Number(req.body.special_order_quantity)||0));
+    const floorQty=req.body?.floor_quantity==null?Number(line.floor_quantity||0):Math.max(0,Math.floor(Number(req.body.floor_quantity)||0));
+    const quantity=req.body?.quantity==null?(specialQty+floorQty):Math.max(1,Math.floor(Number(req.body.quantity)||1));
+    if(quantity<specialQty+floorQty)return res.status(400).json({error:'Total quantity cannot be less than special-order plus floor quantity.'});
+    const unitCost=req.body?.unit_cost===undefined?line.unit_cost:(req.body.unit_cost==null||req.body.unit_cost===''?null:Math.max(0,Number(req.body.unit_cost)||0));
+    const {rows}=await pool.query(
+      'UPDATE supplier_order_items SET quantity=$1,special_order_quantity=$2,floor_quantity=$3,unit_cost=$4 WHERE id=$5 RETURNING *',
+      [quantity,specialQty,floorQty,unitCost,req.params.id]
+    );
+    await pool.query('UPDATE supplier_orders SET updated_at=now() WHERE id=$1',[line.supplier_order_id]);
+    res.json(rows[0]);
+  });
+
+  router.delete('/supplier-order-items/:id', requireDb, async (req,res)=>{
+    const current=await pool.query(
+      'SELECT soi.*,so.status AS order_status FROM supplier_order_items soi JOIN supplier_orders so ON so.id=soi.supplier_order_id WHERE soi.id=$1',
+      [req.params.id]
+    );
+    const line=current.rows[0];
+    if(!line)return res.status(404).json({error:'Supplier-order line not found.'});
+    if(String(line.order_status).toUpperCase()!=='DRAFT')return res.status(409).json({error:'Only draft supplier-order lines can be removed.'});
+    if(Number(line.quantity_received||0)>0)return res.status(409).json({error:'A line with received quantity cannot be removed.'});
+    await pool.query('DELETE FROM supplier_order_items WHERE id=$1',[req.params.id]);
+    await pool.query('UPDATE supplier_orders SET updated_at=now() WHERE id=$1',[line.supplier_order_id]);
+    res.json({ok:true,supplier_order_id:line.supplier_order_id});
+  });
   router.get('/supplier-orders/:id', requireDb, async (req, res) => {
     const order = await pool.query(`
       SELECT so.*, s.name AS supplier_name, s.lightspeed_supplier_id
@@ -2924,12 +2992,35 @@ export function createSpecialOrdersRouter({
         method:'POST', body:JSON.stringify({ data: bulk })
       });
 
-      const updated = await pool.query(`
-        UPDATE supplier_orders
-        SET lightspeed_consignment_id=$1, lightspeed_sync_status='SYNCED', updated_at=now()
-        WHERE id=$2 RETURNING *
-      `, [consignment.id, req.params.id]);
-      res.json({ order:updated.rows[0], lightspeed:consignment });
+      const client=await pool.connect();
+      let updated;
+      try{
+        await client.query('BEGIN');
+        updated=await client.query(
+          "UPDATE supplier_orders SET lightspeed_consignment_id=$1,lightspeed_sync_status='SYNCED',status='ORDERED',ordered_at=COALESCE(ordered_at,now()),updated_at=now() WHERE id=$2 RETURNING *",
+          [consignment.id,req.params.id]
+        );
+        const linked=await client.query(
+          'SELECT DISTINCT special_order_item_id FROM supplier_order_items WHERE supplier_order_id=$1 AND special_order_item_id IS NOT NULL',
+          [req.params.id]
+        );
+        for(const row of linked.rows){
+          const oldResult=await client.query('SELECT status FROM special_order_items WHERE id=$1 FOR UPDATE',[row.special_order_item_id]);
+          const oldStatus=oldResult.rows[0]?.status;
+          if(oldStatus&&['OOS','READY_TO_ORDER','BACKORDERED'].includes(String(oldStatus).toUpperCase())){
+            await client.query("UPDATE special_order_items SET status='ORDERED',ordered_at=COALESCE(ordered_at,now()),updated_at=now() WHERE id=$1",[row.special_order_item_id]);
+            await client.query(
+              "INSERT INTO order_status_history (special_order_item_id,old_status,new_status,note,changed_by) VALUES ($1,$2,'ORDERED',$3,'ordering-web')",
+              [row.special_order_item_id,oldStatus,'Supplier order pushed to Lightspeed PO '+consignment.id]
+            );
+          }
+        }
+        await client.query('COMMIT');
+      }catch(txError){
+        await client.query('ROLLBACK');
+        throw txError;
+      }finally{client.release()}
+      res.json({order:updated.rows[0],lightspeed:consignment});
     } catch (error) {
       await pool.query(`
         UPDATE supplier_orders SET lightspeed_sync_status='ERROR', updated_at=now() WHERE id=$1
