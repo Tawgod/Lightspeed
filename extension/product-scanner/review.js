@@ -18,7 +18,7 @@ let supplierMatched=false;
 let lookupGeneration=0;
 let lookupBusy=false;
 let pendingLookup=false;
-const SUPPLIER_DOMAINS={'acdd.com':'ACD Distribution'};
+const SUPPLIER_DOMAINS={'acdd.com':['ACD Distribution','ACD']};
 function normalizedSupplierName(value){return String(value||'').toLowerCase().replace(/[^a-z0-9]/g,'');}
 function chosenSupplierId(){const name=normalizedSupplierName(supplierInput.value);const exact=supplierRecords.filter(s=>normalizedSupplierName(s.name)===name);return exact.length===1?exact[0].id:null;}
 function resolveSupplier(){
@@ -35,10 +35,13 @@ async function lookupSuppliers(){
     supplierRecords=Array.isArray(result.suppliers)?result.suppliers:[];
     const list=document.getElementById('supplier-options');list.replaceChildren();
     for(const supplier of supplierRecords){const option=document.createElement('option');option.value=supplier.name;list.append(option);}
-    const alias=SUPPLIER_DOMAINS[sourceDomain];
+    const aliases=SUPPLIER_DOMAINS[sourceDomain]||[];
     const suggestion=supplierInput.value.trim();
     const exact=supplierRecords.find(x=>normalizedSupplierName(x.name)===normalizedSupplierName(suggestion));
-    if(!exact && alias && supplierRecords.some(x=>normalizedSupplierName(x.name)===normalizedSupplierName(alias)))supplierInput.value=alias;
+    if(!exact){
+      const candidates=supplierRecords.filter(x=>aliases.some(alias=>normalizedSupplierName(x.name)===normalizedSupplierName(alias)));
+      if(candidates.length===1)supplierInput.value=candidates[0].name;
+    }
     resolveSupplier();
   }catch(error){supplierRecords=[];resolveSupplier();supplierVerification.textContent='⚠ Supplier records could not be verified. '+error.message;}
 }
@@ -210,7 +213,7 @@ function loadScannerDraft(d){
   draftAvailable=true;
   const p=d.product||{};
   sourceDomain=String(d.supplierDomain||'').trim().toLowerCase();
-  supplierInput.value=String(p.supplierName||SUPPLIER_DOMAINS[sourceDomain]||sourceDomain||'').trim();
+  supplierInput.value=String(p.supplierName||SUPPLIER_DOMAINS[sourceDomain]?.[0]||sourceDomain||'').trim();
   supplierVerification.textContent=p.supplierName
     ? 'Supplier detected from site: verify this matches an existing supplier before approval.'
     : 'Suggested from website domain only. Enter the actual supplier name and verify against existing suppliers.';
@@ -248,7 +251,8 @@ async function checkExistingProducts(){
   const currentSignature=signature();
   try{
     const product=currentProduct();
-    const body=toSpecialOrderMatchRequest(product,supplierVerifiedId);
+    // Search all supplier associations, not just the selected supplier, to avoid duplicate products.
+    const body=toSpecialOrderMatchRequest(product);
     const response=await fetch(SCANNER_API+'/matches',{
       method:'POST',cache:'no-store',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+scannerSession.token},
@@ -257,7 +261,7 @@ async function checkExistingProducts(){
     if(!response.ok)throw new Error(response.status===401||response.status===403?'Sign in again to check products.':'Product verification failed ('+response.status+').');
     const data=await response.json();
     if(data?.verified!==true||!Array.isArray(data.local?.matches)||!Array.isArray(data.remote?.matches))throw new Error('Incomplete matching results');
-    const result=await checkProductMatches(product,async kind=>kind==='local'?data.local:data.remote,supplierVerifiedId);
+    const result=await checkProductMatches(product,async kind=>kind==='local'?data.local:data.remote);
     if(generation!==lookupGeneration||currentSignature!==signature())return;
     showMatches(result.matches);
     verifiedProductSignature=currentSignature;lastMatches=result.matches;
