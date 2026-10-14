@@ -16,6 +16,7 @@ import { createTimeclockScannerGateway } from './services/scannerTimeclockGatewa
 import { createTimeclockScannerIdentity } from './services/scannerTimeclockIdentity.js';
 import { createSpecialOrdersMatchLookup } from './services/scannerSpecialOrdersLookup.js';
 import { createScannerLoginLimiter } from './services/scannerLoginLimiter.js';
+import { createLightspeedClient } from './services/lightspeedApi.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -849,7 +850,9 @@ async function startServer() {
       adminKey:process.env.SPECIAL_ORDERS_ADMIN_KEY
     });
     const scannerGateway=createTimeclockScannerGateway({
-      identity,lookup,sessionSecret:process.env.SCANNER_SESSION_SECRET,loginLimiter
+      identity,lookup,sessionSecret:process.env.SCANNER_SESSION_SECRET,loginLimiter,
+      poPool:scannerPool,
+      poReadClient:LIGHTSPEED_DOMAIN && LIGHTSPEED_TOKEN?createLightspeedClient({domain:LIGHTSPEED_DOMAIN,token:LIGHTSPEED_TOKEN}):null
     });
     app.use('/api/scanner',(req,res,next)=>{
       const origin=String(req.get('origin')||'');
