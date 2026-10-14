@@ -129,7 +129,7 @@ document.getElementById('scan-page').addEventListener('click', async () => {
         const allLabels='SKU|UPC|EAN|GTIN|Manufacturer|MSRP|Shipping Weight|Item Weight|Weight|Category|Order By Date|Stock|Quantity';
         const fromLabel=label=>{
           if(!isAcd)return '';
-          const re=new RegExp('(?:^|\\s)(?:'+label+')\\s*:\\s*(.*);
+          const re=new RegExp('(?:^|\\s)(?:'+label+')\\s*:\\s*(.*)$','i');
           const nextLabel=new RegExp('\\s+(?:(?:'+allLabels+')\\s*:)','i');
           for(let i=0;i<lines.length;i++){
             const match=lines[i].match(re);
