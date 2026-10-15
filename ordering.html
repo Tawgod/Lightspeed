@@ -7,50 +7,77 @@
     <a href="/special-orders" style="display:inline-block;padding:9px 12px;border-radius:8px;background:#0f766e;color:#fff;text-decoration:none;font-weight:700">Special Orders</a>
     <a href="/preorders" style="display:inline-block;padding:9px 12px;border-radius:8px;background:#7c2d12;color:#fff;text-decoration:none;font-weight:700">Preorder Campaigns</a>
   </div>
+
   <h1>Ordering</h1>
-  <div class="sub">Build supplier drafts from Special Order demand, add floor stock, review quantities and costs, then explicitly push approved drafts to Lightspeed.</div>
+  <div class="sub">Lightspeed is the purchase-order source of truth. Use this page to find what still needs ordering, organize by supplier/category, check current POs, update line status, and record notes.</div>
   <div id="notice" class="notice"></div>
 
   <div class="panel"><div class="toolbar">
     <input id="accessKey" type="password" placeholder="Internal access key" size="24">
     <button id="unlockButton" onclick="saveKey()">Unlock</button>
     <span id="authStatus" class="pill">Locked</span>
+    <button onclick="refreshEverything()">Refresh Lightspeed + Orders</button>
   </div></div>
 
   <div class="panel">
     <div class="section-heading"><div>
-      <h2 style="margin:0">1. Ordering Work Queue</h2>
-      <p class="form-note">Choose one supplier's lines, add any floor-stock quantity, then create a local draft supplier order.</p>
+      <h2 style="margin:0">Ordering Checklist</h2>
+      <p class="form-note">No filter = full list. Supplier/category filters hide everything else without changing the underlying order data.</p>
     </div></div>
+
     <div class="toolbar">
-      <label>View <select id="orderView" onchange="loadOrdering()">
-        <option value="supplier" selected>By supplier</option><option value="category">By category</option><option value="general">General</option>
-      </select></label>
-      <label>Status <select id="statusScope" onchange="loadOrdering()">
-        <option value="OOS,READY_TO_ORDER">Needs ordering only</option>
-        <option value="OOS,READY_TO_ORDER,ORDERED,BACKORDERED">Needs action + active orders</option>
-        <option value="ORDERED,BACKORDERED">Already ordered / backordered</option>
-      </select></label>
-      <button onclick="loadOrdering()">Refresh</button>
-      <button id="createDraftButton" onclick="createDraftFromSelection()" disabled>Create Draft From Selected</button>
-      <button id="addToDraftButton" onclick="addSelectionToCurrentDraft()" disabled>Add Selected to Open Draft</button>
+      <label>Supplier
+        <select id="supplierFilter" onchange="applyFilters()"><option value="">All suppliers</option></select>
+      </label>
+      <label>Category
+        <select id="categoryFilter" onchange="applyFilters()"><option value="">All categories</option></select>
+      </label>
+      <label>Status
+        <select id="statusFilter" onchange="applyFilters()">
+          <option value="ALL">All</option>
+          <option value="OOS">OOS</option>
+          <option value="READY_TO_ORDER">Ready to order</option>
+          <option value="ORDERED">Ordered</option>
+          <option value="BACKORDERED">Backordered</option>
+          <option value="RECEIVED">Received</option>
+          <option value="HELD">Held</option>
+          <option value="CUSTOMER_NOTIFIED">Customer notified</option>
+          <option value="COMPLETED">Completed</option>
+          <option value="CANCELLED">Cancelled</option>
+        </select>
+      </label>
+      <label>Sort
+        <select id="sortMode" onchange="applyFilters()">
+          <option value="oldest">Oldest first</option>
+          <option value="supplier">Supplier</option>
+          <option value="category">Category</option>
+          <option value="status">Status</option>
+          <option value="customer">Customer</option>
+        </select>
+      </label>
+      <button onclick="clearFilters()">Clear filters</button>
     </div>
-    <div id="selectionSummary" class="form-note">No lines selected.</div>
+
     <div id="orderingSummary" class="form-note"></div>
     <div id="orderingRows"></div>
   </div>
 
   <div class="panel">
     <div class="section-heading"><div>
-      <h2 style="margin:0">2. Supplier Order Drafts</h2>
-      <p class="form-note">Drafts stay local until someone explicitly pushes them to Lightspeed.</p>
+      <h2 style="margin:0">Lightspeed Unfulfilled Orders</h2>
+      <p class="form-note">Read-only demand from open Lightspeed fulfillments. Items already found on a current Lightspeed purchase order are marked with the PO number.</p>
     </div></div>
-    <div class="toolbar">
-      <select id="draftOrderSelect" onchange="loadDraftOrder()"><option value="">Select draft supplier order…</option></select>
-      <button onclick="loadDraftOrders()">Refresh drafts</button>
-    </div>
-    <div id="draftOrderMeta"></div>
-    <div id="draftOrderLines"></div>
+    <div id="lightspeedDemandStatus" class="form-note"></div>
+    <div id="lightspeedDemand"></div>
+  </div>
+
+  <div class="panel">
+    <div class="section-heading"><div>
+      <h2 style="margin:0">Current Lightspeed Purchase Orders</h2>
+      <p class="form-note">Read-only current purchase orders from Lightspeed for cross-checking while you enter and submit supplier orders.</p>
+    </div></div>
+    <div id="lightspeedPoStatus" class="form-note"></div>
+    <div id="lightspeedPurchaseOrders"></div>
   </div>
 </div>
 <script src="/ordering-client.js"></script></body></html>

@@ -1,68 +1,248 @@
 const api='/api/special-orders';
-let workRows=[],selected=new Map(),currentDraft=null,suppliers=[];
+let workRows=[],suppliers=[],lsContext={purchase_orders:[],lightspeed_demand:[]},recommendations=new Map();
+
 function accessKey(){return sessionStorage.getItem('hcSpecialOrdersKey')||''}
 function showNotice(t){const e=document.getElementById('notice');e.textContent=t;e.style.display='block'}
 function esc(v){return String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]))}
 function money(v){return v==null||v===''?'—':'$'+Number(v).toFixed(2)}
-function setAuth(ok){document.getElementById('authStatus').textContent=ok?'Unlocked':'Locked';document.querySelectorAll('button:not(#unlockButton),select').forEach(e=>e.disabled=!ok);if(ok)updateSelectionSummary()}
-async function getJson(url,opts={}){const r=await fetch(url,{...opts,headers:{...(opts.headers||{}),'x-hobby-corner-key':accessKey()},cache:'no-store'});let d={};try{d=await r.json()}catch{}if(r.status===401){setAuth(false);throw new Error('Access key missing or incorrect.')}if(!r.ok){const e=new Error(d.error||r.statusText);e.details=d;throw e}return d}
-async function saveKey(){const v=document.getElementById('accessKey').value.trim();if(!v)return;sessionStorage.setItem('hcSpecialOrdersKey',v);try{await getJson(api+'/auth-check');setAuth(true);await loadSuppliers();await Promise.all([loadOrdering(),loadDraftOrders()])}catch(e){sessionStorage.removeItem('hcSpecialOrdersKey');showNotice(e.message)}}
-const statuses=['OOS','READY_TO_ORDER','ORDERED','BACKORDERED','RECEIVED','HELD','CUSTOMER_NOTIFIED','COMPLETED','CANCELLED'];
-function groupKey(r,v){if(v==='supplier')return r.preferred_supplier_name||'Unassigned supplier';if(v==='category')return r.product_category||r.category_name||'Unassigned category';return 'Ordering queue'}
-async function loadSuppliers(){suppliers=await getJson(api+'/suppliers')}
-function supplierSelectHtml(r){if(r.on_supplier_order)return esc(r.preferred_supplier_name||'Unassigned');const opts=['<option value="">Unassigned</option>'].concat(suppliers.map(s=>'<option value="'+s.id+'" '+(String(s.id)===String(r.preferred_supplier_id||'')?'selected':'')+'>'+esc(s.name)+'</option>'));return '<select id="supplier-'+r.id+'">'+opts.join('')+'</select>'}
-async function setPreferredSupplier(id,supplierId){try{await getJson(api+'/items/'+id+'/routing',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({preferred_supplier_id:supplierId||null})});selected.delete(Number(id));showNotice('Preferred supplier updated.');await loadOrdering()}catch(e){showNotice('Could not update supplier: '+e.message)}}
-async function updateLineStatus(id,status){try{await getJson(api+'/items/'+id+'/status',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status,changed_by:'ordering-web'})});showNotice('Line '+id+' updated to '+status);await loadOrdering()}catch(e){showNotice('Status update failed: '+e.message)}}
-function updateSelectionSummary(){const rows=[...selected.values()];const supplierIds=[...new Set(rows.map(x=>String(x.preferred_supplier_id||'')))].filter(Boolean);const floor=rows.reduce((n,x)=>n+Number(x.floor_quantity||0),0);const units=rows.reduce((n,x)=>n+Number(x.quantity||0)+Number(x.floor_quantity||0),0);document.getElementById('selectionSummary').textContent=rows.length?rows.length+' selected line(s) · '+units+' total units · '+floor+' floor-stock units'+(supplierIds.length>1?' · Multiple suppliers selected':''):'No lines selected.';document.getElementById('createDraftButton').disabled=!rows.length||supplierIds.length!==1;const canAdd=Boolean(currentDraft&&rows.length&&supplierIds.length===1&&String(currentDraft.order.supplier_id)===String(supplierIds[0]));document.getElementById('addToDraftButton').disabled=!canAdd}
-function toggleLine(id,checked){const r=workRows.find(x=>Number(x.id)===Number(id));if(!r)return;if(checked)selected.set(Number(id),{...r,floor_quantity:Number(document.getElementById('floor-'+id)?.value||0)});else selected.delete(Number(id));updateSelectionSummary()}
-function updateFloor(id,value){const n=Math.max(0,Math.floor(Number(value)||0));const el=document.getElementById('floor-'+id);if(el)el.value=String(n);const total=document.getElementById('total-'+id);const r=workRows.find(x=>Number(x.id)===Number(id));if(total&&r)total.textContent=String(Number(r.quantity||0)+n);if(selected.has(Number(id))){selected.get(Number(id)).floor_quantity=n;updateSelectionSummary()}}
-function selectSupplierRows(supplierId,checked){for(const r of workRows){if(String(r.preferred_supplier_id||'')!==String(supplierId||''))continue;if(r.on_supplier_order||!r.preferred_supplier_id)continue;const cb=document.getElementById('pick-'+r.id);if(cb)cb.checked=checked;toggleLine(r.id,checked)}}
-function renderGroup(name,rows,view){const wrap=document.createElement('div');const head=document.createElement('div');head.className='toolbar';head.style.justifyContent='space-between';const h=document.createElement('h2');h.textContent=name+' ('+rows.length+')';head.appendChild(h);if(view==='supplier'&&rows[0]?.preferred_supplier_id){const lab=document.createElement('label');lab.innerHTML='<input type="checkbox"> Select orderable lines';lab.querySelector('input').addEventListener('change',e=>selectSupplierRows(rows[0].preferred_supplier_id,e.target.checked));head.appendChild(lab)}wrap.appendChild(head);const table=document.createElement('table');table.innerHTML='<tr><th>Select</th><th>Customer</th><th>Item</th><th>SKU / Supplier SKU</th><th>Customer Qty</th><th>Floor Qty</th><th>Total</th><th>Supplier</th><th>Category</th><th>Cost</th><th>Supplier Order</th><th>Status</th></tr>';for(const r of rows){const tr=document.createElement('tr');const disabled=r.on_supplier_order||!r.preferred_supplier_id;const floor=selected.get(Number(r.id))?.floor_quantity||0;tr.innerHTML='<td><input id="pick-'+r.id+'" type="checkbox" '+(selected.has(Number(r.id))?'checked':'')+' '+(disabled?'disabled':'')+'></td><td>'+esc(r.customer_name||'—')+'</td><td>'+esc(r.requested_name)+'</td><td>'+esc([r.requested_sku,r.supplier_sku].filter(Boolean).join(' / ')||'—')+'</td><td>'+Number(r.quantity||0)+'</td><td><input id="floor-'+r.id+'" type="number" min="0" step="1" value="'+floor+'" style="width:70px" '+(disabled?'disabled':'')+'></td><td id="total-'+r.id+'">'+(Number(r.quantity||0)+floor)+'</td><td>'+supplierSelectHtml(r)+'</td><td>'+esc(r.product_category||r.category_name||'Unassigned')+'</td><td>'+money(r.supplier_cost)+'</td><td>'+(r.on_supplier_order?('#'+r.supplier_order_id+' · '+esc(r.supplier_order_status||'')):'Not on order')+'</td><td><select id="status-'+r.id+'">'+statuses.map(s=>'<option value="'+s+'" '+(s===r.status?'selected':'')+'>'+s.replaceAll('_',' ')+'</option>').join('')+'</select></td>';tr.querySelector('#pick-'+r.id).addEventListener('change',e=>toggleLine(r.id,e.target.checked));tr.querySelector('#floor-'+r.id).addEventListener('input',e=>updateFloor(r.id,e.target.value));tr.querySelector('#status-'+r.id).addEventListener('change',e=>updateLineStatus(r.id,e.target.value));const supplierEl=tr.querySelector('#supplier-'+r.id);if(supplierEl)supplierEl.addEventListener('change',e=>setPreferredSupplier(r.id,e.target.value));table.appendChild(tr)}wrap.appendChild(table);return wrap}
-async function loadOrdering(){try{const view=document.getElementById('orderView').value,status=document.getElementById('statusScope').value;const d=await getJson(api+'/ordering/work-queue?view='+encodeURIComponent(view)+'&status='+encodeURIComponent(status));workRows=d.rows||[];for(const id of [...selected.keys()]){const fresh=workRows.find(r=>Number(r.id)===Number(id));if(!fresh||fresh.on_supplier_order)selected.delete(id);else selected.set(id,{...fresh,floor_quantity:selected.get(id).floor_quantity||0})}const box=document.getElementById('orderingRows');box.replaceChildren();const groups=new Map();for(const r of workRows){const k=groupKey(r,view);if(!groups.has(k))groups.set(k,[]);groups.get(k).push(r)}for(const [k,rows] of groups)box.appendChild(renderGroup(k,rows,view));document.getElementById('orderingSummary').textContent=workRows.length+' line(s) · '+workRows.filter(x=>!x.on_supplier_order&&x.preferred_supplier_id).length+' available to draft.';updateSelectionSummary()}catch(e){showNotice(e.message)}}
-function selectedDraftItems(){
-  return [...selected.values()].map(r=>{
-    const floor=Math.max(0,Math.floor(Number(r.floor_quantity)||0));
-    const special=Math.max(1,Math.floor(Number(r.quantity)||1));
-    return {
-      product_id:r.product_id||null,
-      supplier_product_id:r.supplier_product_id||null,
-      quantity:special+floor,
-      special_order_quantity:special,
-      floor_quantity:floor,
-      unit_cost:r.supplier_cost==null?null:Number(r.supplier_cost),
-      special_order_item_id:r.id,
-      placeholder_name:r.product_id?null:r.requested_name,
-      placeholder_sku:r.product_id?null:(r.requested_sku||null),
-      source_url:r.supplier_order_url||null
-    };
-  });
-}
-async function addSelectionToCurrentDraft(){
-  if(!currentDraft)return showNotice('Open a draft supplier order first.');
-  const rows=[...selected.values()];
-  if(!rows.length)return;
-  const supplierIds=[...new Set(rows.map(x=>String(x.preferred_supplier_id||'')))].filter(Boolean);
-  if(supplierIds.length!==1||String(currentDraft.order.supplier_id)!==String(supplierIds[0])){
-    return showNotice('Selected lines must match the supplier on the open draft.');
-  }
-  if(!confirm('Add '+rows.length+' selected line(s) to draft supplier order #'+currentDraft.order.id+'?'))return;
-  try{
-    const d=await getJson(api+'/supplier-orders/'+currentDraft.order.id+'/items',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({items:selectedDraftItems()})
-    });
-    selected.clear();
-    showNotice('Added '+d.added+' line(s) to draft #'+currentDraft.order.id+'.');
-    await Promise.all([loadOrdering(),loadDraftOrders(),loadDraftOrder()]);
-  }catch(e){showNotice('Could not add lines to draft: '+e.message)}
+function setAuth(ok){document.getElementById('authStatus').textContent=ok?'Unlocked':'Locked';document.querySelectorAll('button:not(#unlockButton),select').forEach(e=>e.disabled=!ok)}
+
+async function getJson(url,opts={}){
+  const r=await fetch(url,{...opts,headers:{...(opts.headers||{}),'x-hobby-corner-key':accessKey()},cache:'no-store'});
+  let d={};try{d=await r.json()}catch{}
+  if(r.status===401){setAuth(false);throw new Error('Access key missing or incorrect.')}
+  if(!r.ok){const e=new Error(d.error||r.statusText);e.details=d;throw e}
+  return d
 }
 
-async function createDraftFromSelection(){const rows=[...selected.values()];if(!rows.length)return;const supplierIds=[...new Set(rows.map(x=>Number(x.preferred_supplier_id)).filter(Boolean))];if(supplierIds.length!==1)return showNotice('Select lines for one supplier only.');if(rows.some(x=>x.on_supplier_order))return showNotice('A selected line is already on a supplier order.');const supplierId=supplierIds[0];const items=selectedDraftItems();const supplierName=rows[0].preferred_supplier_name||'Supplier';if(!confirm('Create a LOCAL DRAFT for '+supplierName+' with '+rows.length+' line(s)? Nothing will be sent to Lightspeed.'))return;try{const d=await getJson(api+'/supplier-orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({supplier_id:supplierId,items,notes:'Special Orders draft — '+supplierName,created_by:'ordering-web'})});selected.clear();showNotice('Created draft supplier order #'+d.order.id+'.');await Promise.all([loadOrdering(),loadDraftOrders()]);document.getElementById('draftOrderSelect').value=String(d.order.id);await loadDraftOrder()}catch(e){showNotice('Could not create draft: '+e.message)}}
-async function loadDraftOrders(){try{const rows=await getJson(api+'/supplier-orders?status=DRAFT');const s=document.getElementById('draftOrderSelect'),cur=s.value;s.innerHTML='<option value="">Select draft supplier order…</option>'+rows.map(x=>'<option value="'+x.id+'">#'+x.id+' · '+esc(x.supplier_name)+' · '+x.line_count+' lines · '+x.unit_count+' units · '+money(x.estimated_cost)+'</option>').join('');if(cur&&rows.some(x=>String(x.id)===String(cur)))s.value=cur}catch(e){showNotice('Could not load drafts: '+e.message)}}
-async function saveDraftMeta(){if(!currentDraft)return;try{await getJson(api+'/supplier-orders/'+currentDraft.order.id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({supplier_order_number:document.getElementById('draftOrderNumber').value,expected_at:document.getElementById('draftExpected').value||null,notes:document.getElementById('draftNotes').value})});showNotice('Draft details saved.');await loadDraftOrders()}catch(e){showNotice('Could not save draft: '+e.message)}}
-async function saveDraftLine(id){const floor=Math.max(0,Math.floor(Number(document.getElementById('draft-floor-'+id).value)||0));const costRaw=document.getElementById('draft-cost-'+id).value;try{await getJson(api+'/supplier-order-items/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({floor_quantity:floor,unit_cost:costRaw===''?null:Number(costRaw)})});showNotice('Draft line updated.');await Promise.all([loadDraftOrder(),loadDraftOrders()])}catch(e){showNotice('Could not update line: '+e.message)}}
-async function removeDraftLine(id){if(!confirm('Remove this line from the draft? The customer Special Order will remain.'))return;try{await getJson(api+'/supplier-order-items/'+id,{method:'DELETE'});showNotice('Draft line removed.');await Promise.all([loadDraftOrder(),loadDraftOrders(),loadOrdering()])}catch(e){showNotice(e.message)}}
-async function loadDraftOrder(){const id=document.getElementById('draftOrderSelect').value;document.getElementById('draftOrderMeta').innerHTML='';document.getElementById('draftOrderLines').innerHTML='';currentDraft=null;updateSelectionSummary();if(!id)return;try{const d=await getJson(api+'/supplier-orders/'+id);currentDraft=d;updateSelectionSummary();const o=d.order;document.getElementById('draftOrderMeta').innerHTML='<div class="form-grid form-grid-4"><label class="field"><span>Supplier</span><input value="'+esc(o.supplier_name)+'" readonly></label><label class="field"><span>Supplier order #</span><input id="draftOrderNumber" value="'+esc(o.supplier_order_number||'')+'"></label><label class="field"><span>Expected date</span><input id="draftExpected" type="date" value="'+esc(o.expected_at?String(o.expected_at).slice(0,10):'')+'"></label><label class="field"><span>Sync status</span><input value="'+esc(o.lightspeed_sync_status||'LOCAL_ONLY')+'" readonly></label></div><div class="toolbar"><input id="draftNotes" size="60" value="'+esc(o.notes||'')+'" placeholder="Order notes"><button onclick="saveDraftMeta()">Save Draft Details</button><button onclick="pushDraftToLightspeed()" style="background:#b45309">Push Draft to Lightspeed</button></div><div class="form-note">Push is an explicit write to Lightspeed. Review every line first.</div>';const box=document.getElementById('draftOrderLines');if(!d.items.length){box.innerHTML='<p class="form-note">This draft has no lines.</p>';return}const table=document.createElement('table');table.innerHTML='<tr><th>Item</th><th>SKU</th><th>Supplier SKU</th><th>Customer Qty</th><th>Floor Qty</th><th>Total</th><th>Unit Cost</th><th>Received</th><th></th></tr>';for(const x of d.items){const tr=document.createElement('tr');tr.innerHTML='<td>'+esc(x.name)+'</td><td>'+esc(x.sku||'—')+'</td><td>'+esc(x.supplier_sku||'—')+'</td><td>'+Number(x.special_order_quantity||0)+'</td><td><input id="draft-floor-'+x.id+'" type="number" min="0" step="1" value="'+Number(x.floor_quantity||0)+'" style="width:70px"></td><td>'+Number(x.quantity||0)+'</td><td><input id="draft-cost-'+x.id+'" type="number" min="0" step="0.01" value="'+(x.unit_cost==null?'':Number(x.unit_cost).toFixed(2))+'" style="width:90px"></td><td>'+Number(x.quantity_received||0)+'</td><td><button onclick="saveDraftLine('+x.id+')">Save line</button> <button class="secondary-button" onclick="removeDraftLine('+x.id+')">Remove</button></td>';table.appendChild(tr)}box.appendChild(table)}catch(e){showNotice('Could not load draft: '+e.message)}}
-async function pushDraftToLightspeed(){if(!currentDraft)return;const o=currentDraft.order;if(!confirm('Push supplier order #'+o.id+' for '+o.supplier_name+' to Lightspeed now? This creates a real Lightspeed purchase order and marks linked Special Order lines ORDERED.'))return;try{const d=await getJson(api+'/supplier-orders/'+o.id+'/push-lightspeed',{method:'POST'});showNotice('Supplier order #'+o.id+' pushed to Lightspeed. Consignment '+(d.lightspeed?.id||d.order?.lightspeed_consignment_id||'created')+'.');currentDraft=null;document.getElementById('draftOrderMeta').innerHTML='';document.getElementById('draftOrderLines').innerHTML='';await Promise.all([loadDraftOrders(),loadOrdering()])}catch(e){showNotice('Lightspeed push failed: '+e.message)}}
-document.getElementById('accessKey').value=accessKey();setAuth(false);if(accessKey())saveKey();
+async function saveKey(){
+  const v=document.getElementById('accessKey').value.trim();if(!v)return;
+  sessionStorage.setItem('hcSpecialOrdersKey',v);
+  try{await getJson(api+'/auth-check');setAuth(true);await refreshEverything()}
+  catch(e){sessionStorage.removeItem('hcSpecialOrdersKey');showNotice(e.message)}
+}
+
+async function refreshEverything(){
+  try{
+    showNotice('Refreshing Lightspeed suppliers, purchase orders, fulfillment demand, and Special Orders…');
+    await loadSuppliers();
+    await Promise.all([loadOrdering(),loadLightspeedContext()]);
+    showNotice('Ordering data refreshed.');
+  }catch(e){showNotice('Refresh failed: '+e.message)}
+}
+
+async function loadSuppliers(){
+  suppliers=await getJson(api+'/suppliers');
+  const s=document.getElementById('supplierFilter'),cur=s.value;
+  s.innerHTML='<option value="">All suppliers</option>'+suppliers.map(x=>'<option value="'+x.id+'">'+esc(x.name)+'</option>').join('');
+  if(cur&&suppliers.some(x=>String(x.id)===String(cur)))s.value=cur;
+}
+
+function fillCategoryFilter(){
+  const s=document.getElementById('categoryFilter'),cur=s.value;
+  const cats=[...new Set(workRows.map(r=>r.product_category||r.category_name).filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b)));
+  s.innerHTML='<option value="">All categories</option>'+cats.map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join('');
+  if(cur&&cats.includes(cur))s.value=cur;
+}
+
+async function loadOrdering(){
+  const d=await getJson(api+'/ordering/work-queue?view=general&status=ALL');
+  workRows=d.rows||[];
+  fillCategoryFilter();
+  applyFilters();
+}
+
+function poText(row){
+  const pos=Array.isArray(row.purchase_orders)?row.purchase_orders:[];
+  if(!pos.length)return '<span class="form-note">Not on current PO</span>';
+  return pos.map(x=>'<b>'+esc(x.purchase_order_number||x.purchase_order_id)+'</b> · '+esc(x.status||'')).join('<br>');
+}
+
+function supplierOptions(row){
+  return '<option value="">Unassigned</option>'+suppliers.map(s=>'<option value="'+s.id+'" '+(String(s.id)===String(row.preferred_supplier_id||'')?'selected':'')+'>'+esc(s.name)+'</option>').join('');
+}
+
+async function setPreferredSupplier(id,supplierId){
+  try{
+    await getJson(api+'/items/'+id+'/routing',{
+      method:'PATCH',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({preferred_supplier_id:supplierId||null,changed_by:'ordering-web'})
+    });
+    recommendations.delete(Number(id));
+    showNotice('Preferred supplier updated.');
+    await loadOrdering();
+  }catch(e){showNotice('Could not update supplier: '+e.message)}
+}
+
+async function recommendSupplier(rowId,productId){
+  if(!productId)return showNotice('This line is not linked to a Lightspeed/local product yet, so a supplier recommendation is not available.');
+  try{
+    const rows=await getJson(api+'/products/'+productId+'/recommended-suppliers');
+    recommendations.set(Number(rowId),rows.slice(0,3));
+    applyFilters();
+  }catch(e){showNotice('Could not load recommendations: '+e.message)}
+}
+
+async function useRecommendation(rowId,supplierId){
+  await setPreferredSupplier(rowId,supplierId);
+}
+
+function recommendationHtml(row){
+  const recs=recommendations.get(Number(row.id));
+  if(!recs){
+    return row.product_id
+      ? '<button class="secondary-button" onclick="recommendSupplier('+row.id+','+row.product_id+')">Suggest</button>'
+      : '<span class="form-note">No matched product</span>';
+  }
+  if(!recs.length)return '<span class="form-note">No recommendation yet</span>';
+  return recs.map((r,i)=>
+    '<div style="margin-bottom:4px">'+
+      (i===0?'★ ':'')+'<b>'+esc(r.name)+'</b>'+
+      ' <button class="secondary-button" onclick="useRecommendation('+row.id+','+r.id+')">Use</button>'+
+      '<div class="form-note">'+esc(r.recommendation_reason||'')+'</div>'+
+    '</div>'
+  ).join('');
+}
+
+async function updateLineStatus(id,status){
+  try{
+    await getJson(api+'/items/'+id+'/status',{
+      method:'PATCH',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({status,changed_by:'ordering-web'})
+    });
+    showNotice('Line updated to '+status+'.');
+    await loadOrdering();
+  }catch(e){showNotice('Status update failed: '+e.message)}
+}
+
+function toggleNotes(id,checked){
+  const box=document.getElementById('notes-box-'+id);
+  if(box)box.style.display=checked?'block':'none';
+}
+async function saveNotes(id){
+  const input=document.getElementById('notes-'+id);
+  try{
+    await getJson(api+'/items/'+id+'/notes',{
+      method:'PATCH',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({notes:input.value})
+    });
+    const row=workRows.find(x=>Number(x.id)===Number(id));if(row)row.notes=input.value;
+    showNotice('Line notes saved.');
+  }catch(e){showNotice('Could not save notes: '+e.message)}
+}
+
+function filteredRows(){
+  const supplier=document.getElementById('supplierFilter').value;
+  const category=document.getElementById('categoryFilter').value;
+  const status=document.getElementById('statusFilter').value;
+  const sort=document.getElementById('sortMode').value;
+  let rows=workRows.filter(r=>
+    (!supplier||String(r.preferred_supplier_id||'')===String(supplier))&&
+    (!category||String(r.product_category||r.category_name||'')===String(category))&&
+    (status==='ALL'||String(r.status)===status)
+  );
+  const cmp={
+    supplier:(a,b)=>String(a.preferred_supplier_name||'ZZZ').localeCompare(String(b.preferred_supplier_name||'ZZZ')),
+    category:(a,b)=>String(a.product_category||a.category_name||'ZZZ').localeCompare(String(b.product_category||b.category_name||'ZZZ')),
+    status:(a,b)=>String(a.status).localeCompare(String(b.status)),
+    customer:(a,b)=>String(a.customer_name||'').localeCompare(String(b.customer_name||'')),
+    oldest:(a,b)=>new Date(a.created_at)-new Date(b.created_at)
+  }[sort];
+  return rows.sort(cmp);
+}
+
+function applyFilters(){
+  const rows=filteredRows(),box=document.getElementById('orderingRows');
+  box.replaceChildren();
+  document.getElementById('orderingSummary').textContent=
+    rows.length+' of '+workRows.length+' Special Order line(s) shown · '+
+    rows.filter(x=>x.on_current_purchase_order).length+' currently found on a Lightspeed PO.';
+  if(!rows.length){box.innerHTML='<p class="form-note">No lines match these filters.</p>';return}
+
+  const table=document.createElement('table');
+  table.innerHTML='<tr><th>Customer</th><th>Item</th><th>Qty</th><th>Supplier</th><th>Recommendation</th><th>Category</th><th>Current Lightspeed PO</th><th>Status</th><th>Notes</th></tr>';
+  for(const r of rows){
+    const tr=document.createElement('tr');
+    tr.innerHTML=
+      '<td>'+esc(r.customer_name||'—')+'</td>'+
+      '<td><b>'+esc(r.requested_name)+'</b><div class="form-note">'+esc([r.requested_sku,r.supplier_sku].filter(Boolean).join(' / ')||'No SKU')+'</div></td>'+
+      '<td>'+Number(r.quantity||0)+'</td>'+
+      '<td><select id="supplier-'+r.id+'">'+supplierOptions(r)+'</select></td>'+
+      '<td id="recommend-'+r.id+'">'+recommendationHtml(r)+'</td>'+
+      '<td>'+esc(r.product_category||r.category_name||'Unassigned')+'</td>'+
+      '<td>'+poText(r)+'</td>'+
+      '<td><select id="status-'+r.id+'">'+
+        ['PREORDER','OOS','READY_TO_ORDER','ORDERED','BACKORDERED','RECEIVED','HELD','CUSTOMER_NOTIFIED','COMPLETED','CANCELLED']
+        .map(s=>'<option value="'+s+'" '+(s===r.status?'selected':'')+'>'+s.replaceAll('_',' ')+'</option>').join('')+
+      '</select></td>'+
+      '<td><label><input id="notes-toggle-'+r.id+'" type="checkbox" '+(r.notes?'checked':'')+'> Notes</label>'+
+        '<div id="notes-box-'+r.id+'" style="display:'+(r.notes?'block':'none')+';margin-top:6px">'+
+          '<textarea id="notes-'+r.id+'" rows="2" style="min-width:220px">'+esc(r.notes||'')+'</textarea><br>'+
+          '<button class="secondary-button" onclick="saveNotes('+r.id+')">Save note</button>'+
+        '</div></td>';
+    tr.querySelector('#supplier-'+r.id).addEventListener('change',e=>setPreferredSupplier(r.id,e.target.value));
+    tr.querySelector('#status-'+r.id).addEventListener('change',e=>updateLineStatus(r.id,e.target.value));
+    tr.querySelector('#notes-toggle-'+r.id).addEventListener('change',e=>toggleNotes(r.id,e.target.checked));
+    table.appendChild(tr);
+  }
+  box.appendChild(table);
+}
+
+function clearFilters(){
+  document.getElementById('supplierFilter').value='';
+  document.getElementById('categoryFilter').value='';
+  document.getElementById('statusFilter').value='ALL';
+  document.getElementById('sortMode').value='oldest';
+  applyFilters();
+}
+
+async function loadLightspeedContext(){
+  try{
+    lsContext=await getJson(api+'/ordering/lightspeed-context');
+    renderLightspeedDemand();
+    renderPurchaseOrders();
+  }catch(e){
+    document.getElementById('lightspeedDemandStatus').textContent='Lightspeed demand unavailable: '+e.message;
+    document.getElementById('lightspeedPoStatus').textContent='Lightspeed purchase orders unavailable: '+e.message;
+  }
+}
+
+function renderLightspeedDemand(){
+  const rows=Array.isArray(lsContext.lightspeed_demand)?lsContext.lightspeed_demand:[];
+  document.getElementById('lightspeedDemandStatus').textContent=
+    rows.length+' product line(s) found across '+Number(lsContext.fulfillment_count||0)+' open fulfillment(s). Review-only until matching is validated.';
+  const box=document.getElementById('lightspeedDemand');box.replaceChildren();
+  if(!rows.length){box.innerHTML='<p class="form-note">No open Lightspeed fulfillment demand was returned.</p>';return}
+  const table=document.createElement('table');
+  table.innerHTML='<tr><th>Customer</th><th>Sale</th><th>Item</th><th>SKU</th><th>Qty</th><th>Current Purchase Order</th></tr>';
+  for(const r of rows){
+    const tr=document.createElement('tr');
+    const po=(r.purchase_orders||[]).length
+      ? r.purchase_orders.map(x=>'<b>'+esc(x.purchase_order_number||x.purchase_order_id)+'</b> · '+esc(x.status||'')).join('<br>')
+      : '<span class="pill">Needs ordering check</span>';
+    tr.innerHTML='<td>'+esc(r.customer_name||'—')+'</td><td>'+esc(r.invoice_number||r.sale_id)+'</td><td>'+esc(r.item_description)+'</td><td>'+esc(r.sku||'—')+'</td><td>'+Number(r.quantity||0)+'</td><td>'+po+'</td>';
+    table.appendChild(tr);
+  }
+  box.appendChild(table);
+}
+
+function renderPurchaseOrders(){
+  const rows=Array.isArray(lsContext.purchase_orders)?lsContext.purchase_orders:[];
+  document.getElementById('lightspeedPoStatus').textContent=rows.length+' current Lightspeed purchase order(s).';
+  const box=document.getElementById('lightspeedPurchaseOrders');box.replaceChildren();
+  if(!rows.length){box.innerHTML='<p class="form-note">No current Lightspeed purchase orders were returned.</p>';return}
+  const table=document.createElement('table');
+  table.innerHTML='<tr><th>PO</th><th>Status</th><th>Supplier</th><th>Lines</th><th>Updated</th></tr>';
+  const supplierByLs=new Map(suppliers.map(s=>[String(s.lightspeed_supplier_id||''),s.name]));
+  for(const po of rows){
+    const supplierId=String(po.supplier_id||po.supplier?.id||'');
+    const ref=po.reference||po.order_number||po.number||po.name||po.id;
+    const tr=document.createElement('tr');
+    tr.innerHTML='<td><b>'+esc(ref)+'</b></td><td>'+esc(po.status||'—')+'</td><td>'+esc(supplierByLs.get(supplierId)||po.supplier?.name||'—')+'</td><td>'+Number((po.line_items||[]).length)+'</td><td>'+esc(po.updated_at?new Date(po.updated_at).toLocaleString():'—')+'</td>';
+    table.appendChild(tr);
+  }
+  box.appendChild(table);
+}
+
+document.getElementById('accessKey').value=accessKey();setAuth(false);
+if(accessKey())saveKey();
