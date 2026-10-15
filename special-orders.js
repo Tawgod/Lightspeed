@@ -2586,6 +2586,61 @@ export function createSpecialOrdersRouter({
   function lsPoReference(po){
     return String(po.reference||po.order_number||po.number||po.name||po.id||'').trim();
   }
+  function lightspeedCustomerId(sale){
+    return String(sale?.customer?.id||sale?.customer_id||sale?.customerId||'').trim();
+  }
+
+  function lightspeedProductId(line){
+    return String(line?.product?.id||line?.product_id||line?.productId||line?.product?.product_id||'').trim();
+  }
+
+  function lightspeedProductImage(product){
+    const direct=product?.image_url||product?.image?.url||product?.primary_image?.url||product?.primary_image_url||null;
+    if(direct)return direct;
+    const images=Array.isArray(product?.images)?product.images:[];
+    return images.find(x=>x?.url)?.url||images.find(x=>x?.src)?.src||null;
+  }
+
+  function lightspeedCustomerSummary(customer){
+    if(!customer)return null;
+    const first=String(customer.first_name||customer.firstname||'').trim();
+    const last=String(customer.last_name||customer.lastname||'').trim();
+    const name=[first,last].filter(Boolean).join(' ')||String(customer.name||customer.display_name||'').trim()||'Lightspeed customer';
+    const email=customer.email||customer.email_address||customer.contact?.email||null;
+    const phone=customer.phone||customer.phone_number||customer.mobile||customer.contact?.phone||null;
+    return {id:customer.id||null,name,email,phone};
+  }
+
+  async function getLightspeedCustomer(customerId,cache){
+    if(!customerId)return null;
+    if(cache.has(customerId))return cache.get(customerId);
+    try{
+      const response=await lightspeedVersionedFetch(lightspeedDomain,lightspeedToken,'/customers/'+encodeURIComponent(customerId));
+      const customer=response?.data||response||null;
+      const summary=lightspeedCustomerSummary(customer);
+      cache.set(customerId,summary);
+      return summary;
+    }catch(error){
+      console.warn('[special-orders] Lightspeed customer read failed',customerId,error.message);
+      cache.set(customerId,null);
+      return null;
+    }
+  }
+
+  async function getLightspeedProduct(productId,cache){
+    if(!productId)return null;
+    if(cache.has(productId))return cache.get(productId);
+    try{
+      const response=await lightspeedVersionedFetch(lightspeedDomain,lightspeedToken,'/products/'+encodeURIComponent(productId));
+      const product=response?.data||response||null;
+      cache.set(productId,product);
+      return product;
+    }catch(error){
+      console.warn('[special-orders] Lightspeed product read failed',productId,error.message);
+      cache.set(productId,null);
+      return null;
+    }
+  }
   router.patch('/items/:id/routing', requireDb, async (req,res)=>{
     const client=await pool.connect();
     try{
@@ -2678,44 +2733,81 @@ export function createSpecialOrdersRouter({
     try{
       const [suppliers,purchaseOrders]=await Promise.all([syncLightspeedSuppliers(),getLightspeedOpenPurchaseOrders()]);
       const poByProduct=new Map();
+      const poProductIds=new Map();
       for(const po of purchaseOrders){
         const ref=lsPoReference(po);
+        const ids=new Set();
         for(const line of po.line_items||[]){
-          const pid=String(line.product_id||line.product?.id||line.product?.product_id||'');
+          const pid=lightspeedProductId(line);
           if(!pid)continue;
+          ids.add(pid);
           if(!poByProduct.has(pid))poByProduct.set(pid,[]);
           poByProduct.get(pid).push({purchase_order_id:po.id,purchase_order_number:ref,status:po.status,supplier_id:po.supplier_id||po.supplier?.id||null});
         }
+        poProductIds.set(String(po.id),ids);
       }
+
+      const localSpecials=await pool.query(
+        "SELECT i.id,i.quantity,p.lightspeed_product_id FROM special_order_items i JOIN products p ON p.id=i.product_id WHERE p.lightspeed_product_id IS NOT NULL AND i.status<>'CANCELLED'"
+      );
+      const enrichedPurchaseOrders=purchaseOrders.map(po=>{
+        const ids=poProductIds.get(String(po.id))||new Set();
+        const matched=localSpecials.rows.filter(x=>ids.has(String(x.lightspeed_product_id)));
+        return {...po,special_order_count:matched.length,special_order_units:matched.reduce((n,x)=>n+Number(x.quantity||0),0)};
+      });
+
       const params=new URLSearchParams({page_size:'100'});
       ['OPEN','STARTED','PICKED','PACKED'].forEach(x=>params.append('fulfillment_state',x));
       let fulfillmentRows=[];
       try{
         const f=await lightspeedVersionedFetch(lightspeedDomain,lightspeedToken,'/fulfillments?'+params.toString());
         fulfillmentRows=Array.isArray(f?.data)?f.data:(Array.isArray(f)?f:[]);
-      }catch(error){
-        console.warn('[special-orders] Lightspeed fulfillment read unavailable:',error.message);
-      }
+      }catch(error){console.warn('[special-orders] Lightspeed fulfillment read unavailable:',error.message)}
+
       const saleIds=[...new Set(fulfillmentRows.map(x=>String(x.sale_id||x.sale?.id||'')).filter(Boolean))];
+      const customerCache=new Map();
+      const productCache=new Map();
       const demand=[];
       for(const saleId of saleIds.slice(0,100)){
         let sale;
-        try{const s=await lightspeedVersionedFetch(lightspeedDomain,lightspeedToken,'/sales/'+encodeURIComponent(saleId));sale=s?.data||s}catch(error){continue}
-        const customerName=[sale?.customer?.first_name,sale?.customer?.last_name].filter(Boolean).join(' ')||sale?.customer?.name||sale?.customer_name||'Lightspeed customer';
+        try{
+          const response=await lightspeedVersionedFetch(lightspeedDomain,lightspeedToken,'/sales/'+encodeURIComponent(saleId));
+          sale=response?.data||response;
+        }catch(error){
+          console.warn('[special-orders] Lightspeed sale read failed',saleId,error.message);
+          continue;
+        }
+        const customerId=lightspeedCustomerId(sale);
+        const customer=await getLightspeedCustomer(customerId,customerCache);
+        const embeddedCustomer=lightspeedCustomerSummary(sale?.customer);
+        const resolvedCustomer=customer||embeddedCustomer||{id:customerId||null,name:String(sale?.customer_name||'').trim()||'Lightspeed customer',email:null,phone:null};
         const lines=Array.isArray(sale?.line_items)?sale.line_items:[];
         for(const line of lines){
-          const productId=String(line.product?.id||line.product_id||line.product?.product_id||'');
+          const productId=lightspeedProductId(line);
           if(!productId)continue;
           const qty=Number(line.quantity||line.count||0);
           if(qty<=0)continue;
+          const product=await getLightspeedProduct(productId,productCache);
+          const embedded=line.product||{};
+          const productName=String(product?.name||embedded?.name||line.name||line.product_name||'').trim()||'Product';
+          const sku=product?.sku||embedded?.sku||line.sku||null;
+          const upc=(Array.isArray(product?.product_codes)?product.product_codes.find(x=>x?.code)?.code:null)||product?.upc||embedded?.upc||line.upc||null;
+          const imageUrl=lightspeedProductImage(product)||lightspeedProductImage(embedded);
+          const localMatch=await pool.query(
+            "SELECT i.id,i.status,i.notes,i.special_order_id,c.name AS customer_name FROM products p JOIN special_order_items i ON i.product_id=p.id JOIN special_orders o ON o.id=i.special_order_id LEFT JOIN customers c ON c.id=o.customer_id WHERE p.lightspeed_product_id=$1 AND i.status<>'CANCELLED' ORDER BY i.created_at",
+            [productId]
+          );
           demand.push({
-            source:'LIGHTSPEED_FULFILLMENT',sale_id:saleId,invoice_number:sale.invoice_number||sale.id,customer_name:customerName,
-            product_id:productId,item_description:line.product?.name||line.name||line.product_name||'Product',sku:line.product?.sku||line.sku||null,
-            quantity:qty,purchase_orders:poByProduct.get(productId)||[],on_current_purchase_order:(poByProduct.get(productId)||[]).length>0
+            source:'LIGHTSPEED_FULFILLMENT',
+            sale_id:saleId,invoice_number:sale.invoice_number||sale.receipt_number||sale.id,
+            customer_id:resolvedCustomer.id,customer_name:resolvedCustomer.name,customer_email:resolvedCustomer.email,customer_phone:resolvedCustomer.phone,
+            product_id:productId,item_description:productName,sku,upc,image_url:imageUrl,quantity:qty,
+            purchase_orders:poByProduct.get(productId)||[],on_current_purchase_order:(poByProduct.get(productId)||[]).length>0,
+            local_special_order_matches:localMatch.rows,local_special_order_match_count:localMatch.rows.length
           });
         }
       }
-      res.json({suppliers,purchase_orders:purchaseOrders,lightspeed_demand:demand,fulfillment_count:fulfillmentRows.length});
+      res.json({suppliers,purchase_orders:enrichedPurchaseOrders,lightspeed_demand:demand,fulfillment_count:fulfillmentRows.length});
     }catch(error){
       console.error('[special-orders] ordering Lightspeed context failed:',error);
       res.status(error.status||502).json({error:error.message});
