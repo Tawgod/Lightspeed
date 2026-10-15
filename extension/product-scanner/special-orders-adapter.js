@@ -35,7 +35,7 @@ export function normalizeMatches(local = [], remote = []) {
       const match = {
         key, lightspeedId: id || null,
         localId: row.local_id || (source === 'railway' ? row.id : null),
-        name: row.name || '', sku: row.sku || '', upc: row.upc || '',
+        name: row.name || '', sku: row.sku || '', supplierSku:row.supplierSku||'', upc: row.upc || '',
         description: row.description || '', brand: row.brand || '',
         weight:row.weight??null,weightKnown:row.weightKnown===true,
         imageUrl:row.imageUrl||'',pictureKnown:row.pictureKnown===true,
