@@ -1,13 +1,14 @@
 name: Scanner review UI regression
 on:
   push:
-    branches: [feature/scanner-fields-create-preview, feature/scanner-review-auto-lookup]
+    branches: [feature/scanner-fields-create-preview, feature/scanner-review-auto-lookup, feature/scanner-sku-role-diagnostics]
     paths:
       - 'extension/**'
       - 'services/scannerSupplierTemplates.js'
       - 'tests/scannerSupplierTemplates.test.js'
       - 'timeclock/scannerLightspeedRoles.js'
       - 'timeclock/server.js'
+      - 'extension/product-scanner/special-orders-adapter.js'
       - 'tests/scannerLightspeedRoles.test.js'
       - 'tests/lightspeedOrderDetection.test.cjs'
       - 'tests/scannerAcdCapture.test.cjs'
@@ -61,6 +62,8 @@ jobs:
           assert.match(html,/id="create-preview"/);
           assert.match(review,/lastMatches.length/);
           assert.match(review,/queueProductLookup/);
+          assert.match(review,/capturedSupplierSku/);
+          assert.match(review,/matchingLightspeedSku/);
           assert.match(review,/lookupSuppliers/);
           assert.doesNotMatch(html,/id="original"|id="existing"/);
           assert.match(html,/class="compact-sign-in"/);
