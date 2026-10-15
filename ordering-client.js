@@ -160,7 +160,7 @@ function applyFilters(){
   if(!rows.length){box.innerHTML='<p class="form-note">No lines match these filters.</p>';return}
 
   const table=document.createElement('table');
-  table.innerHTML='<tr><th>Customer</th><th>Item</th><th>Qty</th><th>Supplier</th><th>Recommendation</th><th>Category</th><th>Current Lightspeed PO</th><th>Status</th><th>Notes</th></tr>';
+  table.innerHTML='<tr><th>Customer</th><th>Item</th><th>Qty</th><th>Supplier</th><th>Recommendation</th><th>Category</th><th>LS PO#</th><th>Status</th><th>Notes</th></tr>';
   for(const r of rows){
     const tr=document.createElement('tr');
     tr.innerHTML=
@@ -207,22 +207,73 @@ async function loadLightspeedContext(){
   }
 }
 
+function toggleLsCustomer(key){
+  const el=document.getElementById('ls-customer-'+key);
+  if(el)el.style.display=el.style.display==='none'?'block':'none';
+}
+
+function customerContactHtml(r,index){
+  const key=String(index);
+  const details=[r.customer_email,r.customer_phone].filter(Boolean).map(esc).join('<br>');
+  return '<button class="secondary-button" onclick="toggleLsCustomer(\''+key+'\')">'+esc(r.customer_name||'Lightspeed customer')+'</button>'+
+    '<div id="ls-customer-'+key+'" style="display:none;margin-top:5px" class="form-note">'+
+      (details||'No email/phone returned by Lightspeed')+
+    '</div>';
+}
+
+function runOrderingCheck(productId,sku){
+  document.getElementById('supplierFilter').value='';
+  document.getElementById('categoryFilter').value='';
+  document.getElementById('statusFilter').value='ALL';
+  document.getElementById('sortMode').value='oldest';
+  applyFilters();
+  const match=workRows.find(r=>
+    String(r.lightspeed_product_id||'')===String(productId||'') ||
+    (sku && String(r.requested_sku||r.supplier_sku||'').toUpperCase()===String(sku).toUpperCase())
+  );
+  document.getElementById('orderingRows').scrollIntoView({behavior:'smooth',block:'start'});
+  if(match){
+    showNotice('Ordering check: found matching Special Order line #'+match.id+' for '+match.requested_name+'.');
+    setTimeout(()=>{
+      const sel=document.getElementById('supplier-'+match.id);
+      const row=sel?.closest('tr');
+      if(row){row.style.outline='3px solid #f59e0b';setTimeout(()=>row.style.outline='',4000)}
+    },250);
+  }else{
+    showNotice('Ordering check: no matching local Special Order line was found. Review the Lightspeed demand and current PO status before ordering.');
+  }
+}
+
 function renderLightspeedDemand(){
   const rows=Array.isArray(lsContext.lightspeed_demand)?lsContext.lightspeed_demand:[];
   document.getElementById('lightspeedDemandStatus').textContent=
-    rows.length+' product line(s) found across '+Number(lsContext.fulfillment_count||0)+' open fulfillment(s). Review-only until matching is validated.';
+    rows.length+' product line(s) found across '+Number(lsContext.fulfillment_count||0)+' open fulfillment(s).';
   const box=document.getElementById('lightspeedDemand');box.replaceChildren();
   if(!rows.length){box.innerHTML='<p class="form-note">No open Lightspeed fulfillment demand was returned.</p>';return}
   const table=document.createElement('table');
-  table.innerHTML='<tr><th>Customer</th><th>Sale</th><th>Item</th><th>SKU</th><th>Qty</th><th>Current Purchase Order</th></tr>';
-  for(const r of rows){
+  table.innerHTML='<tr><th></th><th>Customer</th><th>Sale</th><th>Item</th><th>SKU / UPC</th><th>Qty</th><th>LS PO#</th><th>Ordering Check</th></tr>';
+  rows.forEach((r,index)=>{
     const tr=document.createElement('tr');
     const po=(r.purchase_orders||[]).length
       ? r.purchase_orders.map(x=>'<b>'+esc(x.purchase_order_number||x.purchase_order_id)+'</b> · '+esc(x.status||'')).join('<br>')
-      : '<span class="pill">Needs ordering check</span>';
-    tr.innerHTML='<td>'+esc(r.customer_name||'—')+'</td><td>'+esc(r.invoice_number||r.sale_id)+'</td><td>'+esc(r.item_description)+'</td><td>'+esc(r.sku||'—')+'</td><td>'+Number(r.quantity||0)+'</td><td>'+po+'</td>';
+      : '<span class="pill">Not on current PO</span>';
+    const image=r.image_url
+      ? '<img src="'+esc(r.image_url)+'" alt="" style="width:48px;height:48px;object-fit:contain;border-radius:6px">'
+      : '<span class="form-note">No image</span>';
+    const local=r.local_special_order_match_count
+      ? '<div class="form-note">'+r.local_special_order_match_count+' local Special Order match'+(r.local_special_order_match_count===1?'':'es')+'</div>'
+      : '<div class="form-note">No local Special Order match</div>';
+    tr.innerHTML=
+      '<td>'+image+'</td>'+
+      '<td>'+customerContactHtml(r,index)+'</td>'+
+      '<td>'+esc(r.invoice_number||r.sale_id)+'</td>'+
+      '<td><b>'+esc(r.item_description)+'</b>'+local+'</td>'+
+      '<td>'+esc([r.sku,r.upc].filter(Boolean).join(' / ')||'—')+'</td>'+
+      '<td>'+Number(r.quantity||0)+'</td>'+
+      '<td>'+po+'</td>'+
+      '<td><button onclick="runOrderingCheck(\''+esc(String(r.product_id||''))+'\',\''+esc(String(r.sku||''))+'\')">Ordering Check</button></td>';
     table.appendChild(tr);
-  }
+  });
   box.appendChild(table);
 }
 
@@ -232,17 +283,22 @@ function renderPurchaseOrders(){
   const box=document.getElementById('lightspeedPurchaseOrders');box.replaceChildren();
   if(!rows.length){box.innerHTML='<p class="form-note">No current Lightspeed purchase orders were returned.</p>';return}
   const table=document.createElement('table');
-  table.innerHTML='<tr><th>PO</th><th>Status</th><th>Supplier</th><th>Lines</th><th>Updated</th></tr>';
+  table.innerHTML='<tr><th>PO</th><th>Status</th><th>Supplier</th><th>Lines</th><th>Special Orders</th><th>Updated</th></tr>';
   const supplierByLs=new Map(suppliers.map(s=>[String(s.lightspeed_supplier_id||''),s.name]));
   for(const po of rows){
     const supplierId=String(po.supplier_id||po.supplier?.id||'');
     const ref=po.reference||po.order_number||po.number||po.name||po.id;
     const tr=document.createElement('tr');
-    tr.innerHTML='<td><b>'+esc(ref)+'</b></td><td>'+esc(po.status||'—')+'</td><td>'+esc(supplierByLs.get(supplierId)||po.supplier?.name||'—')+'</td><td>'+Number((po.line_items||[]).length)+'</td><td>'+esc(po.updated_at?new Date(po.updated_at).toLocaleString():'—')+'</td>';
+    tr.innerHTML=
+      '<td><b>'+esc(ref)+'</b></td>'+
+      '<td>'+esc(po.status||'—')+'</td>'+
+      '<td>'+esc(supplierByLs.get(supplierId)||po.supplier?.name||'—')+'</td>'+
+      '<td>'+Number((po.line_items||[]).length)+'</td>'+
+      '<td><b>'+Number(po.special_order_count||0)+'</b><div class="form-note">'+Number(po.special_order_units||0)+' customer unit(s)</div></td>'+
+      '<td>'+esc(po.updated_at?new Date(po.updated_at).toLocaleString():'—')+'</td>';
     table.appendChild(tr);
   }
   box.appendChild(table);
 }
-
 document.getElementById('accessKey').value=accessKey();setAuth(false);
 if(accessKey())saveKey();
