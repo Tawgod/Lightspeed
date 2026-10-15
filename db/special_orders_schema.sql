@@ -531,3 +531,18 @@ WHERE preorder_campaign_id IS NOT NULL
   AND customer_id IS NOT NULL
   AND channel='DISCORD_GW_ORDER_UPDATE'
   AND status IN ('PENDING','QUEUED');
+
+
+CREATE TABLE IF NOT EXISTS supplier_routing_history (
+  id BIGSERIAL PRIMARY KEY,
+  special_order_item_id BIGINT REFERENCES special_order_items(id) ON DELETE SET NULL,
+  product_id BIGINT REFERENCES products(id) ON DELETE SET NULL,
+  product_category TEXT,
+  supplier_id BIGINT NOT NULL REFERENCES suppliers(id) ON DELETE CASCADE,
+  selected_by TEXT,
+  selected_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_supplier_routing_history_product
+ON supplier_routing_history (product_id, supplier_id, selected_at DESC);
+CREATE INDEX IF NOT EXISTS idx_supplier_routing_history_category
+ON supplier_routing_history (lower(product_category), supplier_id, selected_at DESC);

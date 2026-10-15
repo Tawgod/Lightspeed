@@ -2487,6 +2487,12 @@ export function createSpecialOrdersRouter({
     }
   });
 
+  router.patch('/items/:id/notes', requireDb, async (req,res)=>{
+    const notes=req.body?.notes==null?null:String(req.body.notes).trim()||null;
+    const {rows}=await pool.query('UPDATE special_order_items SET notes=$1,updated_at=now() WHERE id=$2 RETURNING *',[notes,req.params.id]);
+    if(!rows[0])return res.status(404).json({error:'Special Order line not found.'});
+    res.json(rows[0]);
+  });
   router.patch('/items/:id/status', requireDb, async (req, res) => {
     const newStatus = String(req.body?.status || '').toUpperCase();
     if (!VALID_STATUSES.has(newStatus)) return res.status(400).json({ error: 'Invalid status.' });
@@ -2540,6 +2546,46 @@ export function createSpecialOrdersRouter({
     }
   });
 
+  async function syncLightspeedSuppliers(){
+    const listed=await lightspeedVersionedFetch(lightspeedDomain,lightspeedToken,'/suppliers?page_size=1000');
+    const source=Array.isArray(listed?.data)?listed.data:(Array.isArray(listed)?listed:[]);
+    const rows=[];
+    for(const s of source){
+      if(!s?.id||!String(s.name||'').trim())continue;
+      const result=await pool.query(
+        `INSERT INTO suppliers (name,lightspeed_supplier_id,is_active,updated_at)
+         VALUES ($1,$2,true,now())
+         ON CONFLICT (name) DO UPDATE SET
+           lightspeed_supplier_id=EXCLUDED.lightspeed_supplier_id,is_active=true,updated_at=now()
+         RETURNING *`,
+        [String(s.name).trim(),String(s.id)]
+      );
+      rows.push({...result.rows[0],lightspeed:s});
+    }
+    return rows.sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+  }
+
+  async function getLightspeedOpenPurchaseOrders(){
+    const listed=await lightspeedVersionedFetch(lightspeedDomain,lightspeedToken,'/purchase_orders?page_size=1000');
+    const all=Array.isArray(listed?.data)?listed.data:(Array.isArray(listed)?listed:[]);
+    const current=all.filter(po=>!['RECEIVED','CANCELLED','CLOSED'].includes(String(po.status||'').toUpperCase()));
+    const orders=[];
+    for(const po of current){
+      let items=[];
+      try{
+        const lineResponse=await lightspeedVersionedFetch(lightspeedDomain,lightspeedToken,'/purchase_orders/'+encodeURIComponent(po.id)+'/line_items?page_size=1000');
+        items=Array.isArray(lineResponse?.data)?lineResponse.data:(Array.isArray(lineResponse)?lineResponse:[]);
+      }catch(error){
+        console.warn('[special-orders] Lightspeed PO line read failed',po.id,error.message);
+      }
+      orders.push({...po,line_items:items});
+    }
+    return orders;
+  }
+
+  function lsPoReference(po){
+    return String(po.reference||po.order_number||po.number||po.name||po.id||'').trim();
+  }
   router.patch('/items/:id/routing', requireDb, async (req,res)=>{
     const client=await pool.connect();
     try{
@@ -2563,6 +2609,15 @@ export function createSpecialOrdersRouter({
         'UPDATE special_order_items SET preferred_supplier_id=$1,sourcing_department_id=$2,updated_at=now() WHERE id=$3 RETURNING *',
         [supplierId,departmentId,req.params.id]
       );
+      if(supplierId && String(item.preferred_supplier_id||'')!==String(supplierId)){
+        const productInfo=item.product_id
+          ? await client.query('SELECT product_category FROM products WHERE id=$1',[item.product_id])
+          : {rows:[]};
+        await client.query(
+          'INSERT INTO supplier_routing_history (special_order_item_id,product_id,product_category,supplier_id,selected_by) VALUES ($1,$2,$3,$4,$5)',
+          [item.id,item.product_id||null,productInfo.rows[0]?.product_category||null,supplierId,req.body?.changed_by||'ordering-web']
+        );
+      }
       if(supplierId){
         await client.query(
           'INSERT INTO special_order_item_suppliers (special_order_item_id,supplier_id,priority) VALUES ($1,$2,1) ON CONFLICT (special_order_item_id,supplier_id) DO UPDATE SET priority=LEAST(special_order_item_suppliers.priority,1)',
@@ -2576,21 +2631,18 @@ export function createSpecialOrdersRouter({
   });
   router.get('/ordering/work-queue', requireDb, async (req,res)=>{
     const view=String(req.query.view||'general').toLowerCase();
-    const statuses=String(req.query.status||'OOS,READY_TO_ORDER,ORDERED,BACKORDERED').split(',').map(x=>x.trim().toUpperCase()).filter(Boolean);
-    const {rows}=await pool.query(
+    const rawStatus=String(req.query.status||'ALL').trim().toUpperCase();
+    const statuses=rawStatus==='ALL'?null:rawStatus.split(',').map(x=>x.trim()).filter(Boolean);
+    const params=[view];
+    const statusSql=statuses?.length?'WHERE i.status = ANY($2::text[])':'';
+    if(statuses?.length)params.push(statuses);
+    const result=await pool.query(
       `SELECT i.id,i.special_order_id,i.product_id,i.requested_name,i.requested_sku,i.requested_upc,i.quantity,i.status,
               i.notes,i.created_at,i.updated_at,i.ordered_at,i.preferred_supplier_id,i.sourcing_department_id,
-              o.customer_id,c.name AS customer_name,
-              ps.name AS preferred_supplier_name,
-              p.product_category,
-              d.name AS category_name,
-              COALESCE(sp.supplier_sku,i.requested_sku) AS supplier_sku,
-              sp.id AS supplier_product_id,
-              sp.supply_price AS supplier_cost,
-              sp.order_url AS supplier_order_url,
-              CASE WHEN so_line.id IS NULL THEN false ELSE true END AS on_supplier_order,
-              so.status AS supplier_order_status,
-              so.id AS supplier_order_id
+              o.customer_id,c.name AS customer_name,p.lightspeed_product_id,p.product_category,
+              ps.name AS preferred_supplier_name,ps.lightspeed_supplier_id AS preferred_lightspeed_supplier_id,
+              d.name AS category_name,COALESCE(sp.supplier_sku,i.requested_sku) AS supplier_sku,
+              sp.supply_price AS supplier_cost
        FROM special_order_items i
        JOIN special_orders o ON o.id=i.special_order_id
        LEFT JOIN customers c ON c.id=o.customer_id
@@ -2598,19 +2650,76 @@ export function createSpecialOrdersRouter({
        LEFT JOIN products p ON p.id=i.product_id
        LEFT JOIN sourcing_departments d ON d.id=i.sourcing_department_id
        LEFT JOIN supplier_products sp ON sp.product_id=i.product_id AND sp.supplier_id=i.preferred_supplier_id
-       LEFT JOIN LATERAL (
-         SELECT soi.id,soi.supplier_order_id FROM supplier_order_items soi
-         WHERE soi.special_order_item_id=i.id ORDER BY soi.id DESC LIMIT 1
-       ) so_line ON true
-       LEFT JOIN supplier_orders so ON so.id=so_line.supplier_order_id
-       WHERE i.status = ANY($1::text[])
-       ORDER BY
-         CASE WHEN $2='supplier' THEN COALESCE(ps.name,'ZZZ Unassigned') ELSE '' END,
-         CASE WHEN $2='category' THEN COALESCE(p.product_category,d.name,'ZZZ Unassigned') ELSE '' END,
-         i.created_at,i.id`,
-      [statuses,view]
+       ${statusSql}
+       ORDER BY CASE WHEN $1='supplier' THEN COALESCE(ps.name,'ZZZ Unassigned') ELSE '' END,
+                CASE WHEN $1='category' THEN COALESCE(p.product_category,d.name,'ZZZ Unassigned') ELSE '' END,
+                i.created_at,i.id`,
+      params
     );
-    res.json({view,rows});
+    let purchaseOrders=[];
+    try{purchaseOrders=await getLightspeedOpenPurchaseOrders()}catch(error){console.warn('[special-orders] PO annotation unavailable:',error.message)}
+    const productPo=new Map();
+    for(const po of purchaseOrders){
+      const ref=lsPoReference(po);
+      for(const line of po.line_items||[]){
+        const pid=String(line.product_id||line.product?.id||line.product?.product_id||'');
+        if(!pid)continue;
+        if(!productPo.has(pid))productPo.set(pid,[]);
+        productPo.get(pid).push({purchase_order_id:po.id,purchase_order_number:ref,status:po.status,supplier_id:po.supplier_id||po.supplier?.id||null});
+      }
+    }
+    const rows=result.rows.map(row=>{
+      const matches=row.lightspeed_product_id?productPo.get(String(row.lightspeed_product_id))||[]:[];
+      return {...row,on_current_purchase_order:matches.length>0,purchase_orders:matches};
+    });
+    res.json({view,status:rawStatus,rows,purchase_order_count:purchaseOrders.length});
+  });
+  router.get('/ordering/lightspeed-context', requireDb, async (req,res)=>{
+    try{
+      const [suppliers,purchaseOrders]=await Promise.all([syncLightspeedSuppliers(),getLightspeedOpenPurchaseOrders()]);
+      const poByProduct=new Map();
+      for(const po of purchaseOrders){
+        const ref=lsPoReference(po);
+        for(const line of po.line_items||[]){
+          const pid=String(line.product_id||line.product?.id||line.product?.product_id||'');
+          if(!pid)continue;
+          if(!poByProduct.has(pid))poByProduct.set(pid,[]);
+          poByProduct.get(pid).push({purchase_order_id:po.id,purchase_order_number:ref,status:po.status,supplier_id:po.supplier_id||po.supplier?.id||null});
+        }
+      }
+      const params=new URLSearchParams({page_size:'100'});
+      ['OPEN','STARTED','PICKED','PACKED'].forEach(x=>params.append('fulfillment_state',x));
+      let fulfillmentRows=[];
+      try{
+        const f=await lightspeedVersionedFetch(lightspeedDomain,lightspeedToken,'/fulfillments?'+params.toString());
+        fulfillmentRows=Array.isArray(f?.data)?f.data:(Array.isArray(f)?f:[]);
+      }catch(error){
+        console.warn('[special-orders] Lightspeed fulfillment read unavailable:',error.message);
+      }
+      const saleIds=[...new Set(fulfillmentRows.map(x=>String(x.sale_id||x.sale?.id||'')).filter(Boolean))];
+      const demand=[];
+      for(const saleId of saleIds.slice(0,100)){
+        let sale;
+        try{const s=await lightspeedVersionedFetch(lightspeedDomain,lightspeedToken,'/sales/'+encodeURIComponent(saleId));sale=s?.data||s}catch(error){continue}
+        const customerName=[sale?.customer?.first_name,sale?.customer?.last_name].filter(Boolean).join(' ')||sale?.customer?.name||sale?.customer_name||'Lightspeed customer';
+        const lines=Array.isArray(sale?.line_items)?sale.line_items:[];
+        for(const line of lines){
+          const productId=String(line.product?.id||line.product_id||line.product?.product_id||'');
+          if(!productId)continue;
+          const qty=Number(line.quantity||line.count||0);
+          if(qty<=0)continue;
+          demand.push({
+            source:'LIGHTSPEED_FULFILLMENT',sale_id:saleId,invoice_number:sale.invoice_number||sale.id,customer_name:customerName,
+            product_id:productId,item_description:line.product?.name||line.name||line.product_name||'Product',sku:line.product?.sku||line.sku||null,
+            quantity:qty,purchase_orders:poByProduct.get(productId)||[],on_current_purchase_order:(poByProduct.get(productId)||[]).length>0
+          });
+        }
+      }
+      res.json({suppliers,purchase_orders:purchaseOrders,lightspeed_demand:demand,fulfillment_count:fulfillmentRows.length});
+    }catch(error){
+      console.error('[special-orders] ordering Lightspeed context failed:',error);
+      res.status(error.status||502).json({error:error.message});
+    }
   });
   router.get('/departments', requireDb, async (req, res) => {
     const { rows } = await pool.query(`
@@ -2671,78 +2780,50 @@ export function createSpecialOrdersRouter({
   });
 
   router.get('/suppliers', requireDb, async (req, res) => {
-    const { rows } = await pool.query('SELECT * FROM suppliers WHERE is_active=true ORDER BY name');
-    res.json(rows);
+    try{
+      const rows=await syncLightspeedSuppliers();
+      res.json(rows);
+    }catch(error){
+      console.error('[special-orders] Lightspeed supplier sync failed:',error);
+      res.status(error.status||502).json({error:'Could not load the current Lightspeed supplier list: '+error.message});
+    }
   });
 
-  router.get('/products/:id/recommended-suppliers', requireDb, async (req, res) => {
-    const productId = Number(req.params.id);
-    if (!Number.isFinite(productId)) return res.status(400).json({ error:'Local product id is required.' });
-
-    const product = await pool.query('SELECT id,product_category FROM products WHERE id=$1', [productId]);
-    if (!product.rows[0]) return res.status(404).json({ error:'Product not found.' });
-    const categoryText = String(product.rows[0].product_category || '').toLowerCase();
-
-    const { rows } = await pool.query(`
-      WITH direct AS (
-        SELECT supplier_id, min(priority)::int AS priority
-        FROM supplier_products
-        WHERE product_id=$1 AND is_orderable=true
-        GROUP BY supplier_id
-      ),
-      product_depts AS (
-        SELECT sourcing_department_id
-        FROM product_sourcing_departments
-        WHERE product_id=$1
-      ),
-      dept_match AS (
-        SELECT ssd.supplier_id, min(ssd.priority)::int AS priority
-        FROM supplier_sourcing_departments ssd
-        JOIN product_depts pd ON pd.sourcing_department_id=ssd.sourcing_department_id
-        GROUP BY ssd.supplier_id
-      ),
-      category_depts AS (
-        SELECT id
-        FROM sourcing_departments
-        WHERE is_active=true
-          AND (
-            $2 <> '' AND (
-              lower($2) LIKE '%' || lower(name) || '%'
-              OR lower(name) LIKE '%' || lower($2) || '%'
-            )
-          )
-      ),
-      category_match AS (
-        SELECT ssd.supplier_id, min(ssd.priority)::int AS priority
-        FROM supplier_sourcing_departments ssd
-        JOIN category_depts cd ON cd.id=ssd.sourcing_department_id
-        GROUP BY ssd.supplier_id
-      )
-      SELECT s.*,
-             CASE
-               WHEN d.supplier_id IS NOT NULL THEN 0
-               WHEN dm.supplier_id IS NOT NULL THEN 1
-               WHEN cm.supplier_id IS NOT NULL THEN 2
-               ELSE 3
-             END AS recommendation_rank,
-             COALESCE(d.priority,dm.priority,cm.priority,9999) AS recommendation_priority,
-             CASE
-               WHEN d.supplier_id IS NOT NULL THEN 'Exact product supplier'
-               WHEN dm.supplier_id IS NOT NULL THEN 'Product department supplier'
-               WHEN cm.supplier_id IS NOT NULL THEN 'Category supplier'
-               ELSE NULL
-             END AS recommendation_reason
-      FROM suppliers s
-      LEFT JOIN direct d ON d.supplier_id=s.id
-      LEFT JOIN dept_match dm ON dm.supplier_id=s.id
-      LEFT JOIN category_match cm ON cm.supplier_id=s.id
-      WHERE s.is_active=true
-      ORDER BY recommendation_rank,recommendation_priority,s.name
-    `, [productId, categoryText]);
-
-    res.json(rows);
+  router.get('/products/:id/recommended-suppliers', requireDb, async (req,res)=>{
+    const productId=Number(req.params.id);
+    if(!Number.isFinite(productId))return res.status(400).json({error:'Local product id is required.'});
+    let suppliers;
+    try{suppliers=await syncLightspeedSuppliers()}catch(error){return res.status(error.status||502).json({error:error.message})}
+    const productResult=await pool.query('SELECT id,product_category FROM products WHERE id=$1',[productId]);
+    const product=productResult.rows[0];
+    if(!product)return res.status(404).json({error:'Product not found.'});
+    const history=await pool.query(
+      `SELECT supplier_id,
+              count(*) FILTER (WHERE product_id=$1)::int AS exact_count,
+              count(*) FILTER (WHERE lower(COALESCE(product_category,''))=lower(COALESCE($2,'')))::int AS category_count,
+              count(*)::int AS total_count,
+              max(selected_at) AS last_selected_at
+       FROM supplier_routing_history
+       WHERE product_id=$1 OR (COALESCE($2,'')<>'' AND lower(COALESCE(product_category,''))=lower($2))
+       GROUP BY supplier_id`,
+      [productId,product.product_category||'']
+    );
+    const hist=new Map(history.rows.map(x=>[Number(x.supplier_id),x]));
+    const direct=await pool.query('SELECT supplier_id,priority FROM supplier_products WHERE product_id=$1 AND is_orderable=true',[productId]);
+    const directMap=new Map(direct.rows.map(x=>[Number(x.supplier_id),Number(x.priority||1)]));
+    const ranked=suppliers.map(s=>{
+      const h=hist.get(Number(s.id))||{};
+      const exact=Number(h.exact_count||0),category=Number(h.category_count||0),total=Number(h.total_count||0);
+      const directPriority=directMap.get(Number(s.id));
+      const score=(directPriority?100-Math.min(40,directPriority*5):0)+(exact*30)+(category*8)+(total*2);
+      const reasons=[];
+      if(directPriority)reasons.push('Known supplier for this product');
+      if(exact)reasons.push('Chosen '+exact+' time'+(exact===1?'':'s')+' for this product');
+      if(category)reasons.push('Chosen '+category+' time'+(category===1?'':'s')+' for '+(product.product_category||'this category'));
+      return {...s,recommendation_score:score,recommendation_reason:reasons.join(' · ')||'No selection history yet',exact_history_count:exact,category_history_count:category,last_selected_at:h.last_selected_at||null};
+    }).sort((a,b)=>Number(b.recommendation_score)-Number(a.recommendation_score)||String(a.name).localeCompare(String(b.name)));
+    res.json(ranked);
   });
-
   router.post('/suppliers', requireDb, async (req, res) => {
     const { name, supplier_type, order_frequency, lightspeed_supplier_id, notes } = req.body || {};
     if (!name) return res.status(400).json({ error: 'name is required.' });
