@@ -4,9 +4,12 @@ export function scannerRoleFromLightspeedUser(user){
   if(!user || typeof user!=='object' || Array.isArray(user)) return {role:null,canApprove:false,verified:false};
   // Accept only explicit role names. Numeric IDs and custom role names require a
   // separately verified roles/permission mapping; never infer from an ID.
+  const roleObject=user.role && typeof user.role==='object'?user.role:null;
+  const userRoleObject=user.user_role && typeof user.user_role==='object'?user.user_role:null;
   const candidate=user.role_name ?? user.roleName ??
-    (typeof user.role==='string'?user.role:user.role?.name) ??
-    (typeof user.user_role==='string'?user.user_role:user.user_role?.name);
+    (typeof user.role==='string'?user.role:roleObject?.name??roleObject?.role_name??roleObject?.title) ??
+    (typeof user.user_role==='string'?user.user_role:userRoleObject?.name??userRoleObject?.role_name??userRoleObject?.title) ??
+    user.user_group?.name ?? user.group?.name;
   const role=typeof candidate==='string'?candidate.trim().toLowerCase():null;
   const normalized=role?.replace(/[\s_-]+/g,' ')||null;
   const named=normalized==='admin' || normalized==='administrator' || normalized==='manager' ||
@@ -25,10 +28,10 @@ export function linkedScannerApproval({lightspeedUserId,users,roles=[]}={}){
   const selected=matches[0];
   const named=scannerRoleFromLightspeedUser(selected);
   if(named.verified||!Array.isArray(roles))return {...named,reason:'matched_id'};
-  const roleId=String(selected.role_id??selected.roleId??selected.user_role_id??selected.role?.id??'').trim();
+  const roleId=String(selected.role_id??selected.roleId??selected.user_role_id??selected.role?.id??selected.user_group_id??selected.group_id??'').trim();
   if(!roleId)return {...named,reason:'matched_id'};
   const matchingRoles=roles.filter(r=>String(r?.id??r?.role_id??'').trim()===roleId);
   if(matchingRoles.length!==1)return {...named,reason:'unresolved_role_id'};
-  const resolved=scannerRoleFromLightspeedUser({...selected,role_name:matchingRoles[0].name||matchingRoles[0].role_name});
+  const resolved=scannerRoleFromLightspeedUser({...selected,role_name:matchingRoles[0].name||matchingRoles[0].role_name||matchingRoles[0].title});
   return {...resolved,reason:'matched_role_id'};
 }
