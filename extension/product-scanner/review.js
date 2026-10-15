@@ -278,7 +278,9 @@ function matchingLightspeedSku(matches,product){
   // supplier reorder number, and a single unambiguous linked product.
   const exact=matches.filter(m=>{
     const code=String(m.upc||'').replace(/\D/g,'');
-    return (upc&&code&&upc===code) || (product.sku&&normalized(m.sku)===normalized(product.sku));
+    return (upc&&code&&upc===code) ||
+      (product.supplierSku&&m.supplierSku&&normalized(m.supplierSku)===normalized(product.supplierSku)) ||
+      (product.sku&&normalized(m.sku)===normalized(product.sku));
   });
   const distinct=new Map(exact.filter(m=>m.lightspeedId && m.sku).map(m=>[String(m.lightspeedId),m]));
   return distinct.size===1?[...distinct.values()][0].sku:null;
