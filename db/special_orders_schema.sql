@@ -546,3 +546,17 @@ CREATE INDEX IF NOT EXISTS idx_supplier_routing_history_product
 ON supplier_routing_history (product_id, supplier_id, selected_at DESC);
 CREATE INDEX IF NOT EXISTS idx_supplier_routing_history_category
 ON supplier_routing_history (lower(product_category), supplier_id, selected_at DESC);
+
+
+CREATE TABLE IF NOT EXISTS special_order_item_activity (
+  id BIGSERIAL PRIMARY KEY,
+  special_order_item_id BIGINT NOT NULL REFERENCES special_order_items(id) ON DELETE CASCADE,
+  activity_type TEXT NOT NULL CHECK (activity_type IN ('NOTE','SUPPLIER','OTHER')),
+  message TEXT NOT NULL,
+  old_value TEXT,
+  new_value TEXT,
+  changed_by TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_special_order_item_activity_item
+ON special_order_item_activity (special_order_item_id, created_at DESC);

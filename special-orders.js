@@ -2489,9 +2489,54 @@ export function createSpecialOrdersRouter({
 
   router.patch('/items/:id/notes', requireDb, async (req,res)=>{
     const notes=req.body?.notes==null?null:String(req.body.notes).trim()||null;
-    const {rows}=await pool.query('UPDATE special_order_items SET notes=$1,updated_at=now() WHERE id=$2 RETURNING *',[notes,req.params.id]);
-    if(!rows[0])return res.status(404).json({error:'Special Order line not found.'});
-    res.json(rows[0]);
+    const changedBy=String(req.body?.changed_by||'ordering-web').trim()||'ordering-web';
+    const client=await pool.connect();
+    try{
+      await client.query('BEGIN');
+      const current=await client.query('SELECT notes FROM special_order_items WHERE id=$1 FOR UPDATE',[req.params.id]);
+      if(!current.rows[0]){await client.query('ROLLBACK');return res.status(404).json({error:'Special Order line not found.'});}
+      const oldNotes=current.rows[0].notes||null;
+      const {rows}=await client.query('UPDATE special_order_items SET notes=$1,updated_at=now() WHERE id=$2 RETURNING *',[notes,req.params.id]);
+      await client.query(
+        'INSERT INTO special_order_item_activity (special_order_item_id,activity_type,message,old_value,new_value,changed_by) VALUES ($1,\'NOTE\',$2,$3,$4,$5)',
+        [req.params.id,notes?'Note saved':'Note cleared',oldNotes,notes,changedBy]
+      );
+      await client.query('COMMIT');
+      res.json(rows[0]);
+    }catch(error){
+      await client.query('ROLLBACK');
+      res.status(400).json({error:error.message});
+    }finally{client.release()}
+  });
+  router.get('/items/:id/activity', requireDb, async (req,res)=>{
+    const itemResult=await pool.query('SELECT id,notes,created_at,updated_at FROM special_order_items WHERE id=$1',[req.params.id]);
+    const item=itemResult.rows[0];
+    if(!item)return res.status(404).json({error:'Special Order line not found.'});
+    const statusHistory=await pool.query(
+      `SELECT 'STATUS' AS activity_type,
+              COALESCE(note,'Status changed from '||COALESCE(old_status,'—')||' to '||new_status) AS message,
+              old_status AS old_value,new_status AS new_value,changed_by,changed_at AS created_at
+       FROM order_status_history
+       WHERE special_order_item_id=$1`,
+      [req.params.id]
+    );
+    const other=await pool.query(
+      `SELECT activity_type,message,old_value,new_value,changed_by,created_at
+       FROM special_order_item_activity
+       WHERE special_order_item_id=$1`,
+      [req.params.id]
+    );
+    const activities=[...statusHistory.rows,...other.rows];
+    const hasNoteHistory=other.rows.some(x=>x.activity_type==='NOTE');
+    if(item.notes && !hasNoteHistory){
+      activities.push({
+        activity_type:'NOTE',
+        message:'Existing note snapshot (exact original note time unavailable)',
+        old_value:null,new_value:item.notes,changed_by:null,created_at:item.updated_at||item.created_at
+      });
+    }
+    activities.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+    res.json({item_id:item.id,activities});
   });
   router.patch('/items/:id/status', requireDb, async (req, res) => {
     const newStatus = String(req.body?.status || '').toUpperCase();
@@ -2664,6 +2709,24 @@ export function createSpecialOrdersRouter({
         'UPDATE special_order_items SET preferred_supplier_id=$1,sourcing_department_id=$2,updated_at=now() WHERE id=$3 RETURNING *',
         [supplierId,departmentId,req.params.id]
       );
+      if(String(item.preferred_supplier_id||'')!==String(supplierId||'')){
+        const oldSupplier=item.preferred_supplier_id
+          ? await client.query('SELECT name FROM suppliers WHERE id=$1',[item.preferred_supplier_id])
+          : {rows:[]};
+        const newSupplier=supplierId
+          ? await client.query('SELECT name FROM suppliers WHERE id=$1',[supplierId])
+          : {rows:[]};
+        await client.query(
+          'INSERT INTO special_order_item_activity (special_order_item_id,activity_type,message,old_value,new_value,changed_by) VALUES ($1,\'SUPPLIER\',$2,$3,$4,$5)',
+          [
+            item.id,
+            supplierId?'Preferred supplier changed':'Preferred supplier cleared',
+            oldSupplier.rows[0]?.name||null,
+            newSupplier.rows[0]?.name||null,
+            req.body?.changed_by||'ordering-web'
+          ]
+        );
+      }
       if(supplierId && String(item.preferred_supplier_id||'')!==String(supplierId)){
         const productInfo=item.product_id
           ? await client.query('SELECT product_category FROM products WHERE id=$1',[item.product_id])

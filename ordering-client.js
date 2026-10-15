@@ -124,11 +124,61 @@ async function saveNotes(id){
   try{
     await getJson(api+'/items/'+id+'/notes',{
       method:'PATCH',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({notes:input.value})
+      body:JSON.stringify({notes:input.value,changed_by:'ordering-web'})
     });
     const row=workRows.find(x=>Number(x.id)===Number(id));if(row)row.notes=input.value;
     showNotice('Line notes saved.');
   }catch(e){showNotice('Could not save notes: '+e.message)}
+}
+
+function ageDays(createdAt){
+  if(!createdAt)return 0;
+  return Math.max(0,Math.floor((Date.now()-new Date(createdAt).getTime())/86400000));
+}
+function ageClass(days){
+  if(days>=14)return 'ordering-age-red';
+  if(days>=7)return 'ordering-age-orange';
+  if(days>=3)return 'ordering-age-yellow';
+  return 'ordering-age-green';
+}
+function ageLabel(days){
+  if(days===0)return 'Today';
+  return days+' day'+(days===1?'':'s');
+}
+async function toggleActivity(id){
+  const box=document.getElementById('activity-box-'+id);
+  if(!box)return;
+  if(box.dataset.loaded==='1'){
+    box.style.display=box.style.display==='none'?'block':'none';
+    return;
+  }
+  box.style.display='block';
+  box.innerHTML='<div class="form-note">Loading history…</div>';
+  try{
+    const d=await getJson(api+'/items/'+id+'/activity');
+    const rows=d.activities||[];
+    if(!rows.length){
+      box.innerHTML='<div class="form-note">No recorded activity yet.</div>';
+    }else{
+      box.innerHTML=rows.map(a=>{
+        const when=a.created_at?new Date(a.created_at).toLocaleString():'Unknown time';
+        const by=a.changed_by?' · '+esc(a.changed_by):'';
+        let detail='';
+        if(a.activity_type==='STATUS')detail=esc((a.old_value||'—')+' → '+(a.new_value||'—'));
+        else if(a.activity_type==='NOTE')detail=esc(a.new_value||a.message||'');
+        else if(a.activity_type==='SUPPLIER')detail=esc((a.old_value||'Unassigned')+' → '+(a.new_value||'Unassigned'));
+        else detail=esc(a.message||'');
+        return '<div class="ordering-log-entry"><b>'+esc(a.activity_type)+'</b> · '+esc(when)+by+
+          '<div>'+detail+'</div>'+
+          (a.message && a.activity_type!=='NOTE' && a.activity_type!=='STATUS' && a.activity_type!=='SUPPLIER'
+            ? '<div class="form-note">'+esc(a.message)+'</div>':'')+
+          '</div>';
+      }).join('');
+    }
+    box.dataset.loaded='1';
+  }catch(e){
+    box.innerHTML='<div class="form-note">Could not load history: '+esc(e.message)+'</div>';
+  }
 }
 
 function filteredRows(){
@@ -160,10 +210,13 @@ function applyFilters(){
   if(!rows.length){box.innerHTML='<p class="form-note">No lines match these filters.</p>';return}
 
   const table=document.createElement('table');
-  table.innerHTML='<tr><th>Customer</th><th>Item</th><th>Qty</th><th>Supplier</th><th>Recommendation</th><th>Category</th><th>LS PO#</th><th>Status</th><th>Notes</th></tr>';
+  table.innerHTML='<tr><th>Age</th><th>Customer</th><th>Item</th><th>Qty</th><th>Supplier</th><th>Recommendation</th><th>Category</th><th>LS PO#</th><th>Status</th><th>Notes / Log</th></tr>';
   for(const r of rows){
     const tr=document.createElement('tr');
+    const days=ageDays(r.created_at);
+    tr.classList.add(ageClass(days));
     tr.innerHTML=
+      '<td><b>'+ageLabel(days)+'</b><div class="form-note">'+esc(r.created_at?new Date(r.created_at).toLocaleDateString():'—')+'</div></td>'+
       '<td>'+esc(r.customer_name||'—')+'</td>'+
       '<td><b>'+esc(r.requested_name)+'</b><div class="form-note">'+esc([r.requested_sku,r.supplier_sku].filter(Boolean).join(' / ')||'No SKU')+'</div></td>'+
       '<td>'+Number(r.quantity||0)+'</td>'+
@@ -175,11 +228,13 @@ function applyFilters(){
         ['PREORDER','OOS','READY_TO_ORDER','ORDERED','BACKORDERED','RECEIVED','HELD','CUSTOMER_NOTIFIED','COMPLETED','CANCELLED']
         .map(s=>'<option value="'+s+'" '+(s===r.status?'selected':'')+'>'+s.replaceAll('_',' ')+'</option>').join('')+
       '</select></td>'+
-      '<td><label><input id="notes-toggle-'+r.id+'" type="checkbox" '+(r.notes?'checked':'')+'> Notes</label>'+
+      '<td><label><input id="notes-toggle-'+r.id+'" type="checkbox" '+(r.notes?'checked':'')+'> Notes</label> '+
+        '<button class="secondary-button" onclick="toggleActivity('+r.id+')">Log</button>'+
         '<div id="notes-box-'+r.id+'" style="display:'+(r.notes?'block':'none')+';margin-top:6px">'+
           '<textarea id="notes-'+r.id+'" rows="2" style="min-width:220px">'+esc(r.notes||'')+'</textarea><br>'+
           '<button class="secondary-button" onclick="saveNotes('+r.id+')">Save note</button>'+
-        '</div></td>';
+        '</div>'+
+        '<div id="activity-box-'+r.id+'" class="ordering-activity-log" style="display:none"></div></td>';
     tr.querySelector('#supplier-'+r.id).addEventListener('change',e=>setPreferredSupplier(r.id,e.target.value));
     tr.querySelector('#status-'+r.id).addEventListener('change',e=>updateLineStatus(r.id,e.target.value));
     tr.querySelector('#notes-toggle-'+r.id).addEventListener('change',e=>toggleNotes(r.id,e.target.checked));

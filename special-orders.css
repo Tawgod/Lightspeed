@@ -132,3 +132,18 @@ tbody tr:hover{background:#f2f7fc}
   .gw-status-pill.submitted{background:#153927;color:#bbf7d0}
   .gw-status-pill.failed{background:#471b1b;color:#fecaca}
 }
+
+
+/* Ordering checklist aging + activity history */
+.ordering-age-legend{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 12px}
+.ordering-age-chip{display:inline-block;padding:4px 9px;border-radius:999px;font-size:12px;font-weight:700}
+tr.ordering-age-green td{background:rgba(34,197,94,.06)}
+tr.ordering-age-yellow td{background:rgba(234,179,8,.10)}
+tr.ordering-age-orange td{background:rgba(249,115,22,.12)}
+tr.ordering-age-red td{background:rgba(239,68,68,.12)}
+.ordering-age-chip.ordering-age-green{background:rgba(34,197,94,.16)}
+.ordering-age-chip.ordering-age-yellow{background:rgba(234,179,8,.22)}
+.ordering-age-chip.ordering-age-orange{background:rgba(249,115,22,.22)}
+.ordering-age-chip.ordering-age-red{background:rgba(239,68,68,.22)}
+.ordering-activity-log{margin-top:8px;min-width:280px;max-width:420px;max-height:260px;overflow:auto;border-top:1px solid var(--border);padding-top:5px}
+.ordering-log-entry{padding:7px 2px;border-bottom:1px solid var(--border);font-size:12px}
