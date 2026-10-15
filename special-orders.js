@@ -2798,13 +2798,26 @@ export function createSpecialOrdersRouter({
     const product=productResult.rows[0];
     if(!product)return res.status(404).json({error:'Product not found.'});
     const history=await pool.query(
-      `SELECT supplier_id,
+      `WITH choices AS (
+         SELECT supplier_id,product_id,product_category,selected_at
+         FROM supplier_routing_history
+         WHERE product_id=$1 OR (COALESCE($2,'')<>'' AND lower(COALESCE(product_category,''))=lower($2))
+         UNION ALL
+         SELECT i.preferred_supplier_id AS supplier_id,
+                i.product_id,
+                p.product_category,
+                i.updated_at AS selected_at
+         FROM special_order_items i
+         LEFT JOIN products p ON p.id=i.product_id
+         WHERE i.preferred_supplier_id IS NOT NULL
+           AND (i.product_id=$1 OR (COALESCE($2,'')<>'' AND lower(COALESCE(p.product_category,''))=lower($2)))
+       )
+       SELECT supplier_id,
               count(*) FILTER (WHERE product_id=$1)::int AS exact_count,
               count(*) FILTER (WHERE lower(COALESCE(product_category,''))=lower(COALESCE($2,'')))::int AS category_count,
               count(*)::int AS total_count,
               max(selected_at) AS last_selected_at
-       FROM supplier_routing_history
-       WHERE product_id=$1 OR (COALESCE($2,'')<>'' AND lower(COALESCE(product_category,''))=lower($2))
+       FROM choices
        GROUP BY supplier_id`,
       [productId,product.product_category||'']
     );
