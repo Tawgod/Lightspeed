@@ -1603,11 +1603,13 @@ async function scannerEffectivePermissions(employee){
       // Prefer per-user documented API; do not infer role from the service token.
       const user=await fetchLinkedLightspeedUser(employee.lightspeed_user_id);
       approval=linkedScannerApproval({lightspeedUserId:employee.lightspeed_user_id,users:[user]});
+      if(!approval.verified)console.warn('[scanner] Individual Lightspeed user returned no supported explicit role; requesting role catalog.');
       if(!approval.verified){
         try{
           const roles=await fetchLightspeedRoles();
           approval=linkedScannerApproval({lightspeedUserId:employee.lightspeed_user_id,users:[user],roles});
-        }catch{
+        }catch(error){
+          console.warn('[scanner] Role catalog fetch failed, approval withheld:',Number(error?.status)||'unavailable');
           lookupFailure='lightspeed_role_not_recognized';
         }
       }
@@ -1620,8 +1622,8 @@ async function scannerEffectivePermissions(employee){
           const roles=await fetchLightspeedRoles();
           approval=linkedScannerApproval({lightspeedUserId:employee.lightspeed_user_id,users,roles});
         }
-      }catch{
-        console.warn('[scanner] Both linked-user role lookups unavailable; approval withheld:',error?.status||'unknown');
+      }catch(fallbackError){
+        console.warn('[scanner] Linked-user verification failed; approval withheld. Individual HTTP:',Number(error?.status)||'unavailable','legacy HTTP:',Number(fallbackError?.status)||'unavailable');
       }
     }
   }

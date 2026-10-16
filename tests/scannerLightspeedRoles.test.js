@@ -40,3 +40,10 @@ test('verifies a Lightspeed Manager from role_id only with authoritative role ca
  const ambiguous=linkedScannerApproval({lightspeedUserId:'900',users,roles:[{id:'mgr-7',name:'Manager'},{id:'mgr-7',name:'Admin'}]});
  assert.equal(ambiguous.canApprove,false);
 });
+
+test('resolves explicit Lightspeed user group and role title without guessing IDs',()=>{
+  assert.equal(linkedScannerApproval({lightspeedUserId:'one',users:[{id:'one',user_group:{name:'Manager'}}]}).canApprove,true);
+  assert.equal(linkedScannerApproval({lightspeedUserId:'two',users:[{id:'two',role:{title:'Account Owner'}}]}).canApprove,true);
+  assert.equal(linkedScannerApproval({lightspeedUserId:'three',users:[{id:'three',role_id:23}],roles:[{id:23,title:'Admin'}]}).canApprove,true);
+  assert.equal(linkedScannerApproval({lightspeedUserId:'four',users:[{id:'four',role_id:23}],roles:[]}).canApprove,false);
+});

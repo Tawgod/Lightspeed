@@ -31,6 +31,7 @@ export function publicScannerMatch(row = {}, source) {
     id: source === 'lightspeed' ? lsId : null,
     name: clean(row.name, 500),
     sku: clean(row.sku, 128),
+    supplierSku: clean(row.supplier_sku,128),
     upc: clean(row.upc, 128),
     description: clean(row.description, 2000),
     brand: clean(row.brand, 250),

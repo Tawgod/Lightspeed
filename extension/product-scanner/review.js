@@ -16,6 +16,8 @@ let supplierRecords=[];
 let supplierVerifiedId=null;
 let supplierMatched=false;
 let lookupGeneration=0;
+let employeeEditedGeneralSku=false;
+let capturedSupplierSku='';
 let lookupBusy=false;
 let pendingLookup=false;
 const SUPPLIER_DOMAINS={'acdd.com':['ACD Distribution','ACD']};
@@ -269,6 +271,20 @@ function currentProduct(){
   product.description=document.getElementById('description').value.trim();
   return product;
 }
+function matchingLightspeedSku(matches,product){
+  const normalized=x=>String(x||'').trim().toLowerCase();
+  const upc=String(product.upc||'').replace(/\D/g,'');
+  // Do not change SKU based on fuzzy name results. Require exact UPC or
+  // supplier reorder number, and a single unambiguous linked product.
+  const exact=matches.filter(m=>{
+    const code=String(m.upc||'').replace(/\D/g,'');
+    return (upc&&code&&upc===code) ||
+      (product.supplierSku&&m.supplierSku&&normalized(m.supplierSku)===normalized(product.supplierSku)) ||
+      (product.sku&&normalized(m.sku)===normalized(product.sku));
+  });
+  const distinct=new Map(exact.filter(m=>m.lightspeedId && m.sku).map(m=>[String(m.lightspeedId),m]));
+  return distinct.size===1?[...distinct.values()][0].sku:null;
+}
 function showMatches(matches){
   matchesElement.replaceChildren();
   if(!matches.length){matchesElement.textContent='No potential products found in either matching service.';return;}
@@ -298,7 +314,9 @@ function loadScannerDraft(d){
   if(!d){status.textContent='No product has been captured. Use Scan Current Page in the extension.';checkButton.disabled=true;return;}
   status.textContent=d.requiresSelection?'Multiple products detected — automatic selection is disabled. Verify manually.':'Review extracted information; no changes have been sent to Lightspeed.';
   draftAvailable=true;
+  employeeEditedGeneralSku=false;
   const p=d.product||{};
+  capturedSupplierSku=String(p.supplierSku??p.sku??'').trim();
   sourceDomain=String(d.supplierDomain||'').trim().toLowerCase();
   supplierInput.value=String(p.supplierName||SUPPLIER_DOMAINS[sourceDomain]?.[0]||sourceDomain||'').trim();
   supplierVerification.textContent=p.supplierName
@@ -310,14 +328,22 @@ function loadScannerDraft(d){
   document.getElementById('source').textContent=d.sourceUrl?'Source page':'Source unavailable';
   const fields=document.getElementById('fields');
   for(const k of keys){const label=document.createElement('label');label.textContent=labels[k];const input=document.createElement('input');input.id='field-'+k;
-    input.value=k==='supplierSku' ? (p.supplierSku??p.sku??'') : k==='sku' ? (p.supplierSku ? (p.sku??'') : '') : (p[k]??'');
-    input.addEventListener('input',()=>{invalidateVerification();queueProductLookup();});label.append(input);fields.append(label);}
+    input.value=k==='supplierSku' ? capturedSupplierSku : k==='sku' ? (p.sku||capturedSupplierSku) : (p[k]??'');
+    input.addEventListener('input',()=>{
+      if(k==='sku')employeeEditedGeneralSku=true;
+      if(k==='supplierSku'&&!employeeEditedGeneralSku){
+        const skuInput=document.getElementById('field-sku');
+        if(skuInput && skuInput.value.trim()===capturedSupplierSku)skuInput.value=input.value;
+        capturedSupplierSku=input.value.trim();
+      }
+      invalidateVerification();queueProductLookup();
+    });label.append(input);fields.append(label);}
   document.getElementById('description').value=p.description||'';
   document.getElementById('description').addEventListener('input',()=>{invalidateVerification();queueProductLookup();});
   const missing=['name','upc'].filter(k=>!p[k]);
   if(p.availabilityNote)document.getElementById('supplier-status').textContent='Supplier listing: '+p.availabilityNote+' (confirm availability before ordering).';
   if(p.supplierName)document.getElementById('supplier-name').textContent='Supplier: '+p.supplierName;
-  document.getElementById('warnings').textContent=missing.length?'Not found on supplier page — enter or verify manually: '+missing.join(', ')+'. Supplier reorder number is separate from general SKU.':'';
+  document.getElementById('warnings').textContent=missing.length?'Not found on supplier page — enter or verify manually: '+missing.join(', ')+'. General SKU defaults to the supplier reorder number unless an exact Lightspeed match is found.':'';
   checkButton.disabled=!scannerSession || scannerSession.expiresAt<=Date.now();
   if(scannerSession){lookupSuppliers().then(()=>queueProductLookup());}
 }
@@ -351,7 +377,12 @@ async function checkExistingProducts(){
     const result=await checkProductMatches(product,async kind=>kind==='local'?data.local:data.remote);
     if(generation!==lookupGeneration||currentSignature!==signature())return;
     showMatches(result.matches);
-    verifiedProductSignature=currentSignature;lastMatches=result.matches;
+    if(!employeeEditedGeneralSku){
+      const matchedSku=matchingLightspeedSku(result.matches,product);
+      const skuField=document.getElementById('field-sku');
+      if(matchedSku&&skuField&&matchedSku!==skuField.value)skuField.value=matchedSku;
+    }
+    verifiedProductSignature=signature();lastMatches=result.matches;
     createButton.disabled=result.matches.length!==0||!supplierMatched;
     stageEligibility();
     matchStatus.textContent=result.matches.length
