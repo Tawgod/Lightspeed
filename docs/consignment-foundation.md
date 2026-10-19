@@ -33,3 +33,12 @@ Feature branch: feature/consignment-layout-foundation
 4. Add explicit existing-product lookup and curated copying with image omission; duplicate SKU protection.
 5. Request staff feedback on layout, then queue extension launcher in CHROME_EXTENSION_RELEASE_QUEUE.md and coordinate next extension release.
 6. Confirm business policy for store credit reversal if a POS transaction is voided or refunded after credit posting.
+
+## Development progress (2026-10-19, phase 2)
+- Added GET /consignment standalone preview route to server.js and Special Orders toolbar link.
+- Added db/consignment_schema.sql (NOT automatically initialized or deployed): consignors, submissions, reusable product templates, individual items, credit ledger, event history.
+- Added online-submission match review explanation to UI; matching is not connected yet.
+- Decision: one unique physical consignment item and unique Lightspeed SKU per accepted copy. Never reactivate an already credited physical-item SKU. Reuse a template/product match instead; when sold and credit reconciled, deactivate the sold item's Lightspeed product, subject to return/refund and online-listing safety checks.
+- Matching should run for staff entries AND customer-submitted online items when staff opens the pending submission, searching active and inactive/historical NEW products, without automatically accepting matches. Product photos are excluded from copying.
+- Security: schema is not a public API. Any staff/customer list and matching details require authorization. The static preview displays no real records.
+- Outstanding: implement protected list/search endpoints and a candidate-match scorer; verify Lightspeed inactive product API before enabling writes; integrate authenticated customer portal; implement extension launcher only after release-queue reconciliation.
