@@ -28,7 +28,7 @@ footer{margin-top:28px;color:#71808b;font-size:12px}
 @media(max-width:560px){.grid{grid-template-columns:1fr 1fr}main{padding:15px}.panel{overflow:auto}header{padding:14px}}
 </style></head><body>
 <header><div><div class="brand">Hobby Corner</div><div class="sub">Store operations · Consignment (development preview)</div></div>
-<nav><a href="/special-orders">Special Orders</a><a class="active" href="/consignment-layout.html">Consignment</a></nav></header>
+<nav><a href="/special-orders">Special Orders</a><a class="active" href="/consignment">Consignment</a></nav></header>
 <main><div class="heading"><div><div class="eyebrow">Management workspace</div><h1>Consignment</h1><p class="muted">Used games, puzzles, RC and other customer-owned merchandise</p></div>
 <div><button class="secondary" type="button" onclick="showInfo('Customer portal authentication and Lightspeed syncing are not connected in this preview.')">Customer portal</button> <button type="button" onclick="document.getElementById('item-name').focus()">New submission</button></div></div>
 <section class="grid">
@@ -53,6 +53,9 @@ footer{margin-top:28px;color:#71808b;font-size:12px}
 <div class="two"><div><label for="type">Item type</label><select id="type"><option>Used Game</option><option>Used Puzzle</option><option>Used RC</option><option>Other Used Item</option></select></div><div><label for="price">Asking price</label><input id="price" type="number" min="0" step="0.01" placeholder="0.00"></div></div>
 <label for="item-name">Item name</label><input id="item-name" placeholder="Enter or search original product name">
 <label for="original">Existing Lightspeed item</label><input id="original" placeholder="Find new-product template (not connected)" disabled>
+<div class="notice" id="match-review"><strong>Existing-product matches · staff approval</strong>
+<p>When an online submission arrives, the review screen will search current and historical new-product templates automatically using title, brand, item type, and product identifiers where supplied. Staff can approve the matched original or choose “No match — create from submission.”</p>
+<div class="muted">No matching service connected yet. Suggestions must never be automatically accepted.</div></div>
 <div class="notice"><strong>Used-product creation rule</strong><p>Copy approved descriptive fields from the original new item, but assign a unique consignment SKU, prefix the display name with “USED —”, and never copy the original product photos. Save all consignment merchandise under <strong>General › Consignment</strong>.</p>Online listing is optional and must be explicitly approved.</div>
 <div class="two"><div><label for="condition">Condition</label><select id="condition"><option>Like New</option><option>Very Good</option><option>Good</option><option>Fair</option><option>Poor</option><option>New in Shrink</option></select></div><div><label for="channel">Online availability</label><select id="channel"><option>In-store only (default)</option><option>Online eligible — review required</option></select></div></div>
 <label for="notes">Inspection / item notes</label><textarea rows="3" id="notes" placeholder="Components, damage, testing, additional information"></textarea>
