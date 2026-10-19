@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Consignment | Hobby Corner</title>
+<style>
+:root{font-family:Inter,system-ui,Arial,sans-serif;color:#17212b;background:#f5f7f9}
+*{box-sizing:border-box}body{margin:0}a{color:inherit;text-decoration:none}
+header{background:#132e3b;color:white;padding:16px 26px;display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap}
+.brand{font-size:20px;font-weight:750}.sub{font-size:12px;color:#c1ced5}
+nav{display:flex;gap:14px;align-items:center}nav a{padding:9px 12px;border-radius:7px}nav .active{background:#276d6e}
+main{max-width:1440px;margin:0 auto;padding:26px}.heading{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}
+h1{margin:0;font-size:28px}h2{font-size:17px;margin:0 0 16px}.muted{color:#647483}.eyebrow{text-transform:uppercase;font-size:11px;letter-spacing:1px;font-weight:750;color:#678}
+button,.button{cursor:pointer;border:0;background:#116b69;color:white;padding:11px 15px;border-radius:8px;font-weight:650}
+button.secondary{background:white;border:1px solid #cbd5dc;color:#234}
+.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:24px 0}
+.card,.panel{background:white;border:1px solid #e0e6ec;border-radius:12px;padding:20px}
+.metric{font-size:30px;font-weight:750;margin:9px 0 3px}.layout{display:grid;grid-template-columns:minmax(0,2fr) minmax(285px,1fr);gap:18px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid #e5eaf0;padding-bottom:12px;margin-bottom:14px}
+.tab{background:transparent;color:#435461}.tab[aria-selected=true]{color:#116b69;background:#e7f3f1}
+table{width:100%;border-collapse:collapse;font-size:13px}th{text-align:left;color:#667887;font-size:12px}td,th{padding:13px 8px;border-bottom:1px solid #eef1f4}
+.pill{border-radius:20px;padding:5px 9px;background:#eef2f5;white-space:nowrap;font-size:11px;font-weight:700}
+.pill.warning{background:#fff1d5;color:#8c5616}.pill.good{background:#e4f4e9;color:#1a6541}
+.pill.info{background:#e4f0fc;color:#265a87}.details{padding:11px 0;border-bottom:1px solid #edf0f2;font-size:13px}
+label{display:block;font-size:12px;font-weight:700;margin:12px 0 5px}
+input,select,textarea{width:100%;padding:10px;border:1px solid #cad4dc;border-radius:7px;font:inherit}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}.notice{background:#f1f6f8;border-radius:8px;padding:12px;font-size:12px;line-height:1.5;margin-top:15px}
+footer{margin-top:28px;color:#71808b;font-size:12px}
+@media(max-width:930px){.layout{grid-template-columns:1fr}.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.grid{grid-template-columns:1fr 1fr}main{padding:15px}.panel{overflow:auto}header{padding:14px}}
+</style></head><body>
+<header><div><div class="brand">Hobby Corner</div><div class="sub">Store operations · Consignment (development preview)</div></div>
+<nav><a href="/special-orders">Special Orders</a><a class="active" href="/consignment-layout.html">Consignment</a></nav></header>
+<main><div class="heading"><div><div class="eyebrow">Management workspace</div><h1>Consignment</h1><p class="muted">Used games, puzzles, RC and other customer-owned merchandise</p></div>
+<div><button class="secondary" type="button" onclick="showInfo('Customer portal authentication and Lightspeed syncing are not connected in this preview.')">Customer portal</button> <button type="button" onclick="document.getElementById('item-name').focus()">New submission</button></div></div>
+<section class="grid">
+<div class="card"><div class="muted">Pending approval</div><div class="metric">—</div><div class="sub">Awaiting customer drop-off / inspection</div></div>
+<div class="card"><div class="muted">Available for sale</div><div class="metric">—</div><div class="sub">Active consignment inventory</div></div>
+<div class="card"><div class="muted">Sold · awaiting credit</div><div class="metric">—</div><div class="sub">Three-day holding period</div></div>
+<div class="card"><div class="muted">Aging items</div><div class="metric">—</div><div class="sub">Due for review or pickup</div></div>
+</section>
+<section class="layout"><div class="panel"><div class="heading"><h2>Item workspace</h2><div><button class="secondary" type="button" disabled title="Available when the backend is connected">Export</button></div></div>
+<div class="tabs" role="tablist" aria-label="Item status">
+<button class="tab" aria-selected="true" onclick="selectTab(this)">All items</button>
+<button class="tab" aria-selected="false" onclick="selectTab(this)">Submissions</button>
+<button class="tab" aria-selected="false" onclick="selectTab(this)">For sale</button>
+<button class="tab" aria-selected="false" onclick="selectTab(this)">Sold</button>
+<button class="tab" aria-selected="false" onclick="selectTab(this)">Credit due</button>
+<button class="tab" aria-selected="false" onclick="selectTab(this)">Aging</button>
+</div><div class="two"><div><label for="search">Search consignments</label><input id="search" placeholder="Item ID, customer, title or Lightspeed SKU"></div><div><label for="kind">Item type</label><select id="kind"><option>All item types</option><option>Used Game</option><option>Used Puzzle</option><option>Used RC</option><option>Other Used Item</option></select></div></div>
+<table aria-label="Consignment item list"><thead><tr><th>Item / ID</th><th>Customer</th><th>Asking price</th><th>Age</th><th>Status</th></tr></thead><tbody><tr><td colspan="5" class="muted">No live records loaded. Connect the consignment database to populate this table.</td></tr></tbody></table>
+</div>
+<aside class="panel"><h2>New submission · layout preview</h2><p class="muted">Designed for multiple items per customer. Data is not saved in this preview.</p>
+<label for="customer">Lightspeed customer</label><input id="customer" placeholder="Search existing customer (not connected)" disabled>
+<div class="two"><div><label for="type">Item type</label><select id="type"><option>Used Game</option><option>Used Puzzle</option><option>Used RC</option><option>Other Used Item</option></select></div><div><label for="price">Asking price</label><input id="price" type="number" min="0" step="0.01" placeholder="0.00"></div></div>
+<label for="item-name">Item name</label><input id="item-name" placeholder="Enter or search original product name">
+<label for="original">Existing Lightspeed item</label><input id="original" placeholder="Find new-product template (not connected)" disabled>
+<div class="notice"><strong>Used-product creation rule</strong><p>Copy approved descriptive fields from the original new item, but assign a unique consignment SKU, prefix the display name with “USED —”, and never copy the original product photos. Save all consignment merchandise under <strong>General › Consignment</strong>.</p>Online listing is optional and must be explicitly approved.</div>
+<div class="two"><div><label for="condition">Condition</label><select id="condition"><option>Like New</option><option>Very Good</option><option>Good</option><option>Fair</option><option>Poor</option><option>New in Shrink</option></select></div><div><label for="channel">Online availability</label><select id="channel"><option>In-store only (default)</option><option>Online eligible — review required</option></select></div></div>
+<label for="notes">Inspection / item notes</label><textarea rows="3" id="notes" placeholder="Components, damage, testing, additional information"></textarea>
+<button type="button" style="width:100%;margin-top:16px" onclick="showInfo('Submission saving and Lightspeed product creation will be enabled only after API, authentication, and duplicate checks are implemented.')">Preview submission workflow</button>
+<p id="message" role="status" class="muted" style="font-size:12px"></p>
+</aside></section><footer>Development layout only · No customer information, Lightspeed records, payments, or inventory are changed from this page.</footer></main>
+<script>function selectTab(el){document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected',String(t===el)))}function showInfo(msg){document.getElementById('message').textContent=msg}</script>
+</body></html>
