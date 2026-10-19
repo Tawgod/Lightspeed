@@ -164,6 +164,11 @@ app.use('/api/work-orders', createWorkOrderCombineRouter({
   token: LIGHTSPEED_TOKEN
 }));
 
+// Static development preview: no customer data or API operations are exposed here.
+app.get('/consignment', (req, res) => {
+  res.sendFile(path.join(__dirname, 'consignment-layout.html'));
+});
+
 app.get('/special-orders', (req, res) => {
   res.sendFile(path.join(__dirname, 'special-orders.html'));
 });
