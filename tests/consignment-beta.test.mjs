@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildConsignmentProductPreview } from '../services/consignmentProductPreview.js';
+import { createConsignmentMatcher } from '../services/consignmentMatcher.js';
 import { normalizeMatches, toSpecialOrderMatchRequest } from '../extension/product-scanner/special-orders-adapter.js';
 test('new-product descriptive template never copies new inventory, image or identifiers',()=>{
  const original={id:'new-123',name:'Ticket to Ride',brand_id:'brand-abc',description:'Strategy board game',
@@ -39,4 +40,27 @@ test('approved accounting cost is an explicit input, not assumed 80%',()=>{
  const draft=buildConsignmentProductPreview({item,categoryId:'cat',approvedAccountingCost:8});
  assert.equal(draft.preview.supply_price,8);
  assert.equal(draft.canPostViaExistingSpecialOrdersRoute,true);
+});
+
+test('customer-submitted items invoke both existing match systems; used products excluded',async()=>{
+ const kinds=[];
+ const matcher=createConsignmentMatcher({lookup:async(kind,payload)=>{
+  kinds.push(kind);
+  assert.equal(payload.name,'Ticket to Ride');
+  if(kind==='local')return {matches:[
+   {lightspeed_product_id:'new-1',name:'Ticket to Ride',sku:'NEW-ITEM',score:99},
+   {lightspeed_product_id:'old-used',name:'USED — Ticket to Ride',sku:'UG-000144',score:100}
+  ]};
+  return {matches:[{id:'new-1',name:'Ticket to Ride',sku:'NEW-ITEM',score:96}]};
+ }});
+ const result=await matcher({submitted_name:'Ticket to Ride'});
+ assert.deepEqual(kinds,['local','remote']);
+ assert.equal(result.verified,true);
+ assert.equal(result.candidates.length,1);
+ assert.equal(result.candidates[0].lightspeedId,'new-1');
+ assert.equal(result.candidates[0].imagesCopyAllowed,false);
+});
+test('matching aborts if the remote source fails; no absence conclusion',async()=>{
+ const matcher=createConsignmentMatcher({lookup:async(kind)=>{if(kind==='remote')throw new Error('remote failed');return {matches:[]};}});
+ await assert.rejects(matcher({name:'Catan'}),/remote failed/);
 });
