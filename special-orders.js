@@ -549,6 +549,10 @@ export function createSpecialOrdersRouter({
       "customer_id=COALESCE(preorder_watch_items.customer_id,EXCLUDED.customer_id),"+
       "discord_username=COALESCE(EXCLUDED.discord_username,preorder_watch_items.discord_username),"+
       "discord_display_name=COALESCE(EXCLUDED.discord_display_name,preorder_watch_items.discord_display_name),"+
+      "capture_mode=CASE "+
+        "WHEN EXCLUDED.capture_mode='STAFF' THEN 'STAFF' "+
+        "WHEN EXCLUDED.capture_mode='FORMAL' AND preorder_watch_items.capture_mode='INFORMAL' THEN 'FORMAL' "+
+        "ELSE preorder_watch_items.capture_mode END,"+
       "item_text=EXCLUDED.item_text,message_text=COALESCE(EXCLUDED.message_text,preorder_watch_items.message_text),"+
       "message_url=COALESCE(EXCLUDED.message_url,preorder_watch_items.message_url),"+
       "confidence=COALESCE(EXCLUDED.confidence,preorder_watch_items.confidence),updated_at=now() "+
