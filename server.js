@@ -164,6 +164,32 @@ app.use('/api/work-orders', createWorkOrderCombineRouter({
   token: LIGHTSPEED_TOKEN
 }));
 
+// Review beta serves synthetic, browser-local data only. No POS, customer or credit writes.
+app.get('/consignment', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.sendFile(path.join(__dirname, 'consignment-beta.html'));
+});
+app.get('/consignment/submit', (req, res) => {
+  res.set('Cache-Control','no-store');
+  res.sendFile(path.join(__dirname,'consignment-customer.html'));
+});
+app.get('/consignment-customer.js', (req, res) => {
+  res.type('application/javascript').sendFile(path.join(__dirname,'consignment-customer.js'));
+});
+app.get('/consignment-form-rules.js', (req, res) => {
+  res.type('application/javascript').sendFile(path.join(__dirname,'services','consignmentFormRules.js'));
+});
+app.get('/consignment-beta.css', (req, res) => {
+  res.type('text/css').sendFile(path.join(__dirname, 'consignment-beta.css'));
+});
+app.get('/consignment-beta.js', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.type('application/javascript').sendFile(path.join(__dirname, 'consignment-beta.js'));
+});
+app.get('/consignment-match-utils.js', (req, res) => {
+  res.type('application/javascript').sendFile(path.join(__dirname, 'extension', 'product-scanner', 'special-orders-adapter.js'));
+});
+
 app.get('/special-orders', (req, res) => {
   res.sendFile(path.join(__dirname, 'special-orders.html'));
 });

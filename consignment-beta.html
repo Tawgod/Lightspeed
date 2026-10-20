@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Consignment Beta | Hobby Corner</title><link rel="stylesheet" href="/consignment-beta.css"></head>
+<body>
+<header><div class="logo">Hobby Corner <small>Consignment Management — Review Beta</small></div>
+<nav><a href="/special-orders">Special Orders</a><a href="/consignment" class="active">Consignment</a></nav></header>
+<main>
+<div class="top"><div><div class="eyebrow">Store operations · Beta preview</div><h1>Consignment</h1><div class="muted small">Used games, puzzles, RC and other customer-owned items</div></div>
+<div class="statusline"><button class="btn secondary" id="reset">Reset sample data</button><a class="btn secondary" href="/consignment/submit" target="_blank" rel="noopener">View customer submission form</a><button class="btn" id="new-submission">+ Staff submission</button></div></div>
+<div class="demo">TEST DATA ONLY — This beta uses sample customers and products. Changes stay in this browser and never write to Lightspeed, store credit, or the live database. Please do not enter real customer information.</div>
+<div class="metrics" id="metrics"></div>
+<div class="shell">
+<section class="panel" id="inventory-panel">
+<div class="panel-head section-head"><h2>Consignment items</h2><span class="muted tiny" id="item-count"></span></div>
+<div class="tabs" id="status-tabs">
+<button class="tab active" data-status="ALL">All</button><button class="tab" data-status="PENDING_REVIEW">Approval queue</button><button class="tab" data-status="FOR_SALE">For sale</button><button class="tab" data-status="SOLD_HOLD">Sold / Hold</button><button class="tab" data-status="CREDIT_DUE">Credit due</button><button class="tab" data-status="CREDITED">Credited</button><button class="tab" data-status="AGING">Aging</button>
+</div>
+<div class="controls"><div class="field" style="flex:3"><label for="search">Search title, customer or item number</label><input id="search" placeholder="e.g. Ticket to Ride or UG-001284"></div><div class="field"><label for="type-filter">Item type</label><select id="type-filter"><option value="">All types</option><option>Game</option><option>Puzzle</option><option>RC</option><option>Train</option><option>Other</option></select></div></div>
+<div class="actions" style="padding:0 18px 12px"><button id="approve-selected" class="btn small" disabled>Approve selected items (demo)</button><button id="clear-customer-filter" class="btn secondary small hide">Clear customer filter</button><span class="muted tiny" id="selection-count"></span></div><div class="table-scroll"><table><thead><tr><th><input id="bulk-all" type="checkbox" aria-label="Select all visible pending items"></th><th>Product / item code</th><th>Consignor</th><th>Price</th><th>Days</th><th>Status</th></tr></thead><tbody id="items-body"></tbody></table></div>
+</section>
+<section class="panel" id="detail-panel"><div class="panel-head"><h2 id="detail-title">Item details</h2></div><div class="panel-body" id="details"><div class="empty">Select a consignment item to review its details, find an existing product match, or update its status.</div></div></section>
+<section class="panel hide" id="submission-panel"><div class="panel-head"><h2>New multi-item submission</h2><div class="muted tiny">Staff entry / customer online submission simulation</div></div>
+<form id="submission-form" class="panel-body">
+<div class="two"><div class="field"><label for="seller">Consignor name (sample data only)</label><input id="seller" maxlength="80" required placeholder="Customer name"></div><div class="field"><label for="channel">Submission channel</label><select id="channel"><option value="online">Customer online form</option><option value="staff">In store</option></select></div></div>
+<div class="field" style="margin-top:12px"><label for="notes">Submission notes</label><textarea id="notes" maxlength="1200" placeholder="Drop-off notes, special handling"></textarea></div>
+<div class="section-head" style="margin-top:16px"><h3>Items on submission</h3><button type="button" id="add-item" class="btn secondary small">+ Add another item</button></div>
+<div id="submission-items"></div>
+<div class="note">Every item is reviewed separately. The approval screen will show product-match suggestions for customer online submissions as well as staff-created submissions. Tags, images, product creation, and account credits are not written during the beta.</div>
+<div class="actions"><button type="submit" class="btn">Submit for review</button><button type="button" id="cancel-submission" class="btn secondary">Cancel</button></div>
+</form></section>
+<section class="panel hide" id="portal-panel"><div class="panel-head"><h2>Customer portal preview</h2><p class="muted small">Read-only concept with sample identities. This is not a customer authentication system.</p></div><div class="panel-body"><div class="field"><label for="portal-customer">View sample consignor</label><select id="portal-customer"></select></div><div id="portal-body"></div></div></section>
+<section class="panel hide" id="settings-panel"><div class="panel-head"><h2>Program settings · Preview</h2></div><div class="panel-body">
+<div class="two"><div class="field"><label for="max-items">Normal active-item limit per consignor</label><input type="number" min="1" max="200" id="max-items"></div>
+<div class="field"><label for="age-days">Aging warning after (days)</label><input type="number" min="1" max="365" id="age-days"></div></div>
+<div class="two" style="margin-top:12px"><div class="field"><label for="commission">Customer credit (%)</label><input type="number" value="80" disabled title="Agreement fixed at 80% for this beta"></div>
+<div class="field"><label>Default POS category</label><input value="General › Consignment" disabled></div></div>
+<div class="note" style="margin-top:14px">Limits currently warn rather than block staff. Used-item SKUs are never reactivated. A later copy gets a new unique code while matching against the reusable new-product template. Online listing and product activation/deactivation require verified Lightspeed API integration.</div>
+<div class="actions"><button id="save-settings" class="btn" type="button">Save demo settings</button></div>
+</div></section>
+</div>
+<section style="margin-top:16px" class="panel"><div class="tabs">
+<button class="tab active" data-view="inventory">Item manager</button><button class="tab" data-view="submission">Multi-item submission</button><button class="tab" data-view="portal">Customer portal preview</button><button class="tab" data-view="settings">Settings</button></div></section>
+<div class="footer">Hobby Corner Consignment Beta · Review environment only. Sample records are synthetic and saved to local browser storage; not synchronized between devices.</div>
+</main><div id="toast" class="toast hide" role="status"></div>
+<script type="module" src="/consignment-beta.js"></script>
+</body></html>
