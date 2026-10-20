@@ -164,9 +164,20 @@ app.use('/api/work-orders', createWorkOrderCombineRouter({
   token: LIGHTSPEED_TOKEN
 }));
 
-// Static development preview: no customer data or API operations are exposed here.
+// Review beta serves synthetic, browser-local data only. No POS, customer or credit writes.
 app.get('/consignment', (req, res) => {
-  res.sendFile(path.join(__dirname, 'consignment-layout.html'));
+  res.set('Cache-Control', 'no-store');
+  res.sendFile(path.join(__dirname, 'consignment-beta.html'));
+});
+app.get('/consignment-beta.css', (req, res) => {
+  res.type('text/css').sendFile(path.join(__dirname, 'consignment-beta.css'));
+});
+app.get('/consignment-beta.js', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.type('application/javascript').sendFile(path.join(__dirname, 'consignment-beta.js'));
+});
+app.get('/consignment-match-utils.js', (req, res) => {
+  res.type('application/javascript').sendFile(path.join(__dirname, 'extension', 'product-scanner', 'special-orders-adapter.js'));
 });
 
 app.get('/special-orders', (req, res) => {
