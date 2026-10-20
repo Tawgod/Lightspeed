@@ -34,7 +34,8 @@ function seed(){
   ]};
 }
 function load(){try{const s=JSON.parse(localStorage.getItem(KEY)||'null');if(s&&Array.isArray(s.items)&&Array.isArray(s.submissions)&&s.settings)return s;}catch{}return seed();}
-let db=load(),selected='UG-001284',currentTab='ALL',currentView='inventory',search='';
+let db=load(),selected='UG-001284',currentTab='ALL',currentView='inventory',search='',customerFilter='';
+const bulkSelected=new Set();
 function save(){localStorage.setItem(KEY,JSON.stringify(db));}
 function age(item){return Math.max(0,Math.floor((Date.now()-new Date(item.createdAt).getTime())/86400000));}
 function notify(msg){const el=$('toast');el.textContent=msg;el.classList.remove('hide');clearTimeout(notify.timer);notify.timer=setTimeout(()=>el.classList.add('hide'),3500);}
@@ -59,10 +60,13 @@ function metrics(){
  $('metrics').innerHTML=values.map(x=>'<div class="metric"><div class="label">'+escapeHtml(x[0])+'</div><div class="number">'+x[1]+'</div><div class="tiny muted">'+escapeHtml(x[2])+'</div></div>').join('');
 }
 function itemsList(){
- let rows=db.items.filter(i=>(currentTab==='ALL'||(currentTab==='AGING'?i.status==='FOR_SALE'&&age(i)>=db.settings.agingDays:i.status===currentTab))&&(!search||[i.id,i.name,i.customer].some(v=>v.toLowerCase().includes(search)))&&(!$('type-filter').value||i.type===$('type-filter').value));
+ let rows=db.items.filter(i=>(currentTab==='ALL'||(currentTab==='AGING'?i.status==='FOR_SALE'&&age(i)>=db.settings.agingDays:i.status===currentTab))&&(!customerFilter||i.customer===customerFilter)&&(!search||[i.id,i.name,i.customer].some(v=>v.toLowerCase().includes(search)))&&(!$('type-filter').value||i.type===$('type-filter').value));
  rows.sort((a,b)=>{const rank={PENDING_REVIEW:0,CREDIT_DUE:1,SOLD_HOLD:2,FOR_SALE:3,CREDITED:4,RETURNED_TO_SELLER:5,REJECTED:6};return (rank[a.status]??10)-(rank[b.status]??10)||new Date(a.createdAt)-new Date(b.createdAt)});
- $('item-count').textContent=rows.length+' of '+db.items.length+' items';
- $('items-body').innerHTML=rows.length?rows.map(i=>'<tr class="itemrow '+(i.id===selected?'selected':'')+'" data-id="'+escapeHtml(i.id)+'"><td><strong>'+escapeHtml(i.name)+'</strong><br><span class="muted">'+escapeHtml(i.id)+'</span></td><td>'+escapeHtml(i.customer)+'</td><td>'+money(i.price)+'</td><td>'+age(i)+'</td><td><span class="pill '+escapeHtml(i.status)+'">'+escapeHtml(statuses[i.status]||i.status)+'</span></td></tr>').join(''):'<tr><td colspan="5" class="empty">No items match these filters.</td></tr>';
+ $('item-count').textContent=rows.length+' of '+db.items.length+' items'+(customerFilter?' · '+customerFilter:'');
+ $('clear-customer-filter').classList.toggle('hide',!customerFilter);
+ $('approve-selected').disabled=bulkSelected.size===0;
+ $('selection-count').textContent=bulkSelected.size?'Selected: '+bulkSelected.size:'';
+ $('items-body').innerHTML=rows.length?rows.map(i=>'<tr class="itemrow '+(i.id===selected?'selected':'')+'" data-id="'+escapeHtml(i.id)+'"><td><input class="bulk-check" type="checkbox" aria-label="Select '+escapeHtml(i.id)+'" data-bulk-id="'+escapeHtml(i.id)+'" '+(bulkSelected.has(i.id)?'checked':'')+' '+(i.status!=='PENDING_REVIEW'?'disabled':'')+'></td><td><strong>'+escapeHtml(i.name)+'</strong><br><span class="muted">'+escapeHtml(i.id)+'</span></td><td><button class="btn ghost small customer-filter" data-customer="'+escapeHtml(i.customer)+'">'+escapeHtml(i.customer)+'</button></td><td>'+money(i.price)+'</td><td>'+age(i)+'</td><td><span class="pill '+escapeHtml(i.status)+'">'+escapeHtml(statuses[i.status]||i.status)+'</span></td></tr>').join(''):'<tr><td colspan="6" class="empty">No items match these filters.</td></tr>';
 }
 function norm(s){return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();}
 function candidates(item){
@@ -171,7 +175,25 @@ function createSubmission(ev){
  document.querySelectorAll('[data-status]').forEach(el=>el.classList.toggle('active',el.dataset.status===currentTab));
  $('submission-form').reset();$('submission-items').innerHTML='';addFormItem();setView('inventory');refresh();notify(created.length+' item(s) submitted for staff approval — sample only');
 }
-$('items-body').addEventListener('click',ev=>{const tr=ev.target.closest('[data-id]');if(tr){selected=tr.dataset.id;refresh();}});
+$('items-body').addEventListener('click',ev=>{
+ const check=ev.target.closest('[data-bulk-id]');
+ if(check){if(check.checked)bulkSelected.add(check.dataset.bulkId);else bulkSelected.delete(check.dataset.bulkId);$('approve-selected').disabled=!bulkSelected.size;$('selection-count').textContent='Selected: '+bulkSelected.size;return;}
+ const customer=ev.target.closest('[data-customer]');
+ if(customer){customerFilter=customer.dataset.customer;currentTab='PENDING_REVIEW';document.querySelectorAll('[data-status]').forEach(t=>t.classList.toggle('active',t.dataset.status===currentTab));itemsList();return;}
+ const tr=ev.target.closest('[data-id]');if(tr){selected=tr.dataset.id;refresh();}
+});
+$('clear-customer-filter').addEventListener('click',()=>{customerFilter='';itemsList();});
+$('approve-selected').addEventListener('click',()=>{
+ const eligible=db.items.filter(i=>bulkSelected.has(i.id)&&i.status==='PENDING_REVIEW');
+ if(!eligible.length)return;
+ if(!confirm('Approve '+eligible.length+' sample item(s) after checking their required information?'))return;
+ eligible.forEach(i=>{i.status='FOR_SALE';i.updatedAt=new Date().toISOString();});
+ bulkSelected.clear();save();refresh();notify(eligible.length+' sample item(s) approved. No Lightspeed products created.');
+});
+$('bulk-all').addEventListener('change',ev=>{
+ document.querySelectorAll('.bulk-check:not(:disabled)').forEach(c=>{c.checked=ev.target.checked;if(c.checked)bulkSelected.add(c.dataset.bulkId);else bulkSelected.delete(c.dataset.bulkId);});
+ $('approve-selected').disabled=!bulkSelected.size;$('selection-count').textContent='Selected: '+bulkSelected.size;
+});
 $('status-tabs').addEventListener('click',ev=>{const tab=ev.target.closest('[data-status]');if(!tab)return;currentTab=tab.dataset.status;document.querySelectorAll('[data-status]').forEach(t=>t.classList.toggle('active',t===tab));itemsList();});
 $('search').addEventListener('input',ev=>{search=ev.target.value.toLowerCase().trim();itemsList();});
 $('type-filter').addEventListener('change',itemsList);
