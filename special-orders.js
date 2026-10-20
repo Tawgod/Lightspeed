@@ -522,6 +522,82 @@ export function createSpecialOrdersRouter({
     res.json(rows[0]);
   });
 
+  router.post('/preorders/discord-watch', requireDb, async (req,res)=>{
+    const body=req.body||{};
+    const itemText=String(body.item_text||'').trim();
+    const sourceKey=String(body.source_key||'').trim();
+    const captureMode=String(body.capture_mode||'INFORMAL').trim().toUpperCase();
+    if(!itemText)return res.status(400).json({error:'item_text is required.'});
+    if(!sourceKey)return res.status(400).json({error:'source_key is required.'});
+    if(!['INFORMAL','FORMAL','STAFF'].includes(captureMode))return res.status(400).json({error:'Invalid capture_mode.'});
+
+    const discordUserId=String(body.discord_user_id||'').trim()||null;
+    let customerId=null;
+    if(discordUserId){
+      const customer=await pool.query(
+        'SELECT id FROM customers WHERE discord_user_id=$1 ORDER BY updated_at DESC LIMIT 1',
+        [discordUserId]
+      );
+      customerId=customer.rows[0]?.id||null;
+    }
+    const confidence=body.confidence==null?null:Math.max(0,Math.min(1,Number(body.confidence)||0));
+    const sql=
+      "INSERT INTO preorder_watch_items "+
+      "(customer_id,discord_user_id,discord_username,discord_display_name,capture_mode,status,item_text,message_text,guild_id,channel_id,channel_name,message_id,message_url,source_key,confidence,notes) "+
+      "VALUES ($1,$2,$3,$4,$5,'WATCHING',$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) "+
+      "ON CONFLICT (source_key) DO UPDATE SET "+
+      "customer_id=COALESCE(preorder_watch_items.customer_id,EXCLUDED.customer_id),"+
+      "discord_username=COALESCE(EXCLUDED.discord_username,preorder_watch_items.discord_username),"+
+      "discord_display_name=COALESCE(EXCLUDED.discord_display_name,preorder_watch_items.discord_display_name),"+
+      "item_text=EXCLUDED.item_text,message_text=COALESCE(EXCLUDED.message_text,preorder_watch_items.message_text),"+
+      "message_url=COALESCE(EXCLUDED.message_url,preorder_watch_items.message_url),"+
+      "confidence=COALESCE(EXCLUDED.confidence,preorder_watch_items.confidence),updated_at=now() "+
+      "RETURNING *";
+    const {rows}=await pool.query(sql,[
+      customerId,discordUserId,body.discord_username||null,body.discord_display_name||null,captureMode,
+      itemText,body.message_text||null,body.guild_id||null,body.channel_id||null,body.channel_name||null,
+      body.message_id||null,body.message_url||null,sourceKey,confidence,body.notes||null
+    ]);
+    res.status(201).json({watch:rows[0],matched_customer:Boolean(customerId)});
+  });
+
+  router.get('/preorders/discord-watch', requireDb, async (req,res)=>{
+    const status=String(req.query.status||'WATCHING').trim().toUpperCase();
+    const params=[];
+    let where='';
+    if(status!=='ALL'){
+      if(!['WATCHING','AVAILABLE','CONVERTED','DISMISSED'].includes(status))return res.status(400).json({error:'Invalid status filter.'});
+      params.push(status);
+      where='WHERE w.status=$1';
+    }
+    const sql=
+      "SELECT w.*,c.name AS customer_name,c.phone AS customer_phone,c.email AS customer_email,"+
+      "p.name AS product_name,p.sku AS product_sku,p.upc AS product_upc "+
+      "FROM preorder_watch_items w "+
+      "LEFT JOIN customers c ON c.id=w.customer_id "+
+      "LEFT JOIN products p ON p.id=w.product_id "+where+
+      " ORDER BY CASE w.status WHEN 'WATCHING' THEN 0 WHEN 'AVAILABLE' THEN 1 WHEN 'CONVERTED' THEN 2 ELSE 3 END,w.captured_at DESC";
+    const {rows}=await pool.query(sql,params);
+    res.json(rows);
+  });
+
+  router.patch('/preorders/discord-watch/:id', requireDb, async (req,res)=>{
+    const body=req.body||{};
+    const current=await pool.query('SELECT * FROM preorder_watch_items WHERE id=$1',[req.params.id]);
+    if(!current.rows[0])return res.status(404).json({error:'Preorder watch item not found.'});
+    const old=current.rows[0];
+    const status=body.status===undefined?old.status:String(body.status||'').trim().toUpperCase();
+    if(!['WATCHING','AVAILABLE','CONVERTED','DISMISSED'].includes(status))return res.status(400).json({error:'Invalid status.'});
+    const itemText=body.item_text===undefined?old.item_text:String(body.item_text||'').trim();
+    if(!itemText)return res.status(400).json({error:'item_text cannot be blank.'});
+    const notes=body.notes===undefined?old.notes:(String(body.notes||'').trim()||null);
+    const productId=body.product_id===undefined?old.product_id:(body.product_id||null);
+    const {rows}=await pool.query(
+      'UPDATE preorder_watch_items SET status=$1,item_text=$2,notes=$3,product_id=$4,updated_at=now() WHERE id=$5 RETURNING *',
+      [status,itemText,notes,productId,req.params.id]
+    );
+    res.json(rows[0]);
+  });
   router.get('/preorders/products/:id/allocation-suggestions', requireDb, async (req, res) => {
     const product = await pool.query(`
       SELECT pp.*,pc.name AS campaign_name,pc.allocation_method

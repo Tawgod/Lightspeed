@@ -560,3 +560,32 @@ CREATE TABLE IF NOT EXISTS special_order_item_activity (
 );
 CREATE INDEX IF NOT EXISTS idx_special_order_item_activity_item
 ON special_order_item_activity (special_order_item_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS preorder_watch_items (
+  id BIGSERIAL PRIMARY KEY,
+  customer_id BIGINT REFERENCES customers(id) ON DELETE SET NULL,
+  product_id BIGINT REFERENCES products(id) ON DELETE SET NULL,
+  discord_user_id TEXT,
+  discord_username TEXT,
+  discord_display_name TEXT,
+  capture_mode TEXT NOT NULL DEFAULT 'INFORMAL'
+    CHECK (capture_mode IN ('INFORMAL','FORMAL','STAFF')),
+  status TEXT NOT NULL DEFAULT 'WATCHING'
+    CHECK (status IN ('WATCHING','AVAILABLE','CONVERTED','DISMISSED')),
+  item_text TEXT NOT NULL,
+  message_text TEXT,
+  guild_id TEXT,
+  channel_id TEXT,
+  channel_name TEXT,
+  message_id TEXT,
+  message_url TEXT,
+  source_key TEXT NOT NULL UNIQUE,
+  confidence NUMERIC(5,4),
+  notes TEXT,
+  captured_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_preorder_watch_status
+ON preorder_watch_items (status, captured_at DESC);
+CREATE INDEX IF NOT EXISTS idx_preorder_watch_discord_user
+ON preorder_watch_items (discord_user_id, captured_at DESC);
