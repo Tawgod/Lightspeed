@@ -7,6 +7,7 @@ on:
       - 'consignment-beta.*'
       - 'server.js'
       - 'services/consignmentProductPreview.js'
+      - 'services/consignmentMatcher.js'
       - 'extension/product-scanner/special-orders-adapter.js'
       - 'tests/consignment-beta.test.mjs'
       - '.github/workflows/consignment-beta-smoke.yml'
@@ -15,6 +16,7 @@ on:
       - 'consignment-beta.*'
       - 'server.js'
       - 'services/consignmentProductPreview.js'
+      - 'services/consignmentMatcher.js'
       - 'tests/consignment-beta.test.mjs'
 jobs:
   check:
@@ -27,6 +29,8 @@ jobs:
       - name: Syntax and invariants
         run: |
           node --check server.js
+          node --check services/consignmentMatcher.js
+          node --check services/consignmentProductPreview.js
           node --check consignment-beta.js
           node --check extension/product-scanner/special-orders-adapter.js
           node --test tests/consignment-beta.test.mjs
