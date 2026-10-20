@@ -5,6 +5,8 @@ on:
       - feature/consignment-layout-foundation
     paths:
       - 'consignment-beta.*'
+      - 'consignment-customer.*'
+      - 'services/consignmentFormRules.js'
       - 'server.js'
       - 'services/consignmentProductPreview.js'
       - 'services/consignmentMatcher.js'
@@ -32,11 +34,14 @@ jobs:
           node --check services/consignmentMatcher.js
           node --check services/consignmentProductPreview.js
           node --check consignment-beta.js
+          node --check consignment-customer.js
+          node --check services/consignmentFormRules.js
           node --check extension/product-scanner/special-orders-adapter.js
           node --test tests/consignment-beta.test.mjs
       - name: Front-end routes exist
         run: |
           test -s consignment-beta.html
+          test -s consignment-customer.html
           test -s consignment-beta.css
           grep -q "app.get('/consignment'" server.js
           grep -q "Consignment" special-orders.html
@@ -53,6 +58,9 @@ jobs:
           done
           test -s /tmp/consignment-page.html || (cat /tmp/consignment-beta-server.log && exit 1)
           grep -q 'Consignment Management' /tmp/consignment-page.html
+          curl -fsS http://127.0.0.1:8080/consignment/submit | grep -q 'Submit your used items'
+          curl -fsS http://127.0.0.1:8080/consignment-customer.js | grep -q 'conditionsFor'
+          curl -fsS http://127.0.0.1:8080/consignment-form-rules.js | grep -q 'conditionDescriptions'
           curl -fsS http://127.0.0.1:8080/consignment-beta.css | grep -q 'metric'
           curl -fsS http://127.0.0.1:8080/consignment-beta.js | grep -q 'createSubmission'
           curl -fsS http://127.0.0.1:8080/consignment-match-utils.js | grep -q 'normalizeMatches'
