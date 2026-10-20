@@ -7,7 +7,7 @@
 <nav><a href="/special-orders">Special Orders</a><a href="/consignment" class="active">Consignment</a></nav></header>
 <main>
 <div class="top"><div><div class="eyebrow">Store operations · Beta preview</div><h1>Consignment</h1><div class="muted small">Used games, puzzles, RC and other customer-owned items</div></div>
-<div class="statusline"><button class="btn secondary" id="reset">Reset sample data</button><button class="btn" id="new-submission">+ New submission</button></div></div>
+<div class="statusline"><button class="btn secondary" id="reset">Reset sample data</button><a class="btn secondary" href="/consignment/submit" target="_blank" rel="noopener">View customer submission form</a><button class="btn" id="new-submission">+ Staff submission</button></div></div>
 <div class="demo">TEST DATA ONLY — This beta uses sample customers and products. Changes stay in this browser and never write to Lightspeed, store credit, or the live database. Please do not enter real customer information.</div>
 <div class="metrics" id="metrics"></div>
 <div class="shell">
@@ -16,8 +16,8 @@
 <div class="tabs" id="status-tabs">
 <button class="tab active" data-status="ALL">All</button><button class="tab" data-status="PENDING_REVIEW">Approval queue</button><button class="tab" data-status="FOR_SALE">For sale</button><button class="tab" data-status="SOLD_HOLD">Sold / Hold</button><button class="tab" data-status="CREDIT_DUE">Credit due</button><button class="tab" data-status="CREDITED">Credited</button><button class="tab" data-status="AGING">Aging</button>
 </div>
-<div class="controls"><div class="field" style="flex:3"><label for="search">Search title, customer or item number</label><input id="search" placeholder="e.g. Ticket to Ride or UG-001284"></div><div class="field"><label for="type-filter">Item type</label><select id="type-filter"><option value="">All types</option><option>Game</option><option>Puzzle</option><option>RC</option><option>Other</option></select></div></div>
-<div class="table-scroll"><table><thead><tr><th>Product / item code</th><th>Consignor</th><th>Price</th><th>Days</th><th>Status</th></tr></thead><tbody id="items-body"></tbody></table></div>
+<div class="controls"><div class="field" style="flex:3"><label for="search">Search title, customer or item number</label><input id="search" placeholder="e.g. Ticket to Ride or UG-001284"></div><div class="field"><label for="type-filter">Item type</label><select id="type-filter"><option value="">All types</option><option>Game</option><option>Puzzle</option><option>RC</option><option>Train</option><option>Other</option></select></div></div>
+<div class="actions" style="padding:0 18px 12px"><button id="approve-selected" class="btn small" disabled>Approve selected items (demo)</button><button id="clear-customer-filter" class="btn secondary small hide">Clear customer filter</button><span class="muted tiny" id="selection-count"></span></div><div class="table-scroll"><table><thead><tr><th><input id="bulk-all" type="checkbox" aria-label="Select all visible pending items"></th><th>Product / item code</th><th>Consignor</th><th>Price</th><th>Days</th><th>Status</th></tr></thead><tbody id="items-body"></tbody></table></div>
 </section>
 <section class="panel" id="detail-panel"><div class="panel-head"><h2 id="detail-title">Item details</h2></div><div class="panel-body" id="details"><div class="empty">Select a consignment item to review its details, find an existing product match, or update its status.</div></div></section>
 <section class="panel hide" id="submission-panel"><div class="panel-head"><h2>New multi-item submission</h2><div class="muted tiny">Staff entry / customer online submission simulation</div></div>
