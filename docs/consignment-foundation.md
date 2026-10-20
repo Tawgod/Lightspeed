@@ -1,6 +1,6 @@
 # Consignment foundation (2026-10-19)
 
-Status: In Development (layout preview only). No testing against live Lightspeed, deployment, or customer-facing access.
+Status: In Development; interactive synthetic-data beta deployed in isolated Railway test project. No production POS or customer/credit API writes.
 
 Repository: Tawgod/Lightspeed
 Base: integration/hobby-corner-consolidation
@@ -42,3 +42,25 @@ Feature branch: feature/consignment-layout-foundation
 - Matching should run for staff entries AND customer-submitted online items when staff opens the pending submission, searching active and inactive/historical NEW products, without automatically accepting matches. Product photos are excluded from copying.
 - Security: schema is not a public API. Any staff/customer list and matching details require authorization. The static preview displays no real records.
 - Outstanding: implement protected list/search endpoints and a candidate-match scorer; verify Lightspeed inactive product API before enabling writes; integrate authenticated customer portal; implement extension launcher only after release-queue reconciliation.
+
+## Review beta delivery — 2026-10-19
+- URL: https://consignment-beta-test.up.railway.app/consignment
+- Railway: Hobby Corner Integration Test project, test environment, service consignment-beta; deployed from feature/consignment-layout-foundation. Never repoint production Special Orders for this beta.
+- Main route /consignment serves the interactive demo. Static client JS and CSS plus shared match-utils module are served by Express.
+- Demo data stored in browser localStorage, synthetic examples only. No server-side storage or real multi-user collaboration. Reset sample data is available.
+- Staff: filter/search, review suggested matches for online and staff submissions, select templates, approve/reject, change price/condition, simulate sale, enforce 72-hour hold before simulated credit, aging warnings.
+- Customer portal: sample issued and pending credit history, not actual Lightspeed available balance. Identity/SSO not implemented.
+- Existing scanner match normalization reused. services/consignmentMatcher.js calls the existing scanner checkProductMatches for future authenticated integrations and fails closed if either source fails. Live matching is NOT enabled in the isolated beta.
+- services/consignmentProductPreview.js maps to safe subset of the existing Special Orders product-create contract; excludes original pictures, SKU, UPC, inventory, supplier and reorder data, and requires a verified category UUID. Cost-accounting treatment remains an approval gate.
+- Extension popup launcher added to feature branch and recorded in Tawgod/Hobby-Corner:main/CHROME_EXTENSION_RELEASE_QUEUE.md. No package or version bump.
+- Smoke tests: node --test tests/consignment-beta.test.mjs, GitHub Actions consignment-beta-smoke.yml and scanner regression CI.
+- Known limitations: browser rendering cannot be independently confirmed by assistant; no real customer auth, persistence, payment credits, product writes, labels, online listing or SSO.
+
+## Next implementation milestones
+1. Validate beta user experience with store staff.
+2. Build protected staff APIs and isolated Postgres persistence with auditable event history.
+3. Connect authenticated Special Orders local+remote matching to online submissions; include inactive/historical original new products.
+4. Verify actual General > Consignment category UUID and accounting cost policy before any product write.
+5. Implement safe product creation, unique used SKU, sales reconciliation, three-day hold and exactly-once credit with return safeguards.
+6. Verify supported Lightspeed Online single-sign-on, not direct password reuse or cookie scraping.
+7. Release Chrome launcher only after queue reconciliation and test approval.
