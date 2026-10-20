@@ -1595,47 +1595,17 @@ async function fetchLinkedLightspeedUser(userId){
   return user;
 }
 
+// A scanner employee is authorized by the same active Timeclock identity
+// that can clock in. Role resolution is not a prerequisite for scanner review
+// or campaign draft staging. Real Lightspeed product writes are still disabled.
 async function scannerEffectivePermissions(employee){
-  let approval={role:null,canApprove:false,verified:false,reason:'lightspeed_unavailable'};
-  let lookupFailure='lightspeed_lookup_unavailable';
-  if(employee.lightspeed_user_id){
-    try{
-      // Prefer per-user documented API; do not infer role from the service token.
-      const user=await fetchLinkedLightspeedUser(employee.lightspeed_user_id);
-      approval=linkedScannerApproval({lightspeedUserId:employee.lightspeed_user_id,users:[user]});
-      if(!approval.verified)console.warn('[scanner] Individual Lightspeed user returned no supported explicit role; requesting role catalog.');
-      if(!approval.verified){
-        try{
-          const roles=await fetchLightspeedRoles();
-          approval=linkedScannerApproval({lightspeedUserId:employee.lightspeed_user_id,users:[user],roles});
-        }catch(error){
-          console.warn('[scanner] Role catalog fetch failed, approval withheld:',Number(error?.status)||'unavailable');
-          lookupFailure='lightspeed_role_not_recognized';
-        }
-      }
-    }catch(error){
-      // Compatibility fallback for stores that only expose the legacy user-list API.
-      try{
-        const users=await fetchLightspeedUsers();
-        approval=linkedScannerApproval({lightspeedUserId:employee.lightspeed_user_id,users});
-        if(!approval.verified){
-          const roles=await fetchLightspeedRoles();
-          approval=linkedScannerApproval({lightspeedUserId:employee.lightspeed_user_id,users,roles});
-        }
-      }catch(fallbackError){
-        console.warn('[scanner] Linked-user verification failed; approval withheld. Individual HTTP:',Number(error?.status)||'unavailable','legacy HTTP:',Number(fallbackError?.status)||'unavailable');
-      }
-    }
-  }
-  const canLookup=employee.scanner_can_lookup===true;
-  const canApprove=canLookup && (employee.scanner_can_approve===true || (approval.verified && approval.canApprove));
+  const activeEmployee=Boolean(employee?.id && employee.active===true);
   return {
-    id:employee.id,name:employee.name,canLookup,canApprove,
-    permissionReason:canApprove?null:(!employee.lightspeed_user_id?'lightspeed_account_not_linked':approval.reason==='unlinked'?'lightspeed_account_not_linked':approval.reason==='missing_or_duplicate'?'lightspeed_user_not_found':approval.reason==='unresolved_role_id'?'lightspeed_role_not_recognized':approval.reason==='lightspeed_unavailable'?lookupFailure:approval.verified?'role_read_only':'lightspeed_role_not_recognized'),
-    role:approval.verified?approval.role:null,
-    permissionSource:canApprove
-      ? (approval.verified&&approval.canApprove?'lightspeed_role':'timeclock_admin')
-      : 'read_only'
+    id:employee.id,name:employee.name,
+    canLookup:activeEmployee,canApprove:activeEmployee,
+    role:null,
+    permissionReason:activeEmployee?null:'inactive_employee',
+    permissionSource:activeEmployee?'timeclock_employee':'read_only'
   };
 }
 
@@ -1648,7 +1618,7 @@ app.post('/api/timeclock/integrations/scanner/verify-pin', async (req,res) => {
   if(!/^\d{4}$/.test(pin))return res.status(401).json({error:'Invalid employee credentials.'});
   try{
     const rows=await pool.query(
-      'SELECT id,name,lightspeed_user_id,scanner_can_lookup,scanner_can_approve FROM employees WHERE pin_hash=$1 AND active=TRUE LIMIT 1',
+      'SELECT id,name,active FROM employees WHERE pin_hash=$1 AND active=TRUE LIMIT 1',
       [pinHash(pin)]
     );
     const employee=rows.rows[0];
@@ -1666,7 +1636,7 @@ app.post('/api/timeclock/integrations/scanner/authorize', async (req,res) => {
   if(!Number.isSafeInteger(employeeId)||employeeId<=0)return res.status(400).json({error:'Valid employee ID required.'});
   try{
     const rows=await pool.query(
-      'SELECT id,name,lightspeed_user_id,scanner_can_lookup,scanner_can_approve FROM employees WHERE id=$1 AND active=TRUE LIMIT 1',
+      'SELECT id,name,active FROM employees WHERE id=$1 AND active=TRUE LIMIT 1',
       [employeeId]
     );
     const employee=rows.rows[0];

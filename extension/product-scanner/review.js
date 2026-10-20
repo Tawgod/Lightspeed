@@ -93,7 +93,7 @@ signInForm.addEventListener('submit',async event=>{
     signOutButton.hidden=false;
     const role=data.employee.role?' ('+data.employee.role+')':'';
     const reasons={lightspeed_account_not_linked:'No Lightspeed user link was found for this PIN.',lightspeed_user_not_found:'The linked Lightspeed account could not be found.',lightspeed_role_not_recognized:'The Lightspeed role could not be verified.',lightspeed_lookup_unavailable:'Lightspeed permissions could not be checked.',role_read_only:'Lightspeed returned a read-only role.'};
-    employeeStatus.textContent='Signed in as '+(data.employee.name||'employee')+role+'. '+(data.employee.canApprove===true?'Approval access verified (product writes disabled).':'Read-only: '+(reasons[data.employee.permissionReason]||'Approval permission not verified.'));
+    employeeStatus.textContent='Signed in as '+(data.employee.name||'employee')+'. '+(data.employee.canApprove===true?'Scanner review access enabled. Product creation in Lightspeed remains disabled.':'Scanner access unavailable: '+(reasons[data.employee.permissionReason]||'Employee authorization failed.'));
     checkButton.disabled=!draftAvailable;
     await lookupSuppliers();
     if(preorderCheckbox.checked)await loadPreorderCampaigns();
@@ -179,7 +179,7 @@ stagePreorderButton.addEventListener('click',async()=>{
   if(stagePreorderButton.disabled||!preorderCheckbox.checked)return;
   stagePreorderButton.disabled=true;
   if(!scannerSession || scannerSession.expiresAt<=Date.now() || !scannerSession.canApprove){
-    preorderStatus.textContent='Manager or Admin approval required. Sign in again.';return;
+    preorderStatus.textContent='Active Timeclock employee sign-in required. Sign in again.';return;
   }
   if(!verifiedProductSignature||verifiedProductSignature!==signature()||!Array.isArray(lastMatches)||!supplierMatched){
     preorderStatus.textContent='Product and supplier must pass duplicate verification before staging.';stageEligibility();return;
