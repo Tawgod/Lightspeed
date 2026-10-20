@@ -1,0 +1,38 @@
+name: Consignment Beta smoke
+on:
+  push:
+    branches:
+      - feature/consignment-layout-foundation
+    paths:
+      - 'consignment-beta.*'
+      - 'server.js'
+      - 'services/consignmentProductPreview.js'
+      - 'extension/product-scanner/special-orders-adapter.js'
+      - 'tests/consignment-beta.test.mjs'
+      - '.github/workflows/consignment-beta-smoke.yml'
+  pull_request:
+    paths:
+      - 'consignment-beta.*'
+      - 'server.js'
+      - 'services/consignmentProductPreview.js'
+      - 'tests/consignment-beta.test.mjs'
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax and invariants
+        run: |
+          node --check server.js
+          node --check consignment-beta.js
+          node --check extension/product-scanner/special-orders-adapter.js
+          node --test tests/consignment-beta.test.mjs
+      - name: Front-end routes exist
+        run: |
+          test -s consignment-beta.html
+          test -s consignment-beta.css
+          grep -q "app.get('/consignment'" server.js
+          grep -q "Consignment" special-orders.html
