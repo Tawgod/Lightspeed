@@ -64,3 +64,14 @@ Feature branch: feature/consignment-layout-foundation
 5. Implement safe product creation, unique used SKU, sales reconciliation, three-day hold and exactly-once credit with return safeguards.
 6. Verify supported Lightspeed Online single-sign-on, not direct password reuse or cookie scraping.
 7. Release Chrome launcher only after queue reconciliation and test approval.
+
+## Customer-first intake beta revision — 2026-10-20
+- Customer preview URL: /consignment/submit (same isolated beta host). Separate form from staff management; no backend submission writes or production customer records.
+- Games and Puzzles presented first. Game/Puzzle/RC/Train/Other condition labels and type-specific explanations available in services/consignmentFormRules.js; descriptions derived from existing printed forms and simplified in the UI.
+- Required customer fields: name, phone, email, per-item type, title, price, condition, missing-components declaration and details when missing, smoking household, pets (Cat/Dog/Other/None), musty/basement smell. Multiple items per submission.
+- Mechanical fields for RC and Train: brand/manufacturer, model/part number, tested and testing comments, motor type brushed/brushless; Train additionally DC/DCC/Unknown and N/HO/O/G/Other scale.
+- Contact preferences: email, SMS/Klaviyo, Discord if linked. Beta records neither consents nor sends notifications. Actual marketing/transactional permissions and integration still need separate design.
+- Staff approval queue: customer name click filter, select many pending items, bulk approval simulation. No actual POS create, tag, or credit actions.
+- Customer matching: do not automatically create customers based only on an unverified contact name. Use existing Lightspeed customer lookup and require employee confirmation for ambiguous/new records. Avoid duplicate records.
+- Safety: actual customer registration, durable submissions, verified terms, digital signature, privacy, authenticated login, tag creation and credit messaging are not implemented; do not ask customers to use public beta for real data.
+- Next: shared protected persistence across customer and staff UIs, customer record matching queue, customer form agreement/signature, detailed employee checklist, permissions and audit log, verified Klaviyo transactional SMS/email support and Discord link.
