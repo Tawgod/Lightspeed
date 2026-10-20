@@ -18,6 +18,27 @@
     </div>
   </div>
   <div class="panel">
+    <div class="section-heading"><div>
+      <h2 style="margin:0">Discord Preorder Watch</h2>
+      <p class="form-note">Customer interest captured from Discord before an item is orderable. WATCHING is a reminder, not a committed order.</p>
+    </div></div>
+    <div class="toolbar">
+      <label>Status
+        <select id="watchStatus" onchange="loadDiscordWatch()">
+          <option value="WATCHING">Watching</option>
+          <option value="AVAILABLE">Available</option>
+          <option value="CONVERTED">Converted</option>
+          <option value="DISMISSED">Dismissed</option>
+          <option value="ALL">All</option>
+        </select>
+      </label>
+      <button onclick="loadDiscordWatch()">Refresh watch list</button>
+    </div>
+    <div id="watchSummary" class="form-note"></div>
+    <div id="discordWatch"></div>
+  </div>
+
+  <div class="panel">
     <div class="toolbar">
       <select id="preorderCampaign" onchange="loadPreorderCampaign()"><option value="">Select preorder campaign…</option></select>
       <button onclick="loadPreorders()">Refresh campaigns</button>
