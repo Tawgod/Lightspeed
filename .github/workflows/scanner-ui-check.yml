@@ -1,7 +1,7 @@
 name: Scanner review UI regression
 on:
   push:
-    branches: [feature/scanner-fields-create-preview, feature/scanner-review-auto-lookup, feature/scanner-sku-role-diagnostics]
+    branches: [feature/scanner-fields-create-preview, feature/scanner-review-auto-lookup, feature/scanner-sku-role-diagnostics, feature/scanner-timeclock-employee-access]
     paths:
       - 'extension/**'
       - 'services/scannerSupplierTemplates.js'
@@ -10,6 +10,7 @@ on:
       - 'timeclock/server.js'
       - 'extension/product-scanner/special-orders-adapter.js'
       - 'tests/scannerLightspeedRoles.test.js'
+      - 'tests/scannerEmployeeAccess.test.js'
       - 'tests/lightspeedOrderDetection.test.cjs'
       - 'tests/scannerAcdCapture.test.cjs'
       - 'routes/scannerMatchGateway.js'
@@ -89,3 +90,5 @@ jobs:
         run: node --test tests/scannerReviewAutoMatch.test.js
       - name: Verify guarded preorder campaign staging
         run: node --test tests/scannerPreorderStaging.test.js
+      - name: Verify active Timeclock employee scanner access
+        run: node --test tests/scannerEmployeeAccess.test.js
