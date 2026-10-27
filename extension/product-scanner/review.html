@@ -48,6 +48,15 @@
     </div>
     <button type="button" id="create-item" disabled>Prepare Create Item</button>
     <pre id="create-preview" role="status" hidden></pre>
+    <div class="proposal-review-controls">
+      <button type="button" id="submit-product-proposal" disabled>Submit New Item for Review</button>
+      <p id="product-proposal-status" role="status">New items require duplicate verification before submission.</p>
+      <details id="proposal-inbox">
+        <summary>Pending product review queue</summary>
+        <button type="button" id="refresh-product-proposals">Refresh review queue</button>
+        <div id="product-proposal-list" role="status"></div>
+      </details>
+    </div>
     <p class="hint">Creation and updates are disabled. No supplier values automatically overwrite Lightspeed records.</p>
   </section>
 </main><script type="module" src="review.js"></script>
