@@ -479,7 +479,7 @@ scanOpenButton.addEventListener('click',async()=>{
     draft.supplierDomain=url.hostname.toLowerCase().replace(/^www\./,'');
     await chrome.storage.local.set({scannerDraft:draft});
     loadScannerDraft(draft);
-    status.textContent='Captured '+(draft.product.name||'supplier product')+'. Review the fields; existing products are checked automatically.';
+    if(!draft.requiresSelection)status.textContent='Captured '+(draft.product.name||'supplier product')+'. Review the fields; existing products are checked automatically.';
   }catch(error){status.textContent='Could not scan supplier page: '+error.message;}
   finally{scanOpenButton.disabled=false;}
 });
