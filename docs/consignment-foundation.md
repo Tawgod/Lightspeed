@@ -93,3 +93,13 @@ Feature branch: feature/consignment-layout-foundation
 - More consistent accent buttons, navigation active states, table striping, interactive selection, and visible keyboard focus.
 - Mobile layout remains responsive; customer-facing form and staff page both use the shared stylesheet.
 - UI-only changes: no alteration of customer data, Lightspeed product writes, credit posting, or extension packaging. Automated smoke and scanner regression tests passed on UI stylesheet commit 7af949b20cc45eb660e0089ec16ccc31759458c0. Manual visual review pending.
+
+## Shared Addon UI PR #16 adoption — 2026-10-27
+- Source: draft PR #16, feature/shared-addon-ui-beta-foundation-20261027; its shared-ui/hc.css was copied byte-for-byte to this isolated Consignment branch. Shared source not merged.
+- Screens: staff /consignment and customer /consignment/submit. Both opt in via the hc-ui root wrapper and load the same shared stylesheet.
+- Shared elements: hc-panel, hc-panel-header, hc-panel-body, hc-button primary/secondary, hc-alert warning and hc-topbar. Original Hobby Corner wordmark/icon data is retained byte-for-byte from PR #16 and embedded into shared-ui/consignment-brand.css; avoids external asset requests while PR #16 remains a draft.
+- Compatibility: shared-ui/consignment-adapter.css maps legacy dynamic .btn, .panel, .tab, .pill, .match, and field classes to shared tokens, preserving existing JS-generated markup, element IDs, handlers, bulk approval and customer intake.
+- A deliberate deviation is retaining the top navigation (rather than full sidebar) because the customer form has a constrained width and staff beta is still standalone. Primary palette now uses official navy/blue/orange foundation rather than the earlier provisional teal style.
+- Files: shared-ui/hc.css, shared-ui/consignment-brand.css, shared-ui/consignment-adapter.css, consignment-beta.html, consignment-customer.html, server.js, .github/workflows/consignment-beta-smoke.yml.
+- No changes to Chrome extension files or release queue; no Chrome release. No new POS, customer or credit writes.
+- Tests: CI smoke now verifies shared CSS routes and scoped class usage. Manual browser visual tests at 100/125/200%, keyboard, copy/paste and screen-reader review still pending. Separate Railway test deployment only; no production merge.
