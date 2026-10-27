@@ -10,6 +10,10 @@ on:
       - 'server.js'
       - 'services/consignmentProductPreview.js'
       - 'services/consignmentMatcher.js'
+      - 'routes/consignmentBeta.js'
+      - 'services/consignmentCreditEligibility.js'
+      - 'tests/consignment-api.test.mjs'
+      - 'tests/consignment-credit.test.mjs'
       - 'extension/product-scanner/special-orders-adapter.js'
       - 'tests/consignment-beta.test.mjs'
       - '.github/workflows/consignment-beta-smoke.yml'
@@ -31,13 +35,15 @@ jobs:
       - name: Syntax and invariants
         run: |
           node --check server.js
+          node --check routes/consignmentBeta.js
+          node --check services/consignmentCreditEligibility.js
           node --check services/consignmentMatcher.js
           node --check services/consignmentProductPreview.js
           node --check consignment-beta.js
           node --check consignment-customer.js
           node --check services/consignmentFormRules.js
           node --check extension/product-scanner/special-orders-adapter.js
-          node --test tests/consignment-beta.test.mjs
+          node --test tests/consignment-beta.test.mjs tests/consignment-api.test.mjs tests/consignment-credit.test.mjs
       - name: Front-end routes exist
         run: |
           test -s consignment-beta.html
