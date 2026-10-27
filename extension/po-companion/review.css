@@ -20,3 +20,10 @@ button:disabled{background:#a7b9bf;color:#32434b;cursor:not-allowed}
 button:focus-visible{outline:3px solid #ce9b35;outline-offset:3px}
 @media(max-width:650px){main{padding:12px}footer{align-items:flex-start;flex-direction:column}table{font-size:12px}th,td{padding:6px}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important}}
+
+/* Feature-local layout only. Shared UI owns tokens/components. */
+.hc-ui .top{background:var(--hc-header);color:#fff}
+.hc-ui .review-section{background:var(--hc-surface)}
+.hc-ui .section-header{background:var(--hc-surface-inset)}
+.hc-ui footer button{background:var(--hc-primary)}
+.hc-ui .hc-wordmark{width:140px;max-width:40vw}
