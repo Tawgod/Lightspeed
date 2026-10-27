@@ -56,33 +56,34 @@
     .collapsed header{height:100%;align-items:flex-start;justify-content:center;padding:8px 4px}
     @media(prefers-reduced-motion:no-preference){button{transition:background .12s ease}}
   `;
-  const shell = document.createElement('div'); shell.className='wrap';
-  const header=document.createElement('header'), title=document.createElement('h2'); title.textContent='Hobby Corner · PO Companion';
-  const collapse=document.createElement('button');collapse.textContent='−';collapse.title='Collapse or expand';
+  try { const shared=await chrome.runtime.sendMessage({type:'HCT_PO_STYLE'});if(shared?.ok && typeof shared.css==='string'){const s=document.createElement('style');s.textContent=shared.css;shadow.append(s);} } catch { /* local fallback styling remains */ }
+  const shell = document.createElement('div'); shell.className='wrap hc-ui hc-panel--drawer';
+  const header=document.createElement('header'), title=document.createElement('h2');header.className='hc-topbar'; title.textContent='Hobby Corner · PO Companion';
+  const collapse=document.createElement('button');collapse.className='hc-button hc-button--secondary';collapse.textContent='−';collapse.title='Collapse or expand';
   collapse.onclick=()=>{const yes=shell.classList.toggle('collapsed');collapse.textContent=yes?'+':'−';};
-  const close=document.createElement('button');close.textContent='×';close.title='Close';
+  const close=document.createElement('button');close.className='hc-button hc-button--secondary';close.textContent='×';close.title='Close';
   close.onclick=()=>host.remove();header.append(title,collapse,close);
-  const body=document.createElement('div');body.className='body';
+  const body=document.createElement('div');body.className='body hc-stack';
   const description=document.createElement('p');description.className='muted';
-  const toolbar=document.createElement('div');toolbar.className='toolbar';
-  const mode=document.createElement('select');mode.setAttribute('aria-label','Identifier to copy');
+  const toolbar=document.createElement('div');toolbar.className='toolbar hc-inset';
+  const mode=document.createElement('select');mode.className='hc-select';mode.setAttribute('aria-label','Identifier to copy');
   [['supplierSku','Supplier SKU'],['upc','UPC']].forEach(([v,label])=>{const option=document.createElement('option');option.value=v;option.textContent=label;mode.append(option);});
   const count=document.createElement('span');count.className='muted';
   toolbar.append('Copy: ',mode,count);
-  const notice=document.createElement('p');notice.className='notice';notice.setAttribute('role','status');notice.setAttribute('aria-live','polite');
+  const notice=document.createElement('p');notice.className='notice hc-alert hc-alert--warning';notice.setAttribute('role','status');notice.setAttribute('aria-live','polite');
   const items=document.createElement('div');
   const footer=document.createElement('footer');const summary=document.createElement('span');const review=document.createElement('button');
-  review.textContent='Review Changes';review.setAttribute('aria-label','Review selected purchase order changes');review.onclick=()=>chrome.runtime.sendMessage({type:'HCT_PO_REVIEW'});
+  review.className='hc-button';review.textContent='Review Changes';review.setAttribute('aria-label','Review selected purchase order changes');review.onclick=()=>chrome.runtime.sendMessage({type:'HCT_PO_REVIEW'});
   footer.append(summary,review);body.append(description,toolbar,notice,items);shell.append(header,body,footer);shadow.append(style,shell);document.documentElement.append(host);
   const {poCompanionContext:context,poCompanionDrafts:allDrafts={}}=await chrome.storage.local.get(['poCompanionContext','poCompanionDrafts']);
   if(!context?.poId){description.textContent='No PO selected.';notice.textContent='Open the Lightspeed purchase order and choose “Use Current PO” from the Hobby Corner extension first.';review.disabled=true;return;}
   description.textContent='PO '+context.poId+' • Sign in to load items.';
   notice.textContent='Consolidated development preview: live PO access remains disabled pending endpoint validation. No Lightspeed changes can be submitted.';
-  const login=document.createElement('div');login.className='toolbar';
-  const pin=document.createElement('input');pin.type='password';pin.inputMode='numeric';pin.maxLength=4;pin.placeholder='Timeclock PIN';pin.setAttribute('aria-label','Employee Timeclock PIN');
-  const signIn=document.createElement('button');signIn.textContent='Sign in & Load PO';
-  const reload=document.createElement('button');reload.textContent='Reload PO';reload.hidden=true;
-  const signOut=document.createElement('button');signOut.textContent='Sign out';signOut.hidden=true;
+  const login=document.createElement('div');login.className='toolbar hc-inset';
+  const pin=document.createElement('input');pin.className='hc-input';pin.type='password';pin.inputMode='numeric';pin.maxLength=4;pin.placeholder='Timeclock PIN';pin.setAttribute('aria-label','Employee Timeclock PIN');
+  const signIn=document.createElement('button');signIn.className='hc-button';signIn.textContent='Sign in & Load PO';
+  const reload=document.createElement('button');reload.className='hc-button hc-button--secondary';reload.textContent='Reload PO';reload.hidden=true;
+  const signOut=document.createElement('button');signOut.className='hc-button hc-button--secondary';signOut.textContent='Sign out';signOut.hidden=true;
   login.append(pin,signIn,reload,signOut);body.insertBefore(login,toolbar);
   let key=null,draft=null,lines=[];
   const save=async()=>{
@@ -116,25 +117,25 @@
   function render(){
     items.replaceChildren();count.textContent=lines.length+' items';
     for (const item of lines) {
-      const row=document.createElement('div');row.className='item';
+      const row=document.createElement('div');row.className='item hc-panel';
       const state=draft?.items?.[item.lineId]||{selected:false,proposed:{}};
       const top=document.createElement('div');top.className='line';
       const check=document.createElement('input');check.type='checkbox';check.checked=!!state.selected;
-      const code=document.createElement('span');code.className='code';
+      const code=document.createElement('span');code.className='code hc-mono';
       const id=state.identifierOverride||draft?.identifierMode||'supplierSku';
       const value=id==='upc'?item.upc:item.supplierSku;
       code.textContent=value||('Missing '+(id==='upc'?'UPC':'supplier SKU'));
       if(!value)code.classList.add('warning');
-      const copy=document.createElement('button');copy.textContent='Copy';copy.disabled=!value;
-      copy.onclick=()=>navigator.clipboard.writeText(value);
+      const copy=document.createElement('button');copy.className='hc-button hc-button--secondary';copy.textContent='Copy';copy.disabled=!value;
+      copy.onclick=async()=>{try {await navigator.clipboard.writeText(value);copy.textContent='Copied';setTimeout(()=>copy.textContent='Copy',1500);}catch{notice.textContent='Copy failed. Select the original identifier to copy manually.';}};
       const qty=document.createElement('strong');qty.textContent='×'+item.quantity;
       top.append(check,code,copy,qty);
       const name=document.createElement('div');name.className='name';name.textContent=item.name;
       row.append(top,name);
-      const fields=document.createElement('div');fields.className='fields';fields.hidden=!check.checked;
+      const fields=document.createElement('div');fields.className='fields hc-inset';fields.hidden=!check.checked;
       for (const [field,label] of [['reorderPoint','RP'],['reorderQuantity','RQ'],['supplierCost','Cost'],['msrp','MSRP']]){
         const l=document.createElement('label');l.textContent=label;
-        const input=document.createElement('input');input.type='number';input.min='0';input.step=field==='reorderPoint'||field==='reorderQuantity'?'1':'0.01';
+        const input=document.createElement('input');input.className='hc-input';input.type='number';input.min='0';input.step=field==='reorderPoint'||field==='reorderQuantity'?'1':'0.01';
         input.value=state.proposed[field]??'';input.oninput=()=>{state.proposed[field]=input.value;draft.items[item.lineId]=state;save();};
         l.append(input);fields.append(l);
       }
