@@ -5,8 +5,9 @@ import {createScannerMatchGateway} from '../routes/scannerMatchGateway.js';
 import {createScannerSessions} from './scannerSessions.js';
 import {createScannerPreorderRouter} from './scannerPreorderStaging.js';
 import {createScannerProductReviewRouter} from './scannerProductReviewQueue.js';
+import {createScannerTestCreationRouter} from './scannerTestCreationRouter.js';
 
-export function createTimeclockScannerGateway({identity,lookup,sessionSecret,clock=()=>Date.now(),loginLimiter,supplierLookup,preorderPool}={}){
+export function createTimeclockScannerGateway({identity,lookup,sessionSecret,clock=()=>Date.now(),loginLimiter,supplierLookup,preorderPool,testWriter}={}){
   const router=express.Router();
   router.use((req,res,next)=>{res.set('Cache-Control','no-store');next();});
   if(!identity?.verifyPin||!identity?.authorize||typeof lookup!=='function'||typeof loginLimiter!=='function'){
@@ -38,6 +39,7 @@ export function createTimeclockScannerGateway({identity,lookup,sessionSecret,clo
   if(preorderPool){
     router.use(createScannerPreorderRouter({pool:preorderPool,verifyEmployee}));
     router.use(createScannerProductReviewRouter({pool:preorderPool,verifyEmployee,lookup}));
+    router.use(createScannerTestCreationRouter({pool:preorderPool,verifyEmployee,lookup,testWriter}));
   }
   return router;
 }
