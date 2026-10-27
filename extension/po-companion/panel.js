@@ -56,6 +56,7 @@
     .collapsed header{height:100%;align-items:flex-start;justify-content:center;padding:8px 4px}
     @media(prefers-reduced-motion:no-preference){button{transition:background .12s ease}}
   `;
+  shadow.append(style);
   try { const shared=await chrome.runtime.sendMessage({type:'HCT_PO_STYLE'});if(shared?.ok && typeof shared.css==='string'){const s=document.createElement('style');s.textContent=shared.css;shadow.append(s);} } catch { /* local fallback styling remains */ }
   const shell = document.createElement('div'); shell.className='wrap hc-ui hc-panel--drawer';
   const header=document.createElement('header'), title=document.createElement('h2');header.className='hc-topbar'; title.textContent='Hobby Corner · PO Companion';
@@ -76,7 +77,7 @@
   const items=document.createElement('div');
   const footer=document.createElement('footer');const summary=document.createElement('span');const review=document.createElement('button');
   review.className='hc-button';review.textContent='Review Changes';review.setAttribute('aria-label','Review selected purchase order changes');review.onclick=()=>chrome.runtime.sendMessage({type:'HCT_PO_REVIEW'});
-  footer.append(summary,review);body.append(description,toolbar,notice,items);shell.append(header,body,footer);shadow.append(style,shell);document.documentElement.append(host);
+  footer.append(summary,review);body.append(description,toolbar,notice,items);shell.append(header,body,footer);shadow.append(shell);document.documentElement.append(host);
   const {poCompanionContext:context,poCompanionDrafts:allDrafts={}}=await chrome.storage.local.get(['poCompanionContext','poCompanionDrafts']);
   if(!context?.poId){description.textContent='No PO selected.';notice.textContent='Open the Lightspeed purchase order and choose “Use Current PO” from the Hobby Corner extension first.';review.disabled=true;return;}
   description.textContent='PO '+context.poId+' • Sign in to load items.';
