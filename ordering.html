@@ -93,6 +93,16 @@
 
   <div class="panel">
     <div class="section-heading"><div>
+      <h2 style="margin:0">Approved Delivery Queue</h2>
+      <p class="form-note">Approved customer messages waiting for delivery. Discord delivery is being built/tested separately; email/SMS remain queued until their delivery integrations are added.</p>
+    </div></div>
+    <div class="toolbar"><button onclick="loadDeliveryQueue()">Refresh delivery queue</button></div>
+    <div id="deliveryQueueSummary" class="form-note"></div>
+    <div id="deliveryQueue"></div>
+  </div>
+
+  <div class="panel">
+    <div class="section-heading"><div>
       <h2 style="margin:0">Lightspeed Unfulfilled Orders</h2>
       <p class="form-note">Read-only demand from open Lightspeed fulfillments. Items already found on a current Lightspeed purchase order are marked with the PO number.</p>
     </div></div>

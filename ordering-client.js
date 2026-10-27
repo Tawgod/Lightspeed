@@ -26,7 +26,7 @@ async function refreshEverything(){
   try{
     showNotice('Refreshing Lightspeed suppliers, purchase orders, fulfillment demand, and Special Orders…');
     await loadSuppliers();
-    await Promise.all([loadOrdering(),loadLightspeedContext(),loadReadyNotifications()]);
+    await Promise.all([loadOrdering(),loadLightspeedContext(),loadReadyNotifications(),loadDeliveryQueue()]);
     showNotice('Ordering data refreshed.');
   }catch(e){showNotice('Refresh failed: '+e.message)}
 }
@@ -418,7 +418,7 @@ async function confirmReceiving(poId,preview){
     });
     const ready=(d.outcomes||[]).filter(x=>x.ready).length;
     showNotice('Receiving saved. '+ready+' Special Order line(s) are fully received.');
-    await Promise.all([loadReceivingPreview(),loadOrdering(),loadReadyNotifications()]);
+    await Promise.all([loadReceivingPreview(),loadOrdering(),loadReadyNotifications(),loadDeliveryQueue()]);
   }catch(e){showNotice('Receiving failed: '+e.message)}
 }
 
@@ -453,8 +453,31 @@ async function reviewNotification(id,action){
   try{
     await getJson(api+'/notifications/'+id+'/review',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,reason,reviewed_by:'ordering-web'})});
     showNotice(action==='ACKNOWLEDGED'?'Notification approved for delivery queue.':'Notification suppressed.');
-    await loadReadyNotifications();
+    await Promise.all([loadReadyNotifications(),loadDeliveryQueue()]);
   }catch(e){showNotice('Notification review failed: '+e.message)}
+}
+async function loadDeliveryQueue(){
+  try{
+    const rows=await getJson(api+'/notifications/delivery-queue');
+    document.getElementById('deliveryQueueSummary').textContent=rows.length+' approved delivery item(s) waiting/in progress/error.';
+    const box=document.getElementById('deliveryQueue');box.replaceChildren();
+    if(!rows.length){box.innerHTML='<p class="form-note">No approved customer messages are waiting for delivery.</p>';return}
+    const table=document.createElement('table');
+    table.innerHTML='<tr><th>Customer</th><th>Item</th><th>Channel</th><th>Recipient</th><th>Status</th><th>Queued</th><th>Error</th></tr>';
+    for(const n of rows){
+      const tr=document.createElement('tr');
+      tr.innerHTML=
+        '<td>'+esc(n.customer_name||'Customer')+'</td>'+
+        '<td>'+esc(n.requested_name||'')+'</td>'+
+        '<td><b>'+esc(String(n.channel||'').replace('_READY',''))+'</b></td>'+
+        '<td>'+esc(n.recipient||'—')+'</td>'+
+        '<td>'+esc(n.status||'')+'</td>'+
+        '<td>'+esc(n.created_at?new Date(n.created_at).toLocaleString():'—')+'</td>'+
+        '<td>'+esc(n.error||'')+'</td>';
+      table.appendChild(tr);
+    }
+    box.appendChild(table);
+  }catch(e){showNotice('Could not load delivery queue: '+e.message)}
 }
 document.getElementById('accessKey').value=accessKey();setAuth(false);
 if(accessKey())saveKey();
