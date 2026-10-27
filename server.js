@@ -12,6 +12,7 @@ import { createDepositConversionRouter } from './routes/depositConversion.js';
 import { createWorkOrderCombineRouter } from './routes/workOrderCombine.js';
 import { createSpecialOrdersRouter, initializeSpecialOrdersDb } from './special-orders.js';
 import pg from 'pg';
+import { createConsignmentBetaRouter } from './routes/consignmentBeta.js';
 import { createTimeclockScannerGateway } from './services/scannerTimeclockGateway.js';
 import { createTimeclockScannerIdentity } from './services/scannerTimeclockIdentity.js';
 import { createSpecialOrdersMatchLookup } from './services/scannerSpecialOrdersLookup.js';
@@ -29,6 +30,20 @@ app.use(express.json());
 app.get('/index.html', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
+
+// Independent opt-in TEST consignment storage. This never uses DATABASE_URL
+// from production Special Orders and never initializes a schema implicitly.
+const consignmentPool = process.env.CONSIGNMENT_BETA_DATABASE_URL && process.env.CONSIGNMENT_BETA_STAFF_KEY
+  ? new pg.Pool({connectionString:process.env.CONSIGNMENT_BETA_DATABASE_URL,
+      ssl:process.env.CONSIGNMENT_BETA_PGSSL==='true'?{rejectUnauthorized:false}:undefined,
+      max:4,connectionTimeoutMillis:3500})
+  : null;
+app.use('/api/consignment-beta', createConsignmentBetaRouter({
+  pool:consignmentPool,staffKey:process.env.CONSIGNMENT_BETA_STAFF_KEY,
+  allowWrites:process.env.CONSIGNMENT_BETA_ALLOW_DB_WRITES==='true'
+  // Read-only Lightspeed matching remains disabled until the isolated
+  // gateway has its own verified authorization and connected test dataset.
+}));
 
 const LIGHTSPEED_DOMAIN = process.env.LIGHTSPEED_DOMAIN;
 const LIGHTSPEED_TOKEN = process.env.LIGHTSPEED_TOKEN;
