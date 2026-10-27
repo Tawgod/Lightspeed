@@ -66,6 +66,10 @@
     </div>
     <div class="toolbar">
       <input id="ncDiscord" placeholder="Discord handle" size="22">
+      <input id="ncMessenger" placeholder="Facebook Messenger ID / contact" size="28">
+      <input id="ncWhatsApp" placeholder="WhatsApp number" size="20">
+    </div>
+    <div class="toolbar">
       <input id="ncNotes" placeholder="Customer note (Special Orders)" size="44">
       <button type="button" onclick="createNewCustomer()">Create & use customer</button>
       <button type="button" onclick="hideNewCustomer()">Cancel</button>
@@ -97,6 +101,11 @@
         <input id="customerPhone" placeholder="Phone number" size="20">
         <input id="customerEmail" type="email" placeholder="Email" size="28">
         <input id="customerDiscord" placeholder="Discord handle" size="22">
+      </div>
+      <div class="toolbar">
+        <input id="customerMessenger" placeholder="Facebook Messenger ID / contact" size="28">
+        <input id="customerWhatsApp" placeholder="WhatsApp number" size="20">
+        <span class="form-note">Messenger and WhatsApp are stored for notification routing; live delivery integrations are not enabled yet.</span>
       </div>
       <div class="toolbar">
         <input id="customerPostcode" placeholder="ZIP / postal code" size="14" inputmode="numeric" autocomplete="postal-code" oninput="lookupCustomerZip(this.value)">

@@ -89,6 +89,8 @@ async function createNewCustomer(){
     phone:document.getElementById('ncPhone').value.trim()||null,
     email:document.getElementById('ncEmail').value.trim()||null,
     discord_handle:document.getElementById('ncDiscord').value.trim()||null,
+    facebook_messenger_id:document.getElementById('ncMessenger').value.trim()||null,
+    whatsapp_number:document.getElementById('ncWhatsApp').value.trim()||null,
     notes:document.getElementById('ncNotes').value.trim()||null
   };
   try{
@@ -104,6 +106,8 @@ async function createNewCustomer(){
       mobile:payload.phone,
       email:payload.email,
       discord_handle:payload.discord_handle,
+      facebook_messenger_id:payload.facebook_messenger_id,
+      whatsapp_number:payload.whatsapp_number,
       special_orders_phone:payload.phone,
       special_orders_notes:payload.notes,
       local_customer_id:r.local?.id||null
@@ -112,8 +116,10 @@ async function createNewCustomer(){
     document.getElementById('customerProfile').style.display='block';
     document.getElementById('customerPhone').value=payload.phone||'';
     document.getElementById('customerDiscord').value=payload.discord_handle||'';
+    document.getElementById('customerMessenger').value=payload.facebook_messenger_id||'';
+    document.getElementById('customerWhatsApp').value=payload.whatsapp_number||'';
     document.getElementById('customerNotes').value=payload.notes||'';
-    ['ncFirstName','ncLastName','ncPhone','ncEmail','ncDiscord','ncNotes'].forEach(id=>document.getElementById(id).value='');
+    ['ncFirstName','ncLastName','ncPhone','ncEmail','ncDiscord','ncMessenger','ncWhatsApp','ncNotes'].forEach(id=>document.getElementById(id).value='');
     hideNewCustomer();
     saveDrafts();
     showNotice('New Lightspeed customer created and selected.',2500);
@@ -139,7 +145,7 @@ function clearCurrentItem(){
 }
 function clearOrderForm(){
   selectedCustomer=null;selectedOrderProduct=null;stagedItems=[];
-  ['customerSearch','customerFirstName','customerLastName','customerCompany','customerPhone','customerEmail','customerDiscord','customerNotes','customerAddress1','customerAddress2','customerCity','customerState','customerPostcode','orderNotes'].forEach(id=>writeField(id,''));
+  ['customerSearch','customerFirstName','customerLastName','customerCompany','customerPhone','customerEmail','customerDiscord','customerMessenger','customerWhatsApp','customerNotes','customerAddress1','customerAddress2','customerCity','customerState','customerPostcode','orderNotes'].forEach(id=>writeField(id,''));
   document.getElementById('selectedCustomer').textContent='No customer selected';
   document.getElementById('customerProfile').style.display='none';
   document.getElementById('customerResults').innerHTML='';
@@ -566,7 +572,7 @@ async function createSupplierOrderDraft(){
     showNotice('Draft supplier order saved.',2200);
   }catch(e){showNotice('Could not save supplier order: '+e.message)}
 }
-async function searchCustomers(){const q=document.getElementById('customerSearch').value.trim();if(!q)return;try{const r=await getJson(api+'/customers/search?q='+encodeURIComponent(q));document.getElementById('customerResults').innerHTML=!r.length?'<p>No Lightspeed customer found.</p>':'<table><tr><th>Name</th><th>Phone</th><th>Discord</th><th>Email</th><th></th></tr>'+r.map((x,i)=>`<tr><td>${[x.first_name,x.last_name].filter(Boolean).join(' ')||x.company_name||'Unnamed'}</td><td>${x.special_orders_phone||x.mobile||x.phone||'—'}</td><td>${x.discord_handle||'—'}</td><td>${x.email||'—'}</td><td><button onclick="chooseCustomer(${i})">Use</button></td></tr>`).join('')+'</table>';window._customerResults=r}catch(e){showNotice(e.message)}}
+async function searchCustomers(){const q=document.getElementById('customerSearch').value.trim();if(!q)return;try{const r=await getJson(api+'/customers/search?q='+encodeURIComponent(q));document.getElementById('customerResults').innerHTML=!r.length?'<p>No Lightspeed customer found.</p>':'<table><tr><th>Name</th><th>Phone</th><th>Discord</th><th>Messenger / WhatsApp</th><th>Email</th><th></th></tr>'+r.map((x,i)=>`<tr><td>${[x.first_name,x.last_name].filter(Boolean).join(' ')||x.company_name||'Unnamed'}</td><td>${x.special_orders_phone||x.mobile||x.phone||'—'}</td><td>${x.discord_handle||'—'}</td><td>${[x.facebook_messenger_id?'Messenger':null,x.whatsapp_number?'WhatsApp':null].filter(Boolean).join(' / ')||'—'}</td><td>${x.email||'—'}</td><td><button onclick="chooseCustomer(${i})">Use</button></td></tr>`).join('')+'</table>';window._customerResults=r}catch(e){showNotice(e.message)}}
 async function chooseCustomer(i){
   selectedCustomer=window._customerResults[i];
   showSelectedCustomer();
@@ -590,6 +596,8 @@ async function hydrateCustomerFields(){
   document.getElementById('customerPhone').value=selectedCustomer.special_orders_phone||selectedCustomer.phone||selectedCustomer.mobile||'';
   document.getElementById('customerEmail').value=selectedCustomer.email||'';
   document.getElementById('customerDiscord').value=selectedCustomer.discord_handle||'';
+  document.getElementById('customerMessenger').value=selectedCustomer.facebook_messenger_id||'';
+  document.getElementById('customerWhatsApp').value=selectedCustomer.whatsapp_number||'';
   document.getElementById('customerNotes').value=selectedCustomer.special_orders_notes||selectedCustomer.notes||'';
   document.getElementById('customerAddress1').value=selectedCustomer.physical_address_1||'';
   document.getElementById('customerAddress2').value=selectedCustomer.physical_address_2||'';
@@ -606,7 +614,14 @@ function renderCustomerSummary(){
   const phone=document.getElementById('customerPhone')?.value||selectedCustomer.special_orders_phone||selectedCustomer.phone||selectedCustomer.mobile||'';
   const email=document.getElementById('customerEmail')?.value||selectedCustomer.email||'';
   const discord=document.getElementById('customerDiscord')?.value||selectedCustomer.discord_handle||'';
-  document.getElementById('customerSummary').textContent=[name,phone,email,discord?('Discord: '+discord):''].filter(Boolean).join(' • ');
+  const messenger=document.getElementById('customerMessenger')?.value||selectedCustomer.facebook_messenger_id||'';
+  const whatsapp=document.getElementById('customerWhatsApp')?.value||selectedCustomer.whatsapp_number||'';
+  document.getElementById('customerSummary').textContent=[
+    name,phone,email,
+    discord?('Discord: '+discord):'',
+    messenger?'Messenger':'',
+    whatsapp?('WhatsApp: '+whatsapp):''
+  ].filter(Boolean).join(' • ');
 }
 const zipLookupCache=new Map();
 let customerZipLookupTimer=null;
@@ -693,6 +708,8 @@ async function updateCustomerProfile(){
     phone:document.getElementById('customerPhone').value.trim()||null,
     mobile:document.getElementById('customerPhone').value.trim()||null,
     discord_handle:document.getElementById('customerDiscord').value.trim()||null,
+    facebook_messenger_id:document.getElementById('customerMessenger').value.trim()||null,
+    whatsapp_number:document.getElementById('customerWhatsApp').value.trim()||null,
     notes:document.getElementById('customerNotes').value.trim()||null,
     address_line_1:document.getElementById('customerAddress1').value.trim()||null,
     address_line_2:document.getElementById('customerAddress2').value.trim()||null,
@@ -716,6 +733,8 @@ async function updateCustomerProfile(){
       mobile:payload.mobile,
       special_orders_phone:payload.phone,
       discord_handle:payload.discord_handle,
+      facebook_messenger_id:payload.facebook_messenger_id,
+      whatsapp_number:payload.whatsapp_number,
       special_orders_notes:payload.notes,
       physical_address_1:payload.address_line_1,
       physical_address_2:payload.address_line_2,
