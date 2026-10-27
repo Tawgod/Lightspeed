@@ -8,9 +8,16 @@
 <link rel="stylesheet" href="/shared-ui/core-ops-compat.css">
 </head>
 <body class="hc-ui"><div class="wrap hc-page">
-  <div class="toolbar" style="justify-content:flex-end;margin-bottom:10px">
-    <a href="/special-orders" style="display:inline-block;padding:9px 12px;border-radius:8px;background:#0f766e;color:#fff;text-decoration:none;font-weight:700">Back to Special Orders</a>
-  </div>
+  <nav class="hc-operations-nav" aria-label="Hobby Corner tools">
+  <span class="hc-operations-brand">Hobby Corner <small>Store Operations</small></span>
+  <div class="hc-operations-links"><a href="/special-orders">Special Orders</a>
+    <a href="/ordering">Ordering</a>
+    <a href="/preorders">Preorder Campaigns</a>
+    <a href="/gw-preorders" aria-current="page">GW Preorders</a>
+    <a href="https://consignment-beta-test.up.railway.app/consignment" target="_blank" rel="noopener noreferrer">Consignment (Beta)</a>
+    <a href="https://lightspeed-api-production-c087.up.railway.app/extension" target="_blank" rel="noopener noreferrer">Lightspeed Toolkit</a></div>
+</nav>
+
   <h1>GW Preorders</h1>
   <div class="sub">Sync & Scrape → Cleanup Items → Post to Discord → Record Responses → Confirm Customers → Submit to GW</div>
   <div id="notice" class="notice"></div>

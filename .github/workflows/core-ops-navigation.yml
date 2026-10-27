@@ -1,0 +1,24 @@
+name: Core Operations UI navigation
+on:
+  pull_request:
+    paths:
+      - 'special-orders.html'
+      - 'ordering.html'
+      - 'preorders.html'
+      - 'gw-preorders.html'
+      - 'shared-ui/core-ops-compat.css'
+      - 'tests/core-ops-navigation.test.mjs'
+      - '.github/workflows/core-ops-navigation.yml'
+  push:
+    branches: ['feature/core-ops-shared-navigation-20261027']
+jobs:
+  shared-navigation:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tests/core-ops-navigation.test.mjs
