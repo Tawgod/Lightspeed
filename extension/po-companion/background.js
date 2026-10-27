@@ -1,5 +1,9 @@
 // PO Companion isolated review opener. No backend mutation or employee token storage.
 chrome.runtime.onMessage.addListener((message,_sender,respond)=>{
+ if(message?.type==='HCT_PO_STYLE' && _sender?.tab?.id){
+  fetch(chrome.runtime.getURL('shared-ui/hc.css')).then(r=>r.text()).then(css=>respond({ok:true,css}),()=>respond({ok:false}));
+  return true;
+ }
  if(message?.type==='HCT_PO_REVIEW'){
   chrome.windows.create({url:chrome.runtime.getURL('po-companion/review.html'),type:'popup',width:980,height:800})
    .then(()=>respond({ok:true}),error=>respond({ok:false,error:error.message}));
