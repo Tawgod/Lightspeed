@@ -3682,7 +3682,7 @@ export function createSpecialOrdersRouter({
       "c.name AS customer_name,c.phone,c.email,c.discord_user_id,i.requested_name,i.quantity,i.status AS item_status,i.received_at "+
       "FROM notifications n JOIN special_order_items i ON i.id=n.special_order_item_id "+
       "LEFT JOIN customers c ON c.id=n.customer_id "+
-      "WHERE n.channel='READY_REVIEW' AND n.status IN ('PENDING','QUEUED') ORDER BY n.created_at"
+      "WHERE n.channel='READY_REVIEW' AND n.status='PENDING' ORDER BY n.created_at"
     );
     res.json(rows);
   });
