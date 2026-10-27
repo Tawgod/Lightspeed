@@ -17,6 +17,7 @@ import { createTimeclockScannerIdentity } from './services/scannerTimeclockIdent
 import { createSpecialOrdersMatchLookup } from './services/scannerSpecialOrdersLookup.js';
 import { createScannerLoginLimiter } from './services/scannerLoginLimiter.js';
 import { initializeScannerPreorderStaging } from './services/scannerPreorderStaging.js';
+import { initializeScannerProductReviewQueue } from './services/scannerProductReviewQueue.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -864,6 +865,7 @@ async function startServer() {
       ssl:process.env.PGSSL==='true'?{rejectUnauthorized:false}:undefined
     });
     await initializeScannerPreorderStaging(scannerPool);
+    await initializeScannerProductReviewQueue(scannerPool);
     const loginLimiter=await createScannerLoginLimiter({
       pool:scannerPool,secret:process.env.SCANNER_LOGIN_LIMIT_SECRET
     });
