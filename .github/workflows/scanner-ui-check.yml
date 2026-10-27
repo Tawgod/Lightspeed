@@ -1,7 +1,7 @@
 name: Scanner review UI regression
 on:
   push:
-    branches: [feature/scanner-fields-create-preview, feature/scanner-review-auto-lookup, feature/scanner-sku-role-diagnostics]
+    branches: [feature/scanner-fields-create-preview, feature/scanner-review-auto-lookup, feature/scanner-sku-role-diagnostics, feature/scanner-review-queue-foundation-20261027]
     paths:
       - 'extension/**'
       - 'services/scannerSupplierTemplates.js'
@@ -18,6 +18,8 @@ on:
       - 'services/scannerTimeclockIdentity.js'
       - 'server.js'
       - 'services/scannerPreorderStaging.js'
+      - 'services/scannerProductReviewQueue.js'
+      - 'tests/scannerProductReviewQueue.test.js'
       - 'tests/scannerPreorderStaging.test.js'
       - '.github/workflows/scanner-ui-check.yml'
 jobs:
@@ -36,6 +38,7 @@ jobs:
         run: |
           node --check server.js
           node --check services/scannerPreorderStaging.js
+          node --check services/scannerProductReviewQueue.js
           node --check routes/scannerMatchGateway.js
           node --check services/scannerTimeclockGateway.js
           node --check services/scannerTimeclockIdentity.js
@@ -89,3 +92,5 @@ jobs:
         run: node --test tests/scannerReviewAutoMatch.test.js
       - name: Verify guarded preorder campaign staging
         run: node --test tests/scannerPreorderStaging.test.js
+      - name: Verify read-only product review proposal inbox
+        run: node --test tests/scannerProductReviewQueue.test.js
