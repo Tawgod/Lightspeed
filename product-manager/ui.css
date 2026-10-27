@@ -1,0 +1,16 @@
+/* Only Product Manager-specific layout; colors/components from ../shared-ui/hc.css */
+.hc-ui .hc-sidebar-note{color:#dceafa;padding:12px}
+.hc-ui .pm-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(270px,345px);gap:16px;margin:16px 0}
+.hc-ui .pm-scroll{margin-top:14px;min-height:240px;max-height:60vh;overflow:auto}
+.hc-ui .pm-select{min-height:35px;width:auto;padding:5px 9px}
+.hc-ui .pm-review{margin-top:18px}
+.hc-ui .pm-feedback{margin-top:14px}
+.hc-ui .pm-field{display:grid;gap:5px;margin-bottom:13px}
+.hc-ui .pm-field label{font-weight:650}
+.hc-ui .pm-row{cursor:pointer}
+.hc-ui .pm-row[aria-selected=true]{background:#d5e7ff!important}
+.hc-ui .pm-sku{font-family:ui-monospace,monospace;white-space:pre}
+.hc-ui .pm-edited{border-left:3px solid var(--hc-accent);padding-left:8px}
+.hc-ui .pm-image{min-height:155px;display:grid;place-items:center;background:var(--hc-surface-inset);border:1px dashed var(--hc-border);border-radius:8px}
+.hc-ui .pm-action-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+@media(max-width:1050px){.hc-ui .pm-layout{grid-template-columns:1fr}}
