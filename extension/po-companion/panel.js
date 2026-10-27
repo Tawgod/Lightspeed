@@ -52,17 +52,19 @@
     footer button{background:#176e76;border-color:#176e76;color:#fff}
     footer button:hover:not(:disabled){background:#155b63}
     .collapsed{width:44px;min-width:44px;resize:none}
-    .collapsed .body,.collapsed footer,.collapsed h2,.collapsed header button:last-child{display:none}
+    .collapsed .body,.collapsed footer,.collapsed h2,.collapsed header img,.collapsed header button:last-child{display:none}
     .collapsed header{height:100%;align-items:flex-start;justify-content:center;padding:8px 4px}
     @media(prefers-reduced-motion:no-preference){button{transition:background .12s ease}}
   `;
   try { const shared=await chrome.runtime.sendMessage({type:'HCT_PO_STYLE'});if(shared?.ok && typeof shared.css==='string'){const s=document.createElement('style');s.textContent=shared.css;shadow.append(s);} } catch { /* local fallback styling remains */ }
   const shell = document.createElement('div'); shell.className='wrap hc-ui hc-panel--drawer';
   const header=document.createElement('header'), title=document.createElement('h2');header.className='hc-topbar'; title.textContent='Hobby Corner · PO Companion';
+  const brand=document.createElement('img');brand.alt='';brand.width=32;brand.height=32;brand.style.cssText='width:32px;height:32px;object-fit:contain;background:white;border-radius:50%;padding:2px';
+  try{const result=await chrome.runtime.sendMessage({type:'HCT_PO_BRAND'});if(result?.ok)brand.src=result.url;}catch{}
   const collapse=document.createElement('button');collapse.className='hc-button hc-button--secondary';collapse.textContent='−';collapse.title='Collapse or expand';
   collapse.onclick=()=>{const yes=shell.classList.toggle('collapsed');collapse.textContent=yes?'+':'−';};
   const close=document.createElement('button');close.className='hc-button hc-button--secondary';close.textContent='×';close.title='Close';
-  close.onclick=()=>host.remove();header.append(title,collapse,close);
+  close.onclick=()=>host.remove();header.append(brand,title,collapse,close);
   const body=document.createElement('div');body.className='body hc-stack';
   const description=document.createElement('p');description.className='muted';
   const toolbar=document.createElement('div');toolbar.className='toolbar hc-inset';
