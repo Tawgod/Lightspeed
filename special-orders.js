@@ -3713,13 +3713,21 @@ export function createSpecialOrdersRouter({
         else{await db.query('ROLLBACK');return res.status(409).json({error:'Customer has no Discord, email, or phone contact method on file.'});}
 
         const message=(review.customer_name||'Customer')+', your special order '+review.requested_name+' has arrived and is ready at Hobby Corner.';
-        await db.query(
-          "INSERT INTO notifications (special_order_item_id,customer_id,channel,recipient,status,message) "+
-          "VALUES ($1,$2,$3,$4,'QUEUED',$5) "+
-          "ON CONFLICT (special_order_item_id,channel) WHERE special_order_item_id IS NOT NULL AND channel=$3 AND status IN ('PENDING','QUEUED','SENDING') "+
-          "DO UPDATE SET recipient=EXCLUDED.recipient,message=EXCLUDED.message,error=NULL",
-          [review.special_order_item_id,review.customer_id,channel,recipient,message]
+        const existingDelivery=await db.query(
+          "SELECT id FROM notifications WHERE special_order_item_id=$1 AND channel=$2 AND status IN ('PENDING','QUEUED','SENDING') ORDER BY id DESC LIMIT 1 FOR UPDATE",
+          [review.special_order_item_id,channel]
         );
+        if(existingDelivery.rows[0]){
+          await db.query(
+            "UPDATE notifications SET customer_id=$1,recipient=$2,status='QUEUED',message=$3,error=NULL WHERE id=$4",
+            [review.customer_id,recipient,message,existingDelivery.rows[0].id]
+          );
+        }else{
+          await db.query(
+            "INSERT INTO notifications (special_order_item_id,customer_id,channel,recipient,status,message) VALUES ($1,$2,$3,$4,'QUEUED',$5)",
+            [review.special_order_item_id,review.customer_id,channel,recipient,message]
+          );
+        }
         await db.query("UPDATE notifications SET status='REVIEWED' WHERE id=$1",[review.id]);
         await db.query(
           "INSERT INTO special_order_item_activity (special_order_item_id,activity_type,message,new_value,changed_by) "+
