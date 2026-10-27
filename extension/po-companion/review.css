@@ -1,1 +1,22 @@
-body{font:14px system-ui,Arial,sans-serif;color:#23313c;margin:30px;max-width:900px}h1{font-size:22px}.warning{padding:12px;border:1px solid #d5a034;background:#fff8e6}article{padding:12px;border-bottom:1px solid #ddd}table{border-collapse:collapse;width:100%}td,th{padding:7px;border-bottom:1px solid #ddd;text-align:left}button{padding:10px 15px}
+:root{color-scheme:light;font:14px system-ui,-apple-system,"Segoe UI",sans-serif;color:#21313b;background:#e8eef1}
+*{box-sizing:border-box}body{margin:0;min-height:100vh}
+.top{background:#183f53;color:#fff;padding:23px clamp(18px,4vw,46px);border-bottom:4px solid #a9ceca}
+.brand{font-size:11px;font-weight:800;letter-spacing:.12em;color:#cce5e7}.brand span{font-weight:500}
+h1{font-size:23px;letter-spacing:-.02em;margin:8px 0 4px}#po{margin:0;color:#d7e8ed}
+main{max-width:1000px;padding:22px;margin:auto}
+.notice{border-left:4px solid #ad791f;background:#fff1d1;color:#513e19;border-radius:9px;padding:13px 16px;margin-bottom:20px}
+.notice p{margin:5px 0 0;line-height:1.5}
+.review-section{background:#f8fafb;border:1px solid #bfd0d8;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px #173a4a14}
+.section-header{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:15px 19px;background:#dce8ee;border-bottom:1px solid #bfced5}
+h2{font-size:16px;margin:0}.phase{font-size:12px;font-weight:700;color:#315669}
+.changes{padding:12px 18px 18px;line-height:1.45}
+article{background:#fff;border:1px solid #d1dce2;border-radius:9px;padding:15px;margin:9px 0 13px}
+article h2{margin-bottom:12px}
+table{border-collapse:collapse;width:100%}th,td{padding:10px;text-align:left;border-bottom:1px solid #d7e1e6}
+th{background:#e8f0f3;font-size:12px;color:#375768}td{overflow-wrap:anywhere}
+footer{display:flex;align-items:center;justify-content:space-between;gap:15px;margin-top:18px;padding:15px 2px;font-size:12px;color:#526874}
+button{background:#176e76;color:white;border:0;border-radius:8px;font:700 14px system-ui;padding:11px 15px}
+button:disabled{background:#a7b9bf;color:#32434b;cursor:not-allowed}
+button:focus-visible{outline:3px solid #ce9b35;outline-offset:3px}
+@media(max-width:650px){main{padding:12px}footer{align-items:flex-start;flex-direction:column}table{font-size:12px}th,td{padding:6px}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important}}
