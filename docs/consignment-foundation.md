@@ -86,3 +86,10 @@ Feature branch: feature/consignment-layout-foundation
 - Tests: tests/consignment-api.test.mjs and tests/consignment-credit.test.mjs with GitHub Actions smoke workflow. These test fail-closed behavior, required disclosures and eligibility boundaries.
 - Outstanding: isolate and provision actual test Postgres before activating persistence; employee identity/role authorization beyond the beta shared key; secure customer login/public intake; product/customer matching against real retailer; verified category/accounting and duplicate-safe product creation; sales/returns event ingestion and credit reconciliation.
 - Do not reuse the staff beta key as a customer authentication mechanism. The public form remains sample-only and disconnected.
+
+## UI guideline alignment — 2026-10-27
+- Staff and customer beta share the same updated design tokens through consignment-beta.css.
+- Uses layered blue-gray surfaces and shaded section headers instead of large flat white panels; stronger visual separation between dashboard, item list, detail pane and form groups.
+- More consistent accent buttons, navigation active states, table striping, interactive selection, and visible keyboard focus.
+- Mobile layout remains responsive; customer-facing form and staff page both use the shared stylesheet.
+- UI-only changes: no alteration of customer data, Lightspeed product writes, credit posting, or extension packaging. Automated smoke and scanner regression tests passed on UI stylesheet commit 7af949b20cc45eb660e0089ec16ccc31759458c0. Manual visual review pending.
