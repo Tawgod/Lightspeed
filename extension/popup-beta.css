@@ -1,0 +1,19 @@
+/* Shared Hobby Corner beta design applied only to the browser popup. */
+body.hc-ui{--hc-canvas:#e3ebf3;--hc-surface:#f6f9fc;--hc-inset:#edf3f9;--hc-header:#102c48;--hc-nav:#143755;--hc-text:#172b47;--hc-primary:#1769e9;--hc-border:#b9cadd;--hc-muted:#4a5e76;--hc-accent:#f7941d;
+  width:390px;min-height:410px;background:var(--hc-canvas);color:var(--hc-text);font:14px/1.45 system-ui,Arial,sans-serif;padding:12px}
+.hc-ui header{background:linear-gradient(110deg,var(--hc-header),var(--hc-nav));padding:11px 12px;border-bottom:3px solid var(--hc-accent);border-radius:10px;margin-bottom:12px;box-shadow:0 3px 10px #132d4c25}
+.hc-ui .hc-popup-brand{display:flex;align-items:center;gap:11px}
+.hc-ui .hc-popup-brand img{width:106px;max-height:52px;object-fit:contain}
+.hc-ui header h1{font-size:15px;color:#fff;line-height:1.2}
+.hc-ui header .sub{color:#dce8f7;font-size:11px}
+.hc-ui section{background:var(--hc-surface);border:1px solid var(--hc-border);padding:11px 12px;border-radius:9px;box-shadow:0 2px 8px #132d4c13;margin-bottom:10px}
+.hc-ui section .card{background:#fff;border-color:var(--hc-border)}
+.hc-ui .status{color:var(--hc-text)}
+.hc-ui button{background:var(--hc-primary);color:#fff;border:1px solid transparent;min-height:36px}
+.hc-ui button.secondary{background:#d9e8f7;border:1px solid var(--hc-border);color:#184273}
+.hc-ui button.primary-scan{width:100%}
+.hc-ui button:disabled{opacity:.55;cursor:not-allowed}
+.hc-ui input{color:var(--hc-text);background:#fff;border-color:#9cb2c9;min-width:0}
+.hc-ui .scanner-scope{font-size:12px;color:var(--hc-muted);margin-bottom:0}
+.hc-ui .hc-special-orders-link{display:block;text-align:center;padding:11px 12px;background:var(--hc-primary);color:#fff;text-decoration:none;border-radius:8px;font-weight:700}
+.hc-ui :is(button,a,input,summary):focus-visible{outline:2px solid #bc5700;outline-offset:3px}
