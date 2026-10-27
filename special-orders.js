@@ -3630,7 +3630,7 @@ export function createSpecialOrdersRouter({
         if(!Number.isFinite(itemId)||itemId<=0)continue;
         const itemResult=await db.query(
           "SELECT i.id,i.product_id,i.quantity,i.status,i.requested_name,p.lightspeed_product_id,"+
-          "o.customer_id,c.name AS customer_name,c.phone,c.email,c.discord_user_id "+
+          "o.customer_id,c.name AS customer_name,c.phone,c.email,c.discord_user_id,c.facebook_messenger_id,c.whatsapp_number "+
           "FROM special_order_items i JOIN products p ON p.id=i.product_id "+
           "JOIN special_orders o ON o.id=i.special_order_id LEFT JOIN customers c ON c.id=o.customer_id "+
           "WHERE i.id=$1 FOR UPDATE OF i",
@@ -3707,7 +3707,7 @@ export function createSpecialOrdersRouter({
   router.get('/notifications/ready-review', requireDb, async (req,res)=>{
     const {rows}=await pool.query(
       "SELECT n.id,n.special_order_item_id,n.customer_id,n.recipient,n.status,n.message,n.created_at,"+
-      "c.name AS customer_name,c.phone,c.email,c.discord_user_id,i.requested_name,i.quantity,i.status AS item_status,i.received_at "+
+      "c.name AS customer_name,c.phone,c.email,c.discord_user_id,c.facebook_messenger_id,c.whatsapp_number,i.requested_name,i.quantity,i.status AS item_status,i.received_at "+
       "FROM notifications n JOIN special_order_items i ON i.id=n.special_order_item_id "+
       "LEFT JOIN customers c ON c.id=n.customer_id "+
       "WHERE n.channel='READY_REVIEW' AND n.status='PENDING' ORDER BY n.created_at"
@@ -3723,7 +3723,7 @@ export function createSpecialOrdersRouter({
     try{
       await db.query('BEGIN');
       const current=await db.query(
-        "SELECT n.*,i.requested_name,i.status AS item_status,c.name AS customer_name,c.discord_user_id,c.email,c.phone "+
+        "SELECT n.*,i.requested_name,i.status AS item_status,c.name AS customer_name,c.discord_user_id,c.facebook_messenger_id,c.whatsapp_number,c.email,c.phone "+
         "FROM notifications n JOIN special_order_items i ON i.id=n.special_order_item_id "+
         "LEFT JOIN customers c ON c.id=n.customer_id "+
         "WHERE n.id=$1 AND n.channel='READY_REVIEW' FOR UPDATE OF n",
@@ -3734,11 +3734,32 @@ export function createSpecialOrdersRouter({
       if(review.status!=='PENDING'){await db.query('ROLLBACK');return res.status(409).json({error:'This notification review has already been handled.'});}
 
       if(action==='ACKNOWLEDGED'){
-        let channel=null,recipient=null;
-        if(review.discord_user_id){channel='DISCORD_READY';recipient=review.discord_user_id;}
-        else if(review.email){channel='EMAIL_READY';recipient=review.email;}
-        else if(review.phone){channel='SMS_READY';recipient=review.phone;}
-        else{await db.query('ROLLBACK');return res.status(409).json({error:'Customer has no Discord, email, or phone contact method on file.'});}
+        const requestedChannel=String(req.body?.delivery_channel||'').trim().toUpperCase();
+        const destinations={
+          DISCORD_READY:review.discord_user_id||null,
+          MESSENGER_READY:review.facebook_messenger_id||null,
+          WHATSAPP_READY:review.whatsapp_number||null,
+          EMAIL_READY:review.email||null,
+          SMS_READY:review.phone||null
+        };
+        let channel=requestedChannel||null;
+        if(channel && !Object.prototype.hasOwnProperty.call(destinations,channel)){
+          await db.query('ROLLBACK');
+          return res.status(400).json({error:'Unsupported delivery channel.'});
+        }
+        if(channel && !destinations[channel]){
+          await db.query('ROLLBACK');
+          return res.status(409).json({error:'Customer does not have the selected delivery destination on file.'});
+        }
+        if(!channel){
+          channel=['DISCORD_READY','MESSENGER_READY','WHATSAPP_READY','EMAIL_READY','SMS_READY']
+            .find(candidate=>destinations[candidate])||null;
+        }
+        if(!channel){
+          await db.query('ROLLBACK');
+          return res.status(409).json({error:'Customer has no Discord, Facebook Messenger, WhatsApp, email, or SMS contact method on file.'});
+        }
+        const recipient=destinations[channel];
 
         const message=(review.customer_name||'Customer')+', your special order '+review.requested_name+' has arrived and is ready at Hobby Corner.';
         const existingDelivery=await db.query(
@@ -3784,7 +3805,7 @@ export function createSpecialOrdersRouter({
       "SELECT n.id,n.special_order_item_id,n.customer_id,n.channel,n.recipient,n.status,n.message,n.error,n.created_at,n.sent_at,"+
       "c.name AS customer_name,i.requested_name,i.status AS item_status "+
       "FROM notifications n LEFT JOIN customers c ON c.id=n.customer_id LEFT JOIN special_order_items i ON i.id=n.special_order_item_id "+
-      "WHERE n.channel IN ('DISCORD_READY','EMAIL_READY','SMS_READY') AND n.status IN ('QUEUED','SENDING','ERROR') "+
+      "WHERE n.channel IN ('DISCORD_READY','MESSENGER_READY','WHATSAPP_READY','EMAIL_READY','SMS_READY') AND n.status IN ('QUEUED','SENDING','ERROR') "+
       "ORDER BY n.created_at LIMIT 500"
     );
     res.json(rows);
@@ -3882,6 +3903,8 @@ export function createSpecialOrdersRouter({
             if (!saved) continue;
             c.local_customer_id = saved.id;
             c.discord_handle = saved.discord_handle || null;
+            c.facebook_messenger_id = saved.facebook_messenger_id || null;
+            c.whatsapp_number = saved.whatsapp_number || null;
             c.special_orders_phone = saved.phone || null;
             c.special_orders_notes = saved.notes || null;
           }
@@ -3922,13 +3945,15 @@ export function createSpecialOrdersRouter({
       const name = [customer.first_name || firstName, customer.last_name || lastName].filter(Boolean).join(' ');
       const { rows } = await pool.query(`
         INSERT INTO customers
-          (lightspeed_customer_id,name,phone,email,discord_handle,notes,updated_at)
-        VALUES ($1,$2,$3,$4,$5,$6,now())
+          (lightspeed_customer_id,name,phone,email,discord_handle,facebook_messenger_id,whatsapp_number,notes,updated_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now())
         ON CONFLICT (lightspeed_customer_id) DO UPDATE SET
           name=EXCLUDED.name,
           phone=EXCLUDED.phone,
           email=EXCLUDED.email,
           discord_handle=EXCLUDED.discord_handle,
+          facebook_messenger_id=EXCLUDED.facebook_messenger_id,
+          whatsapp_number=EXCLUDED.whatsapp_number,
           notes=EXCLUDED.notes,
           updated_at=now()
         RETURNING *
@@ -3938,6 +3963,8 @@ export function createSpecialOrdersRouter({
         body.phone || customer.mobile || customer.phone || null,
         body.email || customer.email || null,
         body.discord_handle || null,
+        body.facebook_messenger_id || null,
+        body.whatsapp_number || null,
         body.notes || null
       ]);
 
@@ -4000,13 +4027,15 @@ export function createSpecialOrdersRouter({
 
     const { rows } = await pool.query(`
       INSERT INTO customers
-        (lightspeed_customer_id,name,phone,email,discord_handle,notes,updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,now())
+        (lightspeed_customer_id,name,phone,email,discord_handle,facebook_messenger_id,whatsapp_number,notes,updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now())
       ON CONFLICT (lightspeed_customer_id) DO UPDATE SET
         name=EXCLUDED.name,
         phone=EXCLUDED.phone,
         email=EXCLUDED.email,
         discord_handle=EXCLUDED.discord_handle,
+        facebook_messenger_id=EXCLUDED.facebook_messenger_id,
+        whatsapp_number=EXCLUDED.whatsapp_number,
         notes=EXCLUDED.notes,
         updated_at=now()
       RETURNING *
@@ -4016,6 +4045,8 @@ export function createSpecialOrdersRouter({
       body.phone || body.mobile || null,
       body.email || null,
       body.discord_handle || null,
+      body.facebook_messenger_id || null,
+      body.whatsapp_number || null,
       body.notes || null
     ]);
 

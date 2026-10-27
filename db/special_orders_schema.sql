@@ -623,3 +623,28 @@ ON notifications (special_order_item_id, channel)
 WHERE special_order_item_id IS NOT NULL
   AND channel='SMS_READY'
   AND status IN ('PENDING','QUEUED','SENDING');
+
+
+ALTER TABLE customers
+  ADD COLUMN IF NOT EXISTS facebook_messenger_id TEXT,
+  ADD COLUMN IF NOT EXISTS whatsapp_number TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_customers_facebook_messenger_id
+ON customers (facebook_messenger_id)
+WHERE facebook_messenger_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_customers_whatsapp_number
+ON customers (whatsapp_number)
+WHERE whatsapp_number IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_messenger_ready_pending
+ON notifications (special_order_item_id, channel)
+WHERE special_order_item_id IS NOT NULL
+  AND channel='MESSENGER_READY'
+  AND status IN ('PENDING','QUEUED','SENDING');
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_whatsapp_ready_pending
+ON notifications (special_order_item_id, channel)
+WHERE special_order_item_id IS NOT NULL
+  AND channel='WHATSAPP_READY'
+  AND status IN ('PENDING','QUEUED','SENDING');

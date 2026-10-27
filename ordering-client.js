@@ -432,14 +432,24 @@ async function loadReadyNotifications(){
     table.innerHTML='<tr><th>Customer</th><th>Item</th><th>Received</th><th>Contact</th><th>Message</th><th>Review</th></tr>';
     for(const n of rows){
       const tr=document.createElement('tr');
-      const contact=[n.discord_user_id?'Discord linked':null,n.email||null,n.phone||null].filter(Boolean).join(' · ')||'No contact method on file';
+      const destinations=[
+        n.discord_user_id?['DISCORD_READY','Discord']:null,
+        n.facebook_messenger_id?['MESSENGER_READY','Facebook Messenger']:null,
+        n.whatsapp_number?['WHATSAPP_READY','WhatsApp']:null,
+        n.email?['EMAIL_READY','Email']:null,
+        n.phone?['SMS_READY','SMS']:null
+      ].filter(Boolean);
+      const contact=destinations.map(x=>x[1]).join(' · ')||'No contact method on file';
+      const options=destinations.map((x,i)=>'<option value="'+x[0]+'" '+(i===0?'selected':'')+'>'+x[1]+'</option>').join('');
       tr.innerHTML=
         '<td><b>'+esc(n.customer_name||'Customer')+'</b></td>'+
         '<td>'+esc(n.requested_name||'')+' · Qty '+Number(n.quantity||0)+'</td>'+
         '<td>'+esc(n.received_at?new Date(n.received_at).toLocaleString():'—')+'</td>'+
         '<td>'+esc(contact)+'</td>'+
         '<td>'+esc(n.message||'')+'</td>'+
-        '<td><button onclick="reviewNotification('+n.id+',\'ACKNOWLEDGED\')">Approve</button> '+
+        '<td>'+(destinations.length
+          ? '<select id="notify-channel-'+n.id+'">'+options+'</select> <button onclick="reviewNotification('+n.id+',\'ACKNOWLEDGED\')">Approve</button> '
+          : '<span class="form-note">No delivery destination</span> ')+
           '<button class="secondary-button" onclick="reviewNotification('+n.id+',\'SUPPRESSED\')">Suppress</button></td>';
       table.appendChild(tr);
     }
@@ -451,7 +461,8 @@ async function reviewNotification(id,action){
   let reason=null;
   if(action==='SUPPRESSED'){reason=prompt('Reason for suppressing this notification:','Customer already contacted');if(reason===null)return}
   try{
-    await getJson(api+'/notifications/'+id+'/review',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,reason,reviewed_by:'ordering-web'})});
+    const deliveryChannel=action==='ACKNOWLEDGED'?document.getElementById('notify-channel-'+id)?.value:null;
+    await getJson(api+'/notifications/'+id+'/review',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,reason,delivery_channel:deliveryChannel,reviewed_by:'ordering-web'})});
     showNotice(action==='ACKNOWLEDGED'?'Notification approved for delivery queue.':'Notification suppressed.');
     await Promise.all([loadReadyNotifications(),loadDeliveryQueue()]);
   }catch(e){showNotice('Notification review failed: '+e.message)}
@@ -469,7 +480,13 @@ async function loadDeliveryQueue(){
       tr.innerHTML=
         '<td>'+esc(n.customer_name||'Customer')+'</td>'+
         '<td>'+esc(n.requested_name||'')+'</td>'+
-        '<td><b>'+esc(String(n.channel||'').replace('_READY',''))+'</b></td>'+
+        '<td><b>'+esc(({
+          DISCORD_READY:'Discord',
+          MESSENGER_READY:'Facebook Messenger',
+          WHATSAPP_READY:'WhatsApp',
+          EMAIL_READY:'Email',
+          SMS_READY:'SMS'
+        })[n.channel]||String(n.channel||'').replace('_READY',''))+'</b></td>'+
         '<td>'+esc(n.recipient||'—')+'</td>'+
         '<td>'+esc(n.status||'')+'</td>'+
         '<td>'+esc(n.created_at?new Date(n.created_at).toLocaleString():'—')+'</td>'+
