@@ -41,9 +41,41 @@ async function loadProductProposals(){
     const data=await response.json();
     proposalList.replaceChildren();
     if(!data.proposals?.length){proposalList.textContent='No pending product proposals.';return;}
+    let testEnabled=false;
+    try{
+      const capability=await fetch(SCANNER_API+'/product-test-creation/status',{
+        cache:'no-store',headers:{Authorization:'Bearer '+scannerSession.token}});
+      if(capability.ok)testEnabled=(await capability.json()).enabled===true;
+    }catch{}
     for(const entry of data.proposals){
-      const item=document.createElement('p');
-      item.textContent=(entry.product_name||'Product')+' · '+(entry.status||'PENDING_REVIEW')+' · Submitted '+new Date(entry.submitted_at).toLocaleString();
+      const item=document.createElement('div');
+      item.className='hc-review-item';
+      const summary=document.createElement('p');
+      summary.textContent=(entry.product_name||'Product')+' · '+(entry.product_sku||entry.supplier_sku||'No SKU')+' · '+(entry.status||'PENDING_REVIEW')+' · Submitted '+new Date(entry.submitted_at).toLocaleString();
+      item.append(summary);
+      if(entry.status==='PENDING_REVIEW'){
+        const action=document.createElement('button');
+        action.type='button';
+        action.textContent=testEnabled?'Create in Isolated Test Store':'Test creation unavailable';
+        action.disabled=!testEnabled;
+        if(testEnabled)action.addEventListener('click',async()=>{
+          if(!window.confirm('Create this product in the isolated Lightspeed TEST store? This will not create it in the live store.'))return;
+          action.disabled=true;
+          proposalStatus.textContent='Checking duplicates and testing product creation…';
+          try{
+            const response=await fetch(SCANNER_API+'/product-proposals/'+entry.id+'/test-create',{
+              method:'POST',cache:'no-store',
+              headers:{'Content-Type':'application/json',Authorization:'Bearer '+scannerSession.token},
+              body:JSON.stringify({confirmation:'CREATE TEST PRODUCT',expectedSku:entry.product_sku||entry.supplier_sku||''})
+            });
+            const answer=await response.json().catch(()=>({}));
+            if(!response.ok)throw Error(answer.error||'Test creation could not be verified ('+response.status+').');
+            proposalStatus.textContent='Created test product '+(answer.product?.sku||'')+' in the isolated store. Live Lightspeed unchanged.';
+            await loadProductProposals();
+          }catch(error){proposalStatus.textContent=error.message;}
+        });
+        item.append(action);
+      }
       proposalList.append(item);
     }
   }catch(error){proposalList.textContent=error.message;}
