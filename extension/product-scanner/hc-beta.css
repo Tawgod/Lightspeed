@@ -170,3 +170,11 @@ body.hc-ui{background:var(--hc-canvas);color:var(--hc-text)}
 .hc-ui #product-proposal-list>p{background:#fff;padding:8px 12px;border:1px solid var(--hc-border-subtle);border-radius:var(--hc-radius-sm);margin:7px 0}
 .hc-ui :is(button,input,select,textarea,summary,a):focus-visible{outline:2px solid var(--hc-focus);outline-offset:3px}
 @media(max-width:850px){.hc-ui main{grid-template-columns:1fr}.hc-ui main>section{max-height:none}}
+
+.hc-ui .hc-scanner-brand{display:flex;align-items:center;gap:16px;min-height:48px}
+.hc-ui .hc-scanner-brand img{max-width:155px;height:auto;object-fit:contain;flex-shrink:0}
+.hc-ui .hc-scanner-brand h1{padding-left:16px;border-left:1px solid #66829d}
+.hc-ui .hc-review-item{background:#fff;border:1px solid var(--hc-border);border-radius:var(--hc-radius-sm);padding:11px;margin:8px 0}
+.hc-ui .hc-review-item p{margin:0 0 4px}
+.hc-ui .hc-review-item button{font-size:12px;margin:6px 0 0}
+@media(max-width:520px){.hc-ui .hc-scanner-brand img{max-width:105px}.hc-ui .hc-scanner-brand h1{font-size:17px}}
