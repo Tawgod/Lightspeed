@@ -198,6 +198,9 @@ app.get('/consignment-form-rules.js', (req, res) => {
 app.get('/consignment-shared-ui.css', (req, res) => {
   res.type('text/css').sendFile(path.join(__dirname, 'shared-ui', 'hc.css'));
 });
+app.get('/consignment-adapter.css', (req, res) => {
+  res.type('text/css').sendFile(path.join(__dirname, 'shared-ui', 'consignment-adapter.css'));
+});
 app.get('/consignment-brand.css', (req, res) => {
   res.type('text/css').sendFile(path.join(__dirname, 'shared-ui', 'consignment-brand.css'));
 });
