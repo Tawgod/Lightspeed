@@ -311,7 +311,15 @@ function showMatches(matches){
 function loadScannerDraft(d){
   verifiedProductSignature=null;lastMatches=null;createButton.disabled=true;stagePreorderButton.disabled=true;createPreview.hidden=true;matchesElement.replaceChildren();
   document.getElementById('fields').replaceChildren();
+  draftAvailable=false;
   if(!d){status.textContent='No product has been captured. Use Scan Current Page in the extension.';checkButton.disabled=true;return;}
+  if(d.requiresSelection){
+    status.textContent='Multiple products detected on this page. Open one individual supplier product page and scan it instead.';
+    matchStatus.textContent='No matching or new-item proposal allowed from a multi-product page.';
+    checkButton.disabled=true;
+    document.getElementById('warnings').textContent='Catalog and listing pages cannot be imported as individual products.';
+    return;
+  }
   status.textContent=d.requiresSelection?'Multiple products detected — automatic selection is disabled. Verify manually.':'Review extracted information; no changes have been sent to Lightspeed.';
   draftAvailable=true;
   employeeEditedGeneralSku=false;
