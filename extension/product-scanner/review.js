@@ -1,5 +1,6 @@
 import {checkProductMatches,toSpecialOrderMatchRequest} from './special-orders-adapter.js';
 import {captureSupplierProductPage} from './page-capture.js';
+import {productCompleteness} from './completeness.js';
 
 
 // Keep PIN and signed session strictly in this review window's memory.
@@ -292,13 +293,7 @@ function showMatches(matches){
     const box=document.createElement('div');box.className='card';
     const title=document.createElement('strong');title.textContent=match.name||'(Unnamed product)';
     const desc=document.createElement('p');desc.textContent='SKU: '+(match.sku||'Missing')+' · Description: '+(match.description||'Missing');
-    const missing=[];
-    if(!match.upc)missing.push('UPC');
-    if(match.weightKnown && (!match.weight||Number(match.weight)===0))missing.push('Weight');
-    if(match.pictureKnown && !match.imageUrl)missing.push('Picture');
-    const unknown=[];
-    if(!match.weightKnown)unknown.push('Weight');
-    if(!match.pictureKnown)unknown.push('Picture');
+    const {missing,unknown}=productCompleteness(match);
     const alert=document.createElement('p');
     alert.className=missing.length?'missing':'complete';
     alert.textContent=missing.length?'Missing: '+missing.join(', '):'No confirmed missing fields';
