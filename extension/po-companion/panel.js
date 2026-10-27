@@ -10,27 +10,54 @@
   const shadow = host.attachShadow({mode:'closed'});
   const style = document.createElement('style');
   style.textContent = `
-    *{box-sizing:border-box} :host{font:13px system-ui,Arial,sans-serif;color:#17212b}
-    .wrap{height:100vh;width:min(440px,27vw);min-width:300px;resize:horizontal;overflow:hidden;
-      display:flex;flex-direction:column;background:#fff;border-left:2px solid #153d53;
-      box-shadow:-5px 0 18px #0003}
-    header{background:#153d53;color:white;padding:10px;display:flex;justify-content:space-between;align-items:center}
-    h2{font-size:15px;margin:0}button{cursor:pointer;border:1px solid #b6c7d0;border-radius:5px;padding:5px 8px;background:#f5f8fb;color:#102e42}
-    header button{background:#fff}.body{padding:10px;overflow:auto;flex:1}
-    .muted{color:#687987;font-size:12px}.notice{background:#fff8e1;padding:8px;border-radius:5px}
-    .toolbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:8px 0}
-    .item{border-bottom:1px solid #d7e0e6;padding:10px 0}.line{display:flex;align-items:center;gap:5px}
-    .name{margin:3px 0 3px 23px;font-weight:600;overflow-wrap:anywhere}
-    .code{font-family:ui-monospace,monospace;overflow-wrap:anywhere;flex:1}
-    .fields{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0 0 22px}
-    [hidden]{display:none!important}.fields label{font-size:11px;color:#344f61}.fields input{display:block;width:100%;padding:5px}
-    .warning{color:#9b4e08}.error{color:#a51d27}.good{color:#17633d}
-    footer{padding:8px;border-top:1px solid #d7e0e6;display:flex;justify-content:space-between}
-    .collapsed{width:38px;min-width:38px;resize:none}.collapsed .body,.collapsed footer,.collapsed h2{display:none}
-    .collapsed header{height:100%;align-items:flex-start;justify-content:center}
+    *{box-sizing:border-box}
+    :host{font:13px system-ui,-apple-system,"Segoe UI",sans-serif;color:#21313b}
+    .wrap{height:100dvh;width:min(430px,27vw);min-width:310px;resize:horizontal;overflow:auto;
+      display:flex;flex-direction:column;background:#e8eef1;border-left:1px solid #8fa4af;
+      box-shadow:-8px 0 26px #102d3d40}
+    header{background:#183f53;color:#fff;padding:14px 13px;display:flex;gap:8px;align-items:center;
+      border-bottom:3px solid #bbd7d5}
+    h2{font-size:16px;line-height:1.3;font-weight:750;margin:0;flex:1}
+    button,select,input{font:inherit}
+    button{cursor:pointer;border:1px solid #a7bbc6;border-radius:8px;min-height:34px;
+      padding:6px 10px;background:#f5f8fa;color:#183f53;font-weight:650}
+    button:hover:not(:disabled){background:#dcebed}
+    button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid #e1aa39;outline-offset:2px}
+    button:disabled,input:disabled{opacity:.55;cursor:not-allowed}
+    header button{background:#e6f0f2;min-width:34px;min-height:34px}
+    .body{padding:12px;overflow:auto;flex:1}
+    .muted{color:#516671;font-size:12px;line-height:1.5}
+    .notice{background:#fff3d9;border-left:4px solid #b2771b;color:#563f17;padding:10px 11px;
+      border-radius:7px;line-height:1.4}
+    .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0;padding:10px;
+      background:#dce7ec;border:1px solid #c3d2da;border-radius:10px}
+    select,.toolbar input{border:1px solid #90aab8;border-radius:7px;min-height:34px;padding:6px;background:#fff;color:#21313b}
+    .toolbar input{min-width:120px;max-width:160px}
+    .item{background:#f8fafb;border:1px solid #c7d5dc;border-radius:10px;padding:11px;margin:9px 0;
+      box-shadow:0 1px 3px #12344612}
+    .line{display:flex;align-items:center;gap:7px}
+    .line input[type=checkbox]{width:17px;height:17px;accent-color:#176f77;flex-shrink:0}
+    .name{margin:7px 0 5px 24px;font-weight:650;line-height:1.4;overflow-wrap:anywhere}
+    .code{font-family:ui-monospace,SFMono-Regular,monospace;overflow-wrap:anywhere;flex:1;min-width:0}
+    .fields{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0 0 24px;padding:11px;
+      background:#e6eff3;border:1px solid #c5d5dd;border-radius:8px}
+    [hidden]{display:none!important}
+    .fields label{font-size:12px;color:#345161;font-weight:600}
+    .fields input{display:block;width:100%;min-height:34px;margin-top:4px;padding:7px;
+      border:1px solid #9bb2be;border-radius:6px;background:#fff}
+    .warning{color:#87510d;background:#fff1d3;border-radius:6px;padding:6px 8px;margin-top:7px;line-height:1.4}
+    .error{color:#9e2330}.good{color:#126c50}
+    footer{padding:11px 12px;background:#d6e2e8;border-top:1px solid #aebfc9;
+      display:flex;align-items:center;justify-content:space-between;gap:8px}
+    footer button{background:#176e76;border-color:#176e76;color:#fff}
+    footer button:hover:not(:disabled){background:#155b63}
+    .collapsed{width:44px;min-width:44px;resize:none}
+    .collapsed .body,.collapsed footer,.collapsed h2,.collapsed header button:last-child{display:none}
+    .collapsed header{height:100%;align-items:flex-start;justify-content:center;padding:8px 4px}
+    @media(prefers-reduced-motion:no-preference){button{transition:background .12s ease}}
   `;
   const shell = document.createElement('div'); shell.className='wrap';
-  const header=document.createElement('header'), title=document.createElement('h2'); title.textContent='PO Companion';
+  const header=document.createElement('header'), title=document.createElement('h2'); title.textContent='Hobby Corner · PO Companion';
   const collapse=document.createElement('button');collapse.textContent='−';collapse.title='Collapse or expand';
   collapse.onclick=()=>{const yes=shell.classList.toggle('collapsed');collapse.textContent=yes?'+':'−';};
   const close=document.createElement('button');close.textContent='×';close.title='Close';
@@ -42,10 +69,10 @@
   [['supplierSku','Supplier SKU'],['upc','UPC']].forEach(([v,label])=>{const option=document.createElement('option');option.value=v;option.textContent=label;mode.append(option);});
   const count=document.createElement('span');count.className='muted';
   toolbar.append('Copy: ',mode,count);
-  const notice=document.createElement('p');notice.className='notice';
+  const notice=document.createElement('p');notice.className='notice';notice.setAttribute('role','status');notice.setAttribute('aria-live','polite');
   const items=document.createElement('div');
   const footer=document.createElement('footer');const summary=document.createElement('span');const review=document.createElement('button');
-  review.textContent='Review Changes';review.onclick=()=>chrome.runtime.sendMessage({type:'HCT_PO_REVIEW'});
+  review.textContent='Review Changes';review.setAttribute('aria-label','Review selected purchase order changes');review.onclick=()=>chrome.runtime.sendMessage({type:'HCT_PO_REVIEW'});
   footer.append(summary,review);body.append(description,toolbar,notice,items);shell.append(header,body,footer);shadow.append(style,shell);document.documentElement.append(host);
   const {poCompanionContext:context,poCompanionDrafts:allDrafts={}}=await chrome.storage.local.get(['poCompanionContext','poCompanionDrafts']);
   if(!context?.poId){description.textContent='No PO selected.';notice.textContent='Open the Lightspeed purchase order and choose “Use Current PO” from the Hobby Corner extension first.';review.disabled=true;return;}
