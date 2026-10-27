@@ -26,7 +26,7 @@ async function refreshEverything(){
   try{
     showNotice('Refreshing Lightspeed suppliers, purchase orders, fulfillment demand, and Special Orders…');
     await loadSuppliers();
-    await Promise.all([loadOrdering(),loadLightspeedContext()]);
+    await Promise.all([loadOrdering(),loadLightspeedContext(),loadReadyNotifications()]);
     showNotice('Ordering data refreshed.');
   }catch(e){showNotice('Refresh failed: '+e.message)}
 }
@@ -340,6 +340,13 @@ function renderPurchaseOrders(){
   const table=document.createElement('table');
   table.innerHTML='<tr><th>PO</th><th>Status</th><th>Supplier</th><th>Lines</th><th>Special Orders</th><th>Updated</th></tr>';
   const supplierByLs=new Map(suppliers.map(s=>[String(s.lightspeed_supplier_id||''),s.name]));
+  const receivingSelect=document.getElementById('receivingPoSelect');
+  const currentReceiving=receivingSelect?.value||'';
+  if(receivingSelect){
+    receivingSelect.innerHTML='<option value="">Select current Lightspeed PO…</option>'+
+      rows.map(po=>'<option value="'+esc(po.id)+'">'+esc(po.reference||po.order_number||po.number||po.name||po.id)+' · '+esc(po.status||'')+'</option>').join('');
+    if(currentReceiving&&rows.some(po=>String(po.id)===String(currentReceiving)))receivingSelect.value=currentReceiving;
+  }
   for(const po of rows){
     const supplierId=String(po.supplier_id||po.supplier?.id||'');
     const ref=po.reference||po.order_number||po.number||po.name||po.id;
@@ -354,6 +361,100 @@ function renderPurchaseOrders(){
     table.appendChild(tr);
   }
   box.appendChild(table);
+}
+async function loadReceivingPreview(){
+  const poId=document.getElementById('receivingPoSelect').value;
+  const box=document.getElementById('receivingRows');
+  box.replaceChildren();
+  if(!poId){document.getElementById('receivingSummary').textContent='Select a current Lightspeed PO.';return}
+  try{
+    const d=await getJson(api+'/ordering/lightspeed-purchase-orders/'+encodeURIComponent(poId)+'/receiving-preview');
+    document.getElementById('receivingSummary').textContent='PO '+(d.purchase_order.reference||d.purchase_order.id)+' · '+d.lines.length+' product line(s). Enter cumulative customer quantity allocated from this PO.';
+    const table=document.createElement('table');
+    table.innerHTML='<tr><th>Product</th><th>PO Qty</th><th>LS Received</th><th>Customer</th><th>Needed</th><th>This PO Allocated</th><th>Confirm Target</th></tr>';
+    let detailCount=0;
+    for(const line of d.lines){
+      const waiting=(line.waiting_special_orders||[]).filter(x=>Number(x.remaining_needed||0)>0||Number(x.this_po_allocated||0)>0);
+      if(!waiting.length)continue;
+      waiting.forEach((w,index)=>{
+        detailCount++;
+        const tr=document.createElement('tr');
+        tr.innerHTML=
+          '<td>'+(index===0?('<b>'+esc(line.product_name)+'</b><div class="form-note">'+esc(line.sku||'')+'</div>'):'')+'</td>'+
+          '<td>'+(index===0?Number(line.ordered_quantity||0):'')+'</td>'+
+          '<td>'+(index===0?Number(line.lightspeed_received_quantity||0):'')+'</td>'+
+          '<td><b>'+esc(w.customer_name||'Customer')+'</b><div class="form-note">'+esc([w.customer_email,w.customer_phone].filter(Boolean).join(' · '))+'</div></td>'+
+          '<td>'+Number(w.remaining_needed||0)+' of '+Number(w.quantity||0)+'</td>'+
+          '<td>'+Number(w.this_po_allocated||0)+'</td>'+
+          '<td><input id="receive-target-'+w.special_order_item_id+'" type="number" min="'+Number(w.this_po_allocated||0)+'" max="'+Number(w.quantity||0)+'" step="1" value="'+Number(w.this_po_allocated||0)+'" style="width:75px"></td>';
+        table.appendChild(tr);
+      });
+    }
+    if(!detailCount){box.innerHTML='<p class="form-note">No waiting Special Orders match products on this PO.</p>';return}
+    box.appendChild(table);
+    const button=document.createElement('button');
+    button.textContent='Confirm Special Order Receiving';
+    button.style.marginTop='10px';
+    button.onclick=()=>confirmReceiving(poId,d);
+    box.appendChild(button);
+  }catch(e){showNotice('Could not load receiving review: '+e.message)}
+}
+
+async function confirmReceiving(poId,preview){
+  const allocations=[];
+  for(const line of preview.lines||[]){
+    for(const w of line.waiting_special_orders||[]){
+      const el=document.getElementById('receive-target-'+w.special_order_item_id);
+      if(!el)continue;
+      const target=Math.max(0,Math.floor(Number(el.value)||0));
+      if(target!==Number(w.this_po_allocated||0))allocations.push({special_order_item_id:w.special_order_item_id,target_allocated_quantity:target});
+    }
+  }
+  if(!allocations.length)return showNotice('No receiving quantities changed.');
+  if(!confirm('Confirm '+allocations.length+' Special Order receiving allocation(s)? This updates Special Orders locally and creates customer notification review items. It does not change Lightspeed inventory.'))return;
+  try{
+    const d=await getJson(api+'/ordering/lightspeed-purchase-orders/'+encodeURIComponent(poId)+'/receive-special-orders',{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({allocations,received_by:'ordering-web'})
+    });
+    const ready=(d.outcomes||[]).filter(x=>x.ready).length;
+    showNotice('Receiving saved. '+ready+' Special Order line(s) are fully received.');
+    await Promise.all([loadReceivingPreview(),loadOrdering(),loadReadyNotifications()]);
+  }catch(e){showNotice('Receiving failed: '+e.message)}
+}
+
+async function loadReadyNotifications(){
+  try{
+    const rows=await getJson(api+'/notifications/ready-review');
+    document.getElementById('readyNotificationSummary').textContent=rows.length+' customer notification review item(s).';
+    const box=document.getElementById('readyNotifications');box.replaceChildren();
+    if(!rows.length){box.innerHTML='<p class="form-note">No customer-ready notifications need review.</p>';return}
+    const table=document.createElement('table');
+    table.innerHTML='<tr><th>Customer</th><th>Item</th><th>Received</th><th>Contact</th><th>Message</th><th>Review</th></tr>';
+    for(const n of rows){
+      const tr=document.createElement('tr');
+      const contact=[n.discord_user_id?'Discord linked':null,n.email||null,n.phone||null].filter(Boolean).join(' · ')||'No contact method on file';
+      tr.innerHTML=
+        '<td><b>'+esc(n.customer_name||'Customer')+'</b></td>'+
+        '<td>'+esc(n.requested_name||'')+' · Qty '+Number(n.quantity||0)+'</td>'+
+        '<td>'+esc(n.received_at?new Date(n.received_at).toLocaleString():'—')+'</td>'+
+        '<td>'+esc(contact)+'</td>'+
+        '<td>'+esc(n.message||'')+'</td>'+
+        '<td><button onclick="reviewNotification('+n.id+',\'ACKNOWLEDGED\')">Approve</button> '+
+          '<button class="secondary-button" onclick="reviewNotification('+n.id+',\'SUPPRESSED\')">Suppress</button></td>';
+      table.appendChild(tr);
+    }
+    box.appendChild(table);
+  }catch(e){showNotice('Could not load notification review: '+e.message)}
+}
+
+async function reviewNotification(id,action){
+  let reason=null;
+  if(action==='SUPPRESSED'){reason=prompt('Reason for suppressing this notification:','Customer already contacted');if(reason===null)return}
+  try{
+    await getJson(api+'/notifications/'+id+'/review',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,reason,reviewed_by:'ordering-web'})});
+    showNotice(action==='ACKNOWLEDGED'?'Notification approved for delivery queue.':'Notification suppressed.');
+    await loadReadyNotifications();
+  }catch(e){showNotice('Notification review failed: '+e.message)}
 }
 document.getElementById('accessKey').value=accessKey();setAuth(false);
 if(accessKey())saveKey();

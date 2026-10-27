@@ -70,6 +70,29 @@
 
   <div class="panel">
     <div class="section-heading"><div>
+      <h2 style="margin:0">Receiving Review</h2>
+      <p class="form-note">Select a current Lightspeed PO, review waiting Special Orders for its products, and confirm only customer quantities physically received.</p>
+    </div></div>
+    <div class="toolbar">
+      <select id="receivingPoSelect" onchange="loadReceivingPreview()"><option value="">Select current Lightspeed PO…</option></select>
+      <button onclick="loadReceivingPreview()">Refresh PO</button>
+    </div>
+    <div id="receivingSummary" class="form-note"></div>
+    <div id="receivingRows"></div>
+  </div>
+
+  <div class="panel">
+    <div class="section-heading"><div>
+      <h2 style="margin:0">Customer Notification Review</h2>
+      <p class="form-note">Receiving creates review items here. Approve only after confirming the customer/item is ready. Approval queues delivery but does not send automatically yet.</p>
+    </div></div>
+    <div class="toolbar"><button onclick="loadReadyNotifications()">Refresh notifications</button></div>
+    <div id="readyNotificationSummary" class="form-note"></div>
+    <div id="readyNotifications"></div>
+  </div>
+
+  <div class="panel">
+    <div class="section-heading"><div>
       <h2 style="margin:0">Lightspeed Unfulfilled Orders</h2>
       <p class="form-note">Read-only demand from open Lightspeed fulfillments. Items already found on a current Lightspeed purchase order are marked with the PO number.</p>
     </div></div>
