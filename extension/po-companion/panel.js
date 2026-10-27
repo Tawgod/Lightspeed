@@ -79,18 +79,8 @@
     notice.textContent=(supplierId?'':'Supplier not mapped: supplier SKU is unavailable. ')+lines.length+' PO items loaded. '+warnings+' with warnings. Review only — no writes enabled.';
     await save();render();reload.hidden=false;signOut.hidden=false;signIn.hidden=true;pin.hidden=true;
   }
-  signIn.onclick=async()=>{
-    signIn.disabled=true;
-    try{
-      throw new Error('Live PO access is disabled in this development build pending authenticated 2026-04 PO endpoint validation.');
-      const p=pin.value;pin.value='';
-      const result=await chrome.runtime.sendMessage({type:'HCT_PO_LOGIN',pin:p});
-      if(!result?.ok)throw new Error(result?.error||'Sign-in failed.');
-      await loadPo();
-    }catch(error){notice.textContent=error.message;}
-    finally{signIn.disabled=false;pin.value='';}
-  };
-  reload.onclick=async()=>{try{await loadPo()}catch(error){notice.textContent=error.message;}};
+  signIn.onclick=()=>{pin.value='';notice.textContent='Timeclock sign-in and live PO loading are disabled in this development preview. No credentials were transmitted.';};
+  reload.onclick=()=>{notice.textContent='Live PO loading remains disabled until the authenticated read-only gateway is validated.';};
   signOut.onclick=async()=>{
     await chrome.runtime.sendMessage({type:'HCT_PO_LOGOUT'});
     lines=[];key=null;draft=null;render();signIn.hidden=false;pin.hidden=false;reload.hidden=true;signOut.hidden=true;
@@ -129,5 +119,5 @@
     summary.textContent=Object.values(draft?.items||{}).filter(x=>x.selected).length+' selected';
     review.disabled=!draft||!Object.values(draft.items).some(x=>x.selected);
   }
-  render();review.disabled=true;
+  render();review.disabled=true;signIn.disabled=true;pin.disabled=true;
 })();
