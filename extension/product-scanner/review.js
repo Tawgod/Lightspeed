@@ -394,7 +394,7 @@ function loadScannerDraft(d){
   if(!d){status.textContent='No product has been captured. Use Scan Current Page in the extension.';checkButton.disabled=true;return;}
   if(d.requiresSelection){
     status.textContent='Multiple products detected. Open one individual product page.';
-    matchStatus.textContent='Product listing pages cannot be submitted for new-item review.';
+    matchStatus.textContent='No matching or new-item proposal allowed from a multi-product page.';
     document.getElementById('warnings').textContent='Scan a single supplier product page, not a catalog.';
     checkButton.disabled=true;
     return;
