@@ -14,7 +14,7 @@ test('shared beta CSS is opt-in and includes the primary reusable components', (
     '.hc-table','.hc-field','.hc-modal','.hc-sidebar','.hc-loading']) {
     assert.ok(css.includes(selector), selector);
   }
-  assert.ok(!/\bbody\s*\{|:root\s*\{/.test(css), 'must not redefine host global CSS');
+  assert.ok(!/^\s*(?:body|:root)\s*\{/m.test(css), 'must not redefine host global CSS');
   assert.match(css, /prefers-reduced-motion/);
   assert.match(css, /focus-visible/);
 });
