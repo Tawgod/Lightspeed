@@ -416,45 +416,29 @@ export function registerSpecialOrderProductRoutes(router, deps) {
   router.post('/products/match-remote', async (req, res) => {
     res.set('Cache-Control','no-store');
     const body=req.body||{};
-    const identifiers=[
-      body.product_code,
-      body.sku,
-      body.supplier_sku
-    ].map(v=>String(v||'').trim()).filter(Boolean);
+    const identifiers=[body.product_code,body.sku,body.supplier_sku]
+      .map(v=>String(v||'').trim()).filter(Boolean);
     const name=String(body.name||'').trim();
-    const requests=[];
-
-    const primaryIdentifier=identifiers[0]||null;
-    if(primaryIdentifier){
-      requests.push(
-        lightspeedVersionedFetch(
-          lightspeedDomain,
-          lightspeedToken,
-          '/products?sku='+encodeURIComponent(primaryIdentifier.toLowerCase()),
-          {},
-          '2026-07'
-        )
-      );
+    const uniqueCodes=[...new Set(identifiers.map(v=>v.toLowerCase()))];
+    const routes=[
+      ...uniqueCodes.map(code=>'/products?sku='+encodeURIComponent(code)),
+      ...(name?['/products?name='+encodeURIComponent(name)]:[])
+    ];
+    if(!routes.length)return res.status(400).json({error:'UPC, SKU, supplier reorder number or name required.'});
+    // Never return verified no-match when an upstream Lightspeed request failed:
+    // that would allow an existing product to be proposed as a new item.
+    const results=await Promise.allSettled(routes.map(route=>
+      lightspeedVersionedFetch(lightspeedDomain,lightspeedToken,route,{},'2026-07')
+    ));
+    const failed=results.some(r=>r.status!=='fulfilled' || !Array.isArray(r.value?.data));
+    if(failed){
+      console.warn('[scanner] Remote product match incomplete; withholding duplicate verification.');
+      return res.status(502).json({error:'Lightspeed product verification incomplete. Please retry.'});
     }
-    if(name){
-      requests.push(
-        lightspeedVersionedFetch(
-          lightspeedDomain,
-          lightspeedToken,
-          '/products?name='+encodeURIComponent(name),
-          {},
-          '2026-07'
-        )
-      );
-    }
-
-    const results=await Promise.allSettled(requests);
     const seen=new Set();
     const matches=[];
     for(const result of results){
-      if(result.status!=='fulfilled')continue;
-      const rows=Array.isArray(result.value?.data)?result.value.data:[];
-      for(const p of rows){
+      for(const p of result.value.data){
         if(!p?.id||seen.has(p.id))continue;
         seen.add(p.id);
         matches.push({...p,source:'lightspeed'});

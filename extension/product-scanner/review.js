@@ -1,5 +1,6 @@
 import {checkProductMatches,toSpecialOrderMatchRequest} from './special-orders-adapter.js';
 import {captureSupplierProductPage} from './page-capture.js';
+import {productCompleteness} from './completeness.js';
 
 
 // Keep PIN and signed session strictly in this review window's memory.
@@ -292,13 +293,7 @@ function showMatches(matches){
     const box=document.createElement('div');box.className='card';
     const title=document.createElement('strong');title.textContent=match.name||'(Unnamed product)';
     const desc=document.createElement('p');desc.textContent='SKU: '+(match.sku||'Missing')+' · Description: '+(match.description||'Missing');
-    const missing=[];
-    if(!match.upc)missing.push('UPC');
-    if(match.weightKnown && (!match.weight||Number(match.weight)===0))missing.push('Weight');
-    if(match.pictureKnown && !match.imageUrl)missing.push('Picture');
-    const unknown=[];
-    if(!match.weightKnown)unknown.push('Weight');
-    if(!match.pictureKnown)unknown.push('Picture');
+    const {missing,unknown}=productCompleteness(match);
     const alert=document.createElement('p');
     alert.className=missing.length?'missing':'complete';
     alert.textContent=missing.length?'Missing: '+missing.join(', '):'No confirmed missing fields';
@@ -311,7 +306,15 @@ function showMatches(matches){
 function loadScannerDraft(d){
   verifiedProductSignature=null;lastMatches=null;createButton.disabled=true;stagePreorderButton.disabled=true;createPreview.hidden=true;matchesElement.replaceChildren();
   document.getElementById('fields').replaceChildren();
+  draftAvailable=false;
   if(!d){status.textContent='No product has been captured. Use Scan Current Page in the extension.';checkButton.disabled=true;return;}
+  if(d.requiresSelection){
+    status.textContent='Multiple products detected on this page. Open one individual supplier product page and scan it instead.';
+    matchStatus.textContent='No matching or new-item proposal allowed from a multi-product page.';
+    checkButton.disabled=true;
+    document.getElementById('warnings').textContent='Catalog and listing pages cannot be imported as individual products.';
+    return;
+  }
   status.textContent=d.requiresSelection?'Multiple products detected — automatic selection is disabled. Verify manually.':'Review extracted information; no changes have been sent to Lightspeed.';
   draftAvailable=true;
   employeeEditedGeneralSku=false;
@@ -476,7 +479,7 @@ scanOpenButton.addEventListener('click',async()=>{
     draft.supplierDomain=url.hostname.toLowerCase().replace(/^www\./,'');
     await chrome.storage.local.set({scannerDraft:draft});
     loadScannerDraft(draft);
-    status.textContent='Captured '+(draft.product.name||'supplier product')+'. Review the fields; existing products are checked automatically.';
+    if(!draft.requiresSelection)status.textContent='Captured '+(draft.product.name||'supplier product')+'. Review the fields; existing products are checked automatically.';
   }catch(error){status.textContent='Could not scan supplier page: '+error.message;}
   finally{scanOpenButton.disabled=false;}
 });

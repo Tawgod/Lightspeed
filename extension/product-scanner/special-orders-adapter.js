@@ -24,11 +24,14 @@ export function normalizeMatches(local = [], remote = []) {
         const existing = byKey.get(key);
         existing.sources.push(source);
         existing.score = Math.max(existing.score || 0, Number(row.score) || 0);
+        // Preserve the strongest available product fields while retaining the
+        // authoritative Lightspeed completeness flags when those exist.
+        for(const field of ['name','sku','supplierSku','upc','description','brand']){
+          if(!existing[field] && row[field])existing[field]=row[field];
+        }
         if(source==='lightspeed'){
-          existing.weight=row.weight??existing.weight;
-          existing.weightKnown=row.weightKnown??existing.weightKnown;
-          existing.imageUrl=row.imageUrl||existing.imageUrl;
-          existing.pictureKnown=row.pictureKnown??existing.pictureKnown;
+          if(row.weightKnown===true){existing.weight=row.weight??null;existing.weightKnown=true;}
+          if(row.pictureKnown===true){existing.imageUrl=row.imageUrl||'';existing.pictureKnown=true;}
         }
         continue;
       }
