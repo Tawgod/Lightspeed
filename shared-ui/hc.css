@@ -6,7 +6,7 @@
   --hc-surface-inset:#edf3f9;--hc-header:#102c48;--hc-nav:#143755;
   --hc-text:#172b47;--hc-muted:#4a5e76;--hc-border:#b9cadd;
   --hc-border-subtle:#d4e0ed;--hc-primary:#1769e9;--hc-primary-hover:#1258c5;
-  --hc-on-primary:#fff;--hc-accent:#f7941d;--hc-focus:#f7941d;
+  --hc-on-primary:#fff;--hc-accent:#f7941d;--hc-focus:#bc5700;
   --hc-success:#126239;--hc-success-bg:#dcf4e7;--hc-warning:#854b00;
   --hc-warning-bg:#fff0cd;--hc-danger:#a5212b;--hc-danger-bg:#fce5e7;
   --hc-info:#1654aa;--hc-info-bg:#e0eeff;
@@ -20,7 +20,7 @@
 .hc-ui,.hc-ui *,.hc-ui *::before,.hc-ui *::after{box-sizing:border-box}
 .hc-ui [hidden]{display:none!important}
 .hc-ui :is(button,input,select,textarea,a,summary,[tabindex]):focus-visible{
-  outline:3px solid var(--hc-focus);outline-offset:3px;
+  outline:2px solid #fff;outline-offset:2px;box-shadow:0 0 0 4px var(--hc-focus);
 }
 .hc-ui h1,.hc-ui h2,.hc-ui h3,.hc-ui p{margin-block-start:0}
 .hc-ui h1{font-size:clamp(1.3rem,2vw,1.65rem);line-height:1.25}
