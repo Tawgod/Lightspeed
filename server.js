@@ -194,6 +194,13 @@ app.get('/consignment-customer.js', (req, res) => {
 app.get('/consignment-form-rules.js', (req, res) => {
   res.type('application/javascript').sendFile(path.join(__dirname,'services','consignmentFormRules.js'));
 });
+// Shared UI draft PR #16 is vendored for Consignment's isolated beta only.
+app.get('/consignment-shared-ui.css', (req, res) => {
+  res.type('text/css').sendFile(path.join(__dirname, 'shared-ui', 'hc.css'));
+});
+app.get('/consignment-brand.css', (req, res) => {
+  res.type('text/css').sendFile(path.join(__dirname, 'shared-ui', 'consignment-brand.css'));
+});
 app.get('/consignment-beta.css', (req, res) => {
   res.type('text/css').sendFile(path.join(__dirname, 'consignment-beta.css'));
 });
