@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hobby Corner Product Manager — UI beta</title>
+<link rel="stylesheet" href="../shared-ui/hc.css"><link rel="stylesheet" href="./ui.css"></head>
+<body class="hc-ui"><div class="hc-shell">
+<nav class="hc-sidebar" aria-label="Product Manager navigation">
+<div class="hc-brand"><img class="hc-brand-icon" alt="" src="../shared-ui/assets/hc-icon.webp"><div><strong>HOBBY CORNER</strong><div class="hc-small">Product Manager</div></div></div>
+<a href="#products" aria-current="page">Products</a><a href="#changes">Review changes</a>
+<p class="hc-small hc-sidebar-note">Read-only demonstration. No Lightspeed connection or write permissions.</p></nav>
+<div class="hc-workspace"><header class="hc-topbar">
+<img src="../shared-ui/assets/hc-wordmark.webp" class="hc-wordmark" alt="The Hobby Corner">
+<span class="hc-title">Product Manager</span><span class="hc-spacer"></span><span class="hc-badge hc-badge--warning">Demo · preview only</span></header>
+<main class="hc-page" id="products"><div class="hc-page-heading"><div><h1>Product catalog</h1><p>Search, review and stage changes; never applies live product edits.</p></div><button class="hc-button" type="button" id="review-top">Review changes <span id="change-count">0</span></button></div>
+<p class="hc-alert hc-alert--warning" role="status">Sample data only. Editing adds a local draft, not a Lightspeed update.</p>
+<div class="pm-layout">
+<section class="hc-panel" aria-labelledby="grid-title"><div class="hc-panel-header"><h2 id="grid-title">Products</h2>
+<div class="hc-row"><label class="hc-small" for="profile">Layout</label><select id="profile" class="hc-select pm-select"><option>Default</option><option>Profile 1</option><option>Profile 2</option><option>Profile 3</option></select></div></div>
+<div class="hc-panel-body"><div class="hc-row"><div class="hc-field hc-grow"><label for="query">Find product / SKU / UPC</label><input class="hc-input" id="query" autocomplete="off"></div>
+<label class="hc-small"><input type="checkbox" id="hide-inactive" checked> Hide inactive</label><button class="hc-button hc-button--secondary" type="button" id="reset">Reset drafts</button></div>
+<div class="hc-table-scroll pm-scroll"><table class="hc-table"><thead><tr><th scope="col">SKU</th><th scope="col">Product</th><th scope="col">Retail</th><th scope="col">Online (X)</th><th scope="col">Status</th></tr></thead><tbody id="rows"></tbody></table></div><p id="empty" class="hc-empty" hidden>No matching products.</p></div></section>
+<aside class="hc-panel hc-panel--drawer" aria-labelledby="detail-title"><div class="hc-panel-header"><h2 id="detail-title">Product details</h2><label for="view">Screen <select id="view" class="hc-select pm-select"><option value="summary">Summary</option><option value="edit">Edit fields</option><option value="images">Pictures</option></select></label></div><div class="hc-panel-body" id="detail" aria-live="polite"></div></aside>
+</div>
+<section id="changes" class="hc-panel pm-review" aria-labelledby="review-title"><div class="hc-panel-header"><h2 id="review-title">Pending changes</h2><span class="hc-badge hc-badge--neutral">Approval required in future integration</span></div><div class="hc-panel-body"><div id="review-list" class="hc-stack"></div><p class="hc-small hc-muted">This demonstration does not offer an Apply to Lightspeed action.</p></div></section>
+<div id="feedback" role="status" aria-live="polite" class="pm-feedback hc-alert">No live records loaded.</div>
+</main></div></div><script type="module" src="./ui.mjs"></script></body></html>
