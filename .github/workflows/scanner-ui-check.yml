@@ -1,7 +1,7 @@
 name: Scanner review UI regression
 on:
   push:
-    branches: [feature/scanner-fields-create-preview, feature/scanner-review-auto-lookup, feature/scanner-sku-role-diagnostics]
+    branches: [feature/scanner-fields-create-preview, feature/scanner-review-auto-lookup, feature/scanner-sku-role-diagnostics, feature/scanner-duplicate-safety-review-20261027]
     paths:
       - 'extension/**'
       - 'services/scannerSupplierTemplates.js'
@@ -14,6 +14,9 @@ on:
       - 'tests/scannerAcdCapture.test.cjs'
       - 'routes/scannerMatchGateway.js'
       - 'tests/scannerReviewAutoMatch.test.js'
+      - 'tests/scannerDuplicateSafety.test.js'
+      - 'extension/product-scanner/completeness.js'
+      - 'routes/specialOrderProducts.js'
       - 'services/scannerTimeclockGateway.js'
       - 'services/scannerTimeclockIdentity.js'
       - 'server.js'
@@ -45,6 +48,8 @@ jobs:
           node --check extension/product-scanner/page-capture.js
           node --check extension/popup.js
           node --check extension/product-scanner/review.js
+          node --check extension/product-scanner/completeness.js
+          node --check routes/specialOrderProducts.js
           node --check extension/product-scanner/special-orders-adapter.js
       - name: Assert revised UI fields and safe creation flow
         run: |
@@ -89,3 +94,5 @@ jobs:
         run: node --test tests/scannerReviewAutoMatch.test.js
       - name: Verify guarded preorder campaign staging
         run: node --test tests/scannerPreorderStaging.test.js
+      - name: Verify scanner duplicate and completeness safeguards
+        run: node --test tests/scannerDuplicateSafety.test.js
