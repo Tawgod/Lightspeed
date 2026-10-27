@@ -20,6 +20,56 @@ let employeeEditedGeneralSku=false;
 let capturedSupplierSku='';
 let lookupBusy=false;
 let pendingLookup=false;
+let proposalSourceUrl='';
+let proposalRequiresSelection=false;
+const submitProposalButton=document.getElementById('submit-product-proposal');
+const proposalStatus=document.getElementById('product-proposal-status');
+const proposalList=document.getElementById('product-proposal-list');
+function setProposalEligibility(){
+  submitProposalButton.disabled=!(scannerSession && scannerSession.expiresAt>Date.now() &&
+    draftAvailable && !proposalRequiresSelection && supplierMatched &&
+    Array.isArray(lastMatches) && lastMatches.length===0 &&
+    verifiedProductSignature && verifiedProductSignature===signature());
+}
+async function loadProductProposals(){
+  if(!scannerSession || scannerSession.expiresAt<=Date.now()){proposalList.textContent='Sign in to view proposed items.';return;}
+  proposalList.textContent='Loading…';
+  try{
+    const response=await fetch(SCANNER_API+'/product-proposals',{cache:'no-store',headers:{Authorization:'Bearer '+scannerSession.token}});
+    if(!response.ok)throw new Error('Could not load product review queue ('+response.status+').');
+    const data=await response.json();
+    proposalList.replaceChildren();
+    if(!data.proposals?.length){proposalList.textContent='No pending product proposals.';return;}
+    for(const entry of data.proposals){
+      const item=document.createElement('p');
+      item.textContent=(entry.product_name||'Product')+' · '+(entry.status||'PENDING_REVIEW')+' · Submitted '+new Date(entry.submitted_at).toLocaleString();
+      proposalList.append(item);
+    }
+  }catch(error){proposalList.textContent=error.message;}
+}
+document.getElementById('refresh-product-proposals').addEventListener('click',loadProductProposals);
+submitProposalButton.addEventListener('click',async()=>{
+  if(submitProposalButton.disabled)return;
+  const snapshot=signature();
+  const supplierId=supplierVerifiedId;
+  const product=currentProduct();
+  const sourceUrl=proposalSourceUrl;
+  submitProposalButton.disabled=true;
+  proposalStatus.textContent='Rechecking duplicates and submitting review request…';
+  try{
+    const response=await fetch(SCANNER_API+'/product-proposals',{
+      method:'POST',cache:'no-store',
+      headers:{'Content-Type':'application/json',Authorization:'Bearer '+scannerSession.token},
+      body:JSON.stringify({supplierId,product,sourceUrl})
+    });
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.error||'Unable to submit proposal ('+response.status+').');
+    proposalStatus.textContent='Submitted '+product.name+' for review. No product was created in Lightspeed.';
+    await loadProductProposals();
+  }catch(error){proposalStatus.textContent=error.message;}
+  if(snapshot===signature())setProposalEligibility();
+});
+
 const SUPPLIER_DOMAINS={'acdd.com':['ACD Distribution','ACD']};
 function normalizedSupplierName(value){return String(value||'').toLowerCase().replace(/[^a-z0-9]/g,'');}
 function chosenSupplierId(){const name=normalizedSupplierName(supplierInput.value);const exact=supplierRecords.filter(s=>normalizedSupplierName(s.name)===name);return exact.length===1?exact[0].id:null;}
@@ -58,7 +108,7 @@ function clearScannerSession(){
   signInButton.hidden=false;
   pinField.disabled=false;
   checkButton.disabled=true;
-  lookupGeneration++;pendingLookup=false;createButton.disabled=true;stagePreorderButton.disabled=true;
+  lookupGeneration++;pendingLookup=false;createButton.disabled=true;stagePreorderButton.disabled=true;submitProposalButton.disabled=true;
   employeeStatus.textContent='Not signed in. Use your Timeclock PIN.';
 }
 signOutButton.addEventListener('click',clearScannerSession);
@@ -264,7 +314,7 @@ let verifiedProductSignature=null;
 let lastMatches=null;
 function signature(){return JSON.stringify({...currentProduct(),supplier:supplierInput.value.trim()});}
 supplierInput.addEventListener('input',()=>{invalidateVerification();resolveSupplier();queueProductLookup();});
-function invalidateVerification(){stagePreorderButton.disabled=true;lookupGeneration++;verifiedProductSignature=null;lastMatches=null;createButton.disabled=true;createPreview.hidden=true;matchStatus.textContent='Product changed — checking for existing products…';}
+function invalidateVerification(){submitProposalButton.disabled=true;stagePreorderButton.disabled=true;lookupGeneration++;verifiedProductSignature=null;lastMatches=null;createButton.disabled=true;createPreview.hidden=true;matchStatus.textContent='Product changed — checking for existing products…';}
 
 function currentProduct(){
   const product=Object.fromEntries(keys.map(k=>[k,document.getElementById('field-'+k).value.trim()]));
@@ -309,8 +359,10 @@ function showMatches(matches){
 }
 
 function loadScannerDraft(d){
-  verifiedProductSignature=null;lastMatches=null;createButton.disabled=true;stagePreorderButton.disabled=true;createPreview.hidden=true;matchesElement.replaceChildren();
+  verifiedProductSignature=null;lastMatches=null;createButton.disabled=true;stagePreorderButton.disabled=true;submitProposalButton.disabled=true;createPreview.hidden=true;matchesElement.replaceChildren();
   document.getElementById('fields').replaceChildren();
+  proposalSourceUrl=d?.sourceUrl||'';
+  proposalRequiresSelection=d?.requiresSelection===true;
   if(!d){status.textContent='No product has been captured. Use Scan Current Page in the extension.';checkButton.disabled=true;return;}
   status.textContent=d.requiresSelection?'Multiple products detected — automatic selection is disabled. Verify manually.':'Review extracted information; no changes have been sent to Lightspeed.';
   draftAvailable=true;
@@ -385,6 +437,7 @@ async function checkExistingProducts(){
     verifiedProductSignature=signature();lastMatches=result.matches;
     createButton.disabled=result.matches.length!==0||!supplierMatched;
     stageEligibility();
+    setProposalEligibility();
     matchStatus.textContent=result.matches.length
       ? result.matches.length+' potential product match(es). Review missing information below.'
       : supplierMatched?'No existing products matched. You can prepare a new-item proposal.':'No product matched, but supplier selection needs review.';
