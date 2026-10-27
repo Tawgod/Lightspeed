@@ -20,12 +20,12 @@ test('exact copy preserves leading zero identifiers, whitespace and multiline de
   assert.equal(result.format,'plain');
 });
 test('scanner uses shared helper, never coerces copied identifiers to numbers',()=>{
-  assert.match(script,/copyHobbyCornerField\\(\\{plainText:JSON.stringify\\(currentProduct\\(\\),null,2\\)\\}\\)/);
-  assert.doesNotMatch(script,/parseInt\\(currentProduct\\(\\)\\.upc/);
+  assert.ok(script.includes('copyHobbyCornerField({plainText:JSON.stringify(currentProduct(),null,2)})'));
+  assert.ok(!script.includes('parseInt(currentProduct().upc'));
 });
 test('feature scope retains authentication and backend create restrictions',()=>{
   assert.match(script,/SCANNER_API/);
   assert.match(script,/employee-sign-in/);
   assert.match(script,/CREATE TEST PRODUCT/);
-  assert.doesNotMatch(script,/fetch\\([^)]*\\/api\\/2026-07\\/products/);
+  assert.ok(!script.includes('/api/2026-07/products'));
 });
