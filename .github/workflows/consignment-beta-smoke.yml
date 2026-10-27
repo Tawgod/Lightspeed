@@ -6,6 +6,8 @@ on:
     paths:
       - 'consignment-beta.*'
       - 'consignment-customer.*'
+      - 'shared-ui/hc.css'
+      - 'shared-ui/consignment-*.css'
       - 'services/consignmentFormRules.js'
       - 'server.js'
       - 'services/consignmentProductPreview.js'
@@ -50,6 +52,9 @@ jobs:
         run: |
           test -s consignment-beta.html
           test -s consignment-customer.html
+          test -s shared-ui/hc.css
+          test -s shared-ui/consignment-brand.css
+          test -s shared-ui/consignment-adapter.css
           test -s consignment-beta.css
           grep -q "app.get('/consignment'" server.js
           grep -q "Consignment" special-orders.html
@@ -67,6 +72,10 @@ jobs:
           test -s /tmp/consignment-page.html || (cat /tmp/consignment-beta-server.log && exit 1)
           grep -q 'Consignment Management' /tmp/consignment-page.html
           curl -fsS http://127.0.0.1:8080/consignment/submit | grep -q 'Submit your used items'
+          curl -fsS http://127.0.0.1:8080/consignment-shared-ui.css | grep -q 'hc-panel'
+          curl -fsS http://127.0.0.1:8080/consignment-brand.css | grep -q 'hc-logo-wordmark'
+          curl -fsS http://127.0.0.1:8080/consignment-adapter.css | grep -q 'hc-primary'
+          grep -q 'class="hc-ui"' /tmp/consignment-page.html
           curl -fsS http://127.0.0.1:8080/consignment-customer.js | grep -q 'conditionsFor'
           curl -fsS http://127.0.0.1:8080/consignment-form-rules.js | grep -q 'conditionDescriptions'
           curl -fsS http://127.0.0.1:8080/consignment-beta.css | grep -q 'metric'
