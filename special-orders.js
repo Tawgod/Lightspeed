@@ -3558,6 +3558,151 @@ export function createSpecialOrdersRouter({
     } finally { client.release(); }
   });
 
+  router.get('/ordering/lightspeed-purchase-orders/:id/receiving-preview', requireDb, async (req,res)=>{
+    try{
+      const purchaseOrders=await getLightspeedOpenPurchaseOrders();
+      const po=purchaseOrders.find(x=>String(x.id)===String(req.params.id));
+      if(!po)return res.status(404).json({error:'Current Lightspeed purchase order not found.'});
+      const poRef=lsPoReference(po);
+      const lines=[];
+      for(const line of po.line_items||[]){
+        const lsProductId=lightspeedProductId(line);
+        if(!lsProductId)continue;
+        const localProduct=await pool.query('SELECT id,name,sku,upc FROM products WHERE lightspeed_product_id=$1 LIMIT 1',[lsProductId]);
+        const product=localProduct.rows[0]||null;
+        let waiting=[];
+        if(product){
+          const result=await pool.query(
+            "SELECT i.id AS special_order_item_id,i.quantity,i.status,i.created_at,"+
+            "o.customer_id,c.name AS customer_name,c.phone AS customer_phone,c.email AS customer_email,c.discord_user_id,"+
+            "COALESCE((SELECT sum(a.quantity)::int FROM inventory_allocations a WHERE a.special_order_item_id=i.id AND a.released_at IS NULL),0) AS current_allocated,"+
+            "COALESCE(r.allocated_quantity,0)::int AS this_po_allocated "+
+            "FROM special_order_items i "+
+            "JOIN special_orders o ON o.id=i.special_order_id "+
+            "LEFT JOIN customers c ON c.id=o.customer_id "+
+            "LEFT JOIN lightspeed_po_receipt_allocations r ON r.special_order_item_id=i.id AND r.lightspeed_purchase_order_id=$2 "+
+            "WHERE i.product_id=$1 AND i.status NOT IN ('CANCELLED','COMPLETED') "+
+            "ORDER BY i.created_at,i.id",
+            [product.id,String(po.id)]
+          );
+          waiting=result.rows.map(x=>({...x,remaining_needed:Math.max(0,Number(x.quantity||0)-Number(x.current_allocated||0))}));
+        }
+        const orderedQty=Number(line.quantity ?? line.count ?? line.ordered_quantity ?? line.order_quantity ?? 0)||0;
+        const lsReceivedQty=Number(line.received_quantity ?? line.quantity_received ?? line.received_count ?? line.received ?? 0)||0;
+        lines.push({
+          line_id:line.id||null,lightspeed_product_id:lsProductId,
+          product_name:product?.name||line.product?.name||line.name||'Product',
+          sku:product?.sku||line.product?.sku||line.sku||null,
+          ordered_quantity:orderedQty,lightspeed_received_quantity:lsReceivedQty,
+          waiting_special_orders:waiting,
+          waiting_special_order_count:waiting.filter(x=>x.remaining_needed>0).length
+        });
+      }
+      res.json({purchase_order:{id:po.id,reference:poRef,status:po.status,supplier_id:po.supplier_id||po.supplier?.id||null,updated_at:po.updated_at||null},lines});
+    }catch(error){res.status(error.status||502).json({error:error.message});}
+  });
+
+  router.post('/ordering/lightspeed-purchase-orders/:id/receive-special-orders', requireDb, async (req,res)=>{
+    const allocations=Array.isArray(req.body?.allocations)?req.body.allocations:[];
+    const receivedBy=String(req.body?.received_by||'ordering-web').trim()||'ordering-web';
+    if(!allocations.length)return res.status(400).json({error:'At least one Special Order allocation is required.'});
+    let purchaseOrders;
+    try{purchaseOrders=await getLightspeedOpenPurchaseOrders()}catch(error){return res.status(error.status||502).json({error:error.message})}
+    const po=purchaseOrders.find(x=>String(x.id)===String(req.params.id));
+    if(!po)return res.status(404).json({error:'Current Lightspeed purchase order not found.'});
+    const poRef=lsPoReference(po);
+    const poProductIds=new Set((po.line_items||[]).map(l=>lightspeedProductId(l)).filter(Boolean));
+    const db=await pool.connect();
+    try{
+      await db.query('BEGIN');
+      const outcomes=[];
+      for(const a of allocations){
+        const itemId=Number(a.special_order_item_id);
+        const target=Math.max(0,Math.floor(Number(a.target_allocated_quantity)||0));
+        if(!Number.isFinite(itemId)||itemId<=0)continue;
+        const itemResult=await db.query(
+          "SELECT i.id,i.product_id,i.quantity,i.status,i.requested_name,p.lightspeed_product_id,"+
+          "o.customer_id,c.name AS customer_name,c.phone,c.email,c.discord_user_id "+
+          "FROM special_order_items i JOIN products p ON p.id=i.product_id "+
+          "JOIN special_orders o ON o.id=i.special_order_id LEFT JOIN customers c ON c.id=o.customer_id "+
+          "WHERE i.id=$1 FOR UPDATE OF i",
+          [itemId]
+        );
+        const item=itemResult.rows[0];
+        if(!item)throw new Error('Special Order line '+itemId+' was not found.');
+        if(!item.lightspeed_product_id||!poProductIds.has(String(item.lightspeed_product_id)))throw new Error('Special Order line '+itemId+' is not a product on Lightspeed PO '+poRef+'.');
+        const prior=await db.query('SELECT * FROM lightspeed_po_receipt_allocations WHERE lightspeed_purchase_order_id=$1 AND special_order_item_id=$2 FOR UPDATE',[String(po.id),itemId]);
+        const previous=Number(prior.rows[0]?.allocated_quantity||0);
+        if(target<previous)throw new Error('Received target for Special Order line '+itemId+' cannot be reduced below '+previous+'.');
+        const allAllocated=await db.query('SELECT COALESCE(sum(quantity),0)::int AS qty FROM inventory_allocations WHERE special_order_item_id=$1 AND released_at IS NULL',[itemId]);
+        const currentlyAllocated=Number(allAllocated.rows[0].qty||0);
+        const remainingBefore=Math.max(0,Number(item.quantity||0)-currentlyAllocated);
+        const delta=Math.min(target-previous,remainingBefore);
+        if(prior.rows[0]){
+          await db.query(
+            "UPDATE lightspeed_po_receipt_allocations SET allocated_quantity=$1,received_by=$2,"+
+            "first_received_at=COALESCE(first_received_at,CASE WHEN $1>0 THEN now() ELSE NULL END),updated_at=now() WHERE id=$3",
+            [previous+delta,receivedBy,prior.rows[0].id]
+          );
+        }else{
+          await db.query(
+            "INSERT INTO lightspeed_po_receipt_allocations "+
+            "(lightspeed_purchase_order_id,lightspeed_purchase_order_reference,lightspeed_product_id,special_order_item_id,allocated_quantity,received_by,first_received_at) "+
+            "VALUES ($1,$2,$3,$4,$5,$6,CASE WHEN $5>0 THEN now() ELSE NULL END)",
+            [String(po.id),poRef,String(item.lightspeed_product_id),itemId,delta,receivedBy]
+          );
+        }
+        if(delta>0)await db.query('INSERT INTO inventory_allocations (special_order_item_id,product_id,quantity) VALUES ($1,$2,$3)',[itemId,item.product_id,delta]);
+        const newTotal=currentlyAllocated+delta;
+        const isReady=newTotal>=Number(item.quantity||0);
+        if(isReady && !['RECEIVED','HELD','CUSTOMER_NOTIFIED','COMPLETED'].includes(String(item.status).toUpperCase())){
+          const oldStatus=item.status;
+          await db.query("UPDATE special_order_items SET status='RECEIVED',received_at=COALESCE(received_at,now()),updated_at=now() WHERE id=$1",[itemId]);
+          await db.query("INSERT INTO order_status_history (special_order_item_id,old_status,new_status,note,changed_by) VALUES ($1,$2,'RECEIVED',$3,$4)",[itemId,oldStatus,'Received from Lightspeed PO '+poRef,receivedBy]);
+          const recipient=item.discord_user_id||item.email||item.phone||null;
+          await db.query(
+            "INSERT INTO notifications (special_order_item_id,customer_id,channel,recipient,status,message) "+
+            "VALUES ($1,$2,'READY_REVIEW',$3,'PENDING',$4) "+
+            "ON CONFLICT (special_order_item_id,channel) WHERE special_order_item_id IS NOT NULL AND channel='READY_REVIEW' AND status IN ('PENDING','QUEUED') "+
+            "DO UPDATE SET recipient=EXCLUDED.recipient,message=EXCLUDED.message,error=NULL",
+            [itemId,item.customer_id,recipient,(item.customer_name||'Customer')+' — '+item.requested_name+' is received and ready for notification review.']
+          );
+        }
+        outcomes.push({special_order_item_id:itemId,previous_po_allocated:previous,added_now:delta,total_allocated:newTotal,required_quantity:Number(item.quantity||0),ready:isReady});
+      }
+      await db.query('COMMIT');
+      res.json({purchase_order_id:String(po.id),purchase_order_reference:poRef,outcomes});
+    }catch(error){await db.query('ROLLBACK');res.status(400).json({error:error.message});}
+    finally{db.release()}
+  });
+
+  router.get('/notifications/ready-review', requireDb, async (req,res)=>{
+    const {rows}=await pool.query(
+      "SELECT n.id,n.special_order_item_id,n.customer_id,n.recipient,n.status,n.message,n.created_at,"+
+      "c.name AS customer_name,c.phone,c.email,c.discord_user_id,i.requested_name,i.quantity,i.status AS item_status,i.received_at "+
+      "FROM notifications n JOIN special_order_items i ON i.id=n.special_order_item_id "+
+      "LEFT JOIN customers c ON c.id=n.customer_id "+
+      "WHERE n.channel='READY_REVIEW' AND n.status IN ('PENDING','QUEUED') ORDER BY n.created_at"
+    );
+    res.json(rows);
+  });
+
+  router.patch('/notifications/:id/review', requireDb, async (req,res)=>{
+    const action=String(req.body?.action||'').trim().toUpperCase();
+    const reviewedBy=String(req.body?.reviewed_by||'ordering-web').trim()||'ordering-web';
+    if(!['ACKNOWLEDGED','SUPPRESSED'].includes(action))return res.status(400).json({error:'action must be ACKNOWLEDGED or SUPPRESSED.'});
+    const current=await pool.query("SELECT n.*,i.status AS item_status FROM notifications n JOIN special_order_items i ON i.id=n.special_order_item_id WHERE n.id=$1 AND n.channel='READY_REVIEW'",[req.params.id]);
+    if(!current.rows[0])return res.status(404).json({error:'Ready notification review item not found.'});
+    if(action==='ACKNOWLEDGED'){
+      const {rows}=await pool.query("UPDATE notifications SET status='QUEUED',error=NULL WHERE id=$1 RETURNING *",[req.params.id]);
+      await pool.query("INSERT INTO special_order_item_activity (special_order_item_id,activity_type,message,new_value,changed_by) VALUES ($1,'OTHER','Customer notification approved for delivery','QUEUED',$2)",[current.rows[0].special_order_item_id,reviewedBy]);
+      return res.json(rows[0]);
+    }
+    const reason=String(req.body?.reason||'Suppressed during employee review').trim();
+    const {rows}=await pool.query("UPDATE notifications SET status='SUPPRESSED',suppression_reason=$2,suppressed_at=now() WHERE id=$1 RETURNING *",[req.params.id,reason]);
+    await pool.query("INSERT INTO special_order_item_activity (special_order_item_id,activity_type,message,new_value,changed_by) VALUES ($1,'OTHER',$2,'SUPPRESSED',$3)",[current.rows[0].special_order_item_id,reason,reviewedBy]);
+    res.json(rows[0]);
+  });
   router.get('/notifications/queue', requireDb, async (req, res) => {
     const { rows } = await pool.query(`
       SELECT n.*, c.name AS customer_name, i.requested_name, i.status AS item_status

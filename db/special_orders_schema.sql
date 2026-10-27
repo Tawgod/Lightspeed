@@ -589,3 +589,24 @@ CREATE INDEX IF NOT EXISTS idx_preorder_watch_status
 ON preorder_watch_items (status, captured_at DESC);
 CREATE INDEX IF NOT EXISTS idx_preorder_watch_discord_user
 ON preorder_watch_items (discord_user_id, captured_at DESC);
+
+CREATE TABLE IF NOT EXISTS lightspeed_po_receipt_allocations (
+  id BIGSERIAL PRIMARY KEY,
+  lightspeed_purchase_order_id TEXT NOT NULL,
+  lightspeed_purchase_order_reference TEXT,
+  lightspeed_product_id TEXT NOT NULL,
+  special_order_item_id BIGINT NOT NULL REFERENCES special_order_items(id) ON DELETE CASCADE,
+  allocated_quantity INTEGER NOT NULL DEFAULT 0 CHECK (allocated_quantity >= 0),
+  received_by TEXT,
+  first_received_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (lightspeed_purchase_order_id, special_order_item_id)
+);
+CREATE INDEX IF NOT EXISTS idx_ls_po_receipt_allocations_po
+ON lightspeed_po_receipt_allocations (lightspeed_purchase_order_id, updated_at DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_ready_review_pending
+ON notifications (special_order_item_id, channel)
+WHERE special_order_item_id IS NOT NULL
+  AND channel='READY_REVIEW'
+  AND status IN ('PENDING','QUEUED');
