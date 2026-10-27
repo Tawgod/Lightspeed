@@ -18,6 +18,8 @@ import { createSpecialOrdersMatchLookup } from './services/scannerSpecialOrdersL
 import { createScannerLoginLimiter } from './services/scannerLoginLimiter.js';
 import { initializeScannerPreorderStaging } from './services/scannerPreorderStaging.js';
 import { initializeScannerProductReviewQueue } from './services/scannerProductReviewQueue.js';
+import { initializeScannerTestCreation } from './services/scannerTestCreationRouter.js';
+import { createScannerIsolatedTestWriter } from './services/scannerIsolatedTestWriter.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -866,6 +868,7 @@ async function startServer() {
     });
     await initializeScannerPreorderStaging(scannerPool);
     await initializeScannerProductReviewQueue(scannerPool);
+    await initializeScannerTestCreation(scannerPool);
     const loginLimiter=await createScannerLoginLimiter({
       pool:scannerPool,secret:process.env.SCANNER_LOGIN_LIMIT_SECRET
     });
@@ -877,8 +880,16 @@ async function startServer() {
       baseUrl:'http://127.0.0.1:'+PORT,
       adminKey:process.env.SPECIAL_ORDERS_ADMIN_KEY
     });
+    const testWriter=createScannerIsolatedTestWriter({
+      enabled:process.env.SCANNER_TEST_CREATION_ENABLED==='true',
+      domain:process.env.SCANNER_TEST_LIGHTSPEED_DOMAIN||'',
+      token:process.env.SCANNER_TEST_LIGHTSPEED_TOKEN||'',
+      productionDomain:process.env.LIGHTSPEED_DOMAIN||'',
+      confirmation:process.env.SCANNER_TEST_TENANT_CONFIRMATION||''
+    });
+    if(testWriter)console.log('[scanner] isolated test product creation is enabled for a non-production tenant');
     const scannerGateway=createTimeclockScannerGateway({
-      identity,lookup,sessionSecret:process.env.SCANNER_SESSION_SECRET,loginLimiter,preorderPool:scannerPool,
+      identity,lookup,sessionSecret:process.env.SCANNER_SESSION_SECRET,loginLimiter,preorderPool:scannerPool,testWriter,
       supplierLookup:async()=>{
         const result=await scannerPool.query('SELECT id,name FROM suppliers WHERE is_active=TRUE ORDER BY name LIMIT 500');
         return result.rows;
