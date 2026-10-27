@@ -22,6 +22,13 @@ on:
       - 'server.js'
       - 'services/scannerPreorderStaging.js'
       - 'tests/scannerPreorderStaging.test.js'
+      - 'tests/scannerProductReviewQueue.test.js'
+      - 'tests/scannerIsolatedTestCreation.test.js'
+      - 'tests/scannerDuplicateSafety.test.js'
+      - 'services/scannerProductReviewQueue.js'
+      - 'services/scannerTestCreationRouter.js'
+      - 'services/scannerIsolatedTestWriter.js'
+      - 'routes/specialOrderProducts.js'
       - '.github/workflows/scanner-ui-check.yml'
 jobs:
   ui:
@@ -39,6 +46,10 @@ jobs:
         run: |
           node --check server.js
           node --check services/scannerPreorderStaging.js
+          node --check services/scannerProductReviewQueue.js
+          node --check services/scannerTestCreationRouter.js
+          node --check services/scannerIsolatedTestWriter.js
+          node --check routes/specialOrderProducts.js
           node --check routes/scannerMatchGateway.js
           node --check services/scannerTimeclockGateway.js
           node --check services/scannerTimeclockIdentity.js
@@ -96,3 +107,9 @@ jobs:
         run: node --test tests/scannerPreorderStaging.test.js
       - name: Verify scanner duplicate and completeness safeguards
         run: node --test tests/scannerDuplicateSafety.test.js
+      - name: Verify integrated scanner duplicate and review workflows
+        run: |
+          node --test tests/scannerDuplicateSafety.test.js
+          node --test tests/scannerProductReviewQueue.test.js
+          node --test tests/scannerIsolatedTestCreation.test.js
+          node --test tests/scannerEmployeeAccess.test.js
