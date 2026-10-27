@@ -147,3 +147,26 @@
 .hc-ui .hc-brand-icon{flex:0 0 54px;max-width:54px;height:auto;aspect-ratio:1;object-fit:contain;background:#fff;border-radius:50%;padding:3px}
 .hc-ui .hc-brand strong{font-size:1rem;letter-spacing:.02em}
 .hc-ui .hc-wordmark{width:126px;height:auto;object-fit:contain;background:#fff;border-radius:5px;padding:4px;flex:none}
+
+/* Scanner adoption layer: keeps all existing controls/IDs and accessible keyboard behavior. */
+body.hc-ui{background:var(--hc-canvas);color:var(--hc-text)}
+.hc-ui header{background:linear-gradient(115deg,var(--hc-header),var(--hc-nav));color:#fff;box-shadow:var(--hc-shadow);border-bottom:3px solid var(--hc-accent)}
+.hc-ui header h1{color:#fff;letter-spacing:.01em}
+.hc-ui header #employee-status,.hc-ui header #status{color:#e0ecfa}
+.hc-ui main{gap:17px;padding:17px}
+.hc-ui main>section{background:var(--hc-surface);border:1px solid var(--hc-border);border-radius:var(--hc-radius);box-shadow:var(--hc-shadow)}
+.hc-ui main>section h2{color:#143755}
+.hc-ui #fields{background:var(--hc-surface-inset);border:1px solid var(--hc-border-subtle);padding:12px;border-radius:var(--hc-radius-sm)}
+.hc-ui #matches .card,.hc-ui #preorder-options,.hc-ui .proposal-review-controls,.hc-ui #supplier-snapshot-panel{background:var(--hc-surface-inset);border:1px solid var(--hc-border);border-radius:var(--hc-radius-sm);padding:12px}
+.hc-ui .proposal-review-controls{margin-top:16px}
+.hc-ui input:not([type="checkbox"]):not([type="file"]),.hc-ui textarea,.hc-ui select{background:white;border-color:#9cb2c9;color:var(--hc-text)}
+.hc-ui button{background:var(--hc-primary);color:white;min-height:38px;border-radius:var(--hc-radius-sm);font-weight:650}
+.hc-ui button:hover:not(:disabled){background:var(--hc-primary-hover)}
+.hc-ui button:disabled{background:#c5cfda;color:#405267}
+.hc-ui #refresh-product-proposals,.hc-ui #check-matches,.hc-ui #refresh-supplier-tabs{background:#d8e6f6;color:#184273;border:1px solid var(--hc-border)}
+.hc-ui #create-item,.hc-ui #submit-product-proposal{background:#1769e9}
+.hc-ui #warnings{color:var(--hc-danger)}
+.hc-ui #proposal-inbox{padding:8px 0}
+.hc-ui #product-proposal-list>p{background:#fff;padding:8px 12px;border:1px solid var(--hc-border-subtle);border-radius:var(--hc-radius-sm);margin:7px 0}
+.hc-ui :is(button,input,select,textarea,summary,a):focus-visible{outline:2px solid var(--hc-focus);outline-offset:3px}
+@media(max-width:850px){.hc-ui main{grid-template-columns:1fr}.hc-ui main>section{max-height:none}}
