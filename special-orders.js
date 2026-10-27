@@ -3691,16 +3691,112 @@ export function createSpecialOrdersRouter({
     const action=String(req.body?.action||'').trim().toUpperCase();
     const reviewedBy=String(req.body?.reviewed_by||'ordering-web').trim()||'ordering-web';
     if(!['ACKNOWLEDGED','SUPPRESSED'].includes(action))return res.status(400).json({error:'action must be ACKNOWLEDGED or SUPPRESSED.'});
-    const current=await pool.query("SELECT n.*,i.status AS item_status FROM notifications n JOIN special_order_items i ON i.id=n.special_order_item_id WHERE n.id=$1 AND n.channel='READY_REVIEW'",[req.params.id]);
-    if(!current.rows[0])return res.status(404).json({error:'Ready notification review item not found.'});
-    if(action==='ACKNOWLEDGED'){
-      const {rows}=await pool.query("UPDATE notifications SET status='QUEUED',error=NULL WHERE id=$1 RETURNING *",[req.params.id]);
-      await pool.query("INSERT INTO special_order_item_activity (special_order_item_id,activity_type,message,new_value,changed_by) VALUES ($1,'OTHER','Customer notification approved for delivery','QUEUED',$2)",[current.rows[0].special_order_item_id,reviewedBy]);
-      return res.json(rows[0]);
+    const db=await pool.connect();
+    try{
+      await db.query('BEGIN');
+      const current=await db.query(
+        "SELECT n.*,i.requested_name,i.status AS item_status,c.name AS customer_name,c.discord_user_id,c.email,c.phone "+
+        "FROM notifications n JOIN special_order_items i ON i.id=n.special_order_item_id "+
+        "LEFT JOIN customers c ON c.id=n.customer_id "+
+        "WHERE n.id=$1 AND n.channel='READY_REVIEW' FOR UPDATE OF n",
+        [req.params.id]
+      );
+      const review=current.rows[0];
+      if(!review){await db.query('ROLLBACK');return res.status(404).json({error:'Ready notification review item not found.'});}
+      if(review.status!=='PENDING'){await db.query('ROLLBACK');return res.status(409).json({error:'This notification review has already been handled.'});}
+
+      if(action==='ACKNOWLEDGED'){
+        let channel=null,recipient=null;
+        if(review.discord_user_id){channel='DISCORD_READY';recipient=review.discord_user_id;}
+        else if(review.email){channel='EMAIL_READY';recipient=review.email;}
+        else if(review.phone){channel='SMS_READY';recipient=review.phone;}
+        else{await db.query('ROLLBACK');return res.status(409).json({error:'Customer has no Discord, email, or phone contact method on file.'});}
+
+        const message=(review.customer_name||'Customer')+', your special order '+review.requested_name+' has arrived and is ready at Hobby Corner.';
+        await db.query(
+          "INSERT INTO notifications (special_order_item_id,customer_id,channel,recipient,status,message) "+
+          "VALUES ($1,$2,$3,$4,'QUEUED',$5) "+
+          "ON CONFLICT (special_order_item_id,channel) WHERE special_order_item_id IS NOT NULL AND channel=$3 AND status IN ('PENDING','QUEUED','SENDING') "+
+          "DO UPDATE SET recipient=EXCLUDED.recipient,message=EXCLUDED.message,error=NULL",
+          [review.special_order_item_id,review.customer_id,channel,recipient,message]
+        );
+        await db.query("UPDATE notifications SET status='REVIEWED' WHERE id=$1",[review.id]);
+        await db.query(
+          "INSERT INTO special_order_item_activity (special_order_item_id,activity_type,message,new_value,changed_by) "+
+          "VALUES ($1,'OTHER',$2,$3,$4)",
+          [review.special_order_item_id,'Customer notification approved for '+channel,channel,reviewedBy]
+        );
+        await db.query('COMMIT');
+        return res.json({ok:true,delivery_channel:channel,recipient});
+      }
+
+      const reason=String(req.body?.reason||'Suppressed during employee review').trim();
+      await db.query("UPDATE notifications SET status='SUPPRESSED',suppression_reason=$2,suppressed_at=now() WHERE id=$1",[review.id,reason]);
+      await db.query(
+        "INSERT INTO special_order_item_activity (special_order_item_id,activity_type,message,new_value,changed_by) "+
+        "VALUES ($1,'OTHER',$2,'SUPPRESSED',$3)",
+        [review.special_order_item_id,reason,reviewedBy]
+      );
+      await db.query('COMMIT');
+      res.json({ok:true,status:'SUPPRESSED'});
+    }catch(error){await db.query('ROLLBACK');res.status(400).json({error:error.message});}
+    finally{db.release()}
+  });
+
+  router.get('/notifications/delivery-queue', requireDb, async (req,res)=>{
+    const {rows}=await pool.query(
+      "SELECT n.id,n.special_order_item_id,n.customer_id,n.channel,n.recipient,n.status,n.message,n.error,n.created_at,n.sent_at,"+
+      "c.name AS customer_name,i.requested_name,i.status AS item_status "+
+      "FROM notifications n LEFT JOIN customers c ON c.id=n.customer_id LEFT JOIN special_order_items i ON i.id=n.special_order_item_id "+
+      "WHERE n.channel IN ('DISCORD_READY','EMAIL_READY','SMS_READY') AND n.status IN ('QUEUED','SENDING','ERROR') "+
+      "ORDER BY n.created_at LIMIT 500"
+    );
+    res.json(rows);
+  });
+
+  router.get('/notifications/discord-delivery', requireDb, async (req,res)=>{
+    const limit=Math.max(1,Math.min(50,Number(req.query.limit||20)));
+    const {rows}=await pool.query(
+      "SELECT n.id,n.special_order_item_id,n.customer_id,n.recipient,n.message,n.created_at,c.name AS customer_name,i.requested_name "+
+      "FROM notifications n LEFT JOIN customers c ON c.id=n.customer_id LEFT JOIN special_order_items i ON i.id=n.special_order_item_id "+
+      "WHERE n.channel='DISCORD_READY' AND n.status='QUEUED' AND (n.not_before IS NULL OR n.not_before<=now()) "+
+      "ORDER BY n.created_at LIMIT $1",
+      [limit]
+    );
+    res.json(rows);
+  });
+
+  router.post('/notifications/:id/claim-discord', requireDb, async (req,res)=>{
+    const {rows}=await pool.query(
+      "UPDATE notifications SET status='SENDING',error=NULL WHERE id=$1 AND channel='DISCORD_READY' AND status='QUEUED' RETURNING *",
+      [req.params.id]
+    );
+    if(!rows[0])return res.status(409).json({error:'Discord notification is no longer available to claim.'});
+    res.json(rows[0]);
+  });
+
+  router.post('/notifications/:id/complete-discord', requireDb, async (req,res)=>{
+    const success=req.body?.success===true;
+    const externalId=req.body?.external_message_id?String(req.body.external_message_id):null;
+    const error=req.body?.error?String(req.body.error):null;
+    const {rows}=await pool.query(
+      success
+        ? "UPDATE notifications SET status='SENT',external_message_id=$2,sent_at=now(),error=NULL WHERE id=$1 AND channel='DISCORD_READY' AND status='SENDING' RETURNING *"
+        : "UPDATE notifications SET status='ERROR',error=$2 WHERE id=$1 AND channel='DISCORD_READY' AND status='SENDING' RETURNING *",
+      [req.params.id,success?externalId:error]
+    );
+    if(!rows[0])return res.status(409).json({error:'Discord notification is not in SENDING state.'});
+    if(success && rows[0].special_order_item_id){
+      const old=await pool.query('SELECT status FROM special_order_items WHERE id=$1',[rows[0].special_order_item_id]);
+      const oldStatus=old.rows[0]?.status;
+      if(oldStatus && oldStatus!=='COMPLETED'){
+        await pool.query("UPDATE special_order_items SET status='CUSTOMER_NOTIFIED',updated_at=now() WHERE id=$1",[rows[0].special_order_item_id]);
+        await pool.query(
+          "INSERT INTO order_status_history (special_order_item_id,old_status,new_status,note,changed_by) VALUES ($1,$2,'CUSTOMER_NOTIFIED','Discord ready notification sent','discord-bot')",
+          [rows[0].special_order_item_id,oldStatus]
+        );
+      }
     }
-    const reason=String(req.body?.reason||'Suppressed during employee review').trim();
-    const {rows}=await pool.query("UPDATE notifications SET status='SUPPRESSED',suppression_reason=$2,suppressed_at=now() WHERE id=$1 RETURNING *",[req.params.id,reason]);
-    await pool.query("INSERT INTO special_order_item_activity (special_order_item_id,activity_type,message,new_value,changed_by) VALUES ($1,'OTHER',$2,'SUPPRESSED',$3)",[current.rows[0].special_order_item_id,reason,reviewedBy]);
     res.json(rows[0]);
   });
   router.get('/notifications/queue', requireDb, async (req, res) => {

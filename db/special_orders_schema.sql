@@ -610,3 +610,16 @@ ON notifications (special_order_item_id, channel)
 WHERE special_order_item_id IS NOT NULL
   AND channel='READY_REVIEW'
   AND status IN ('PENDING','QUEUED');
+
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_email_ready_pending
+ON notifications (special_order_item_id, channel)
+WHERE special_order_item_id IS NOT NULL
+  AND channel='EMAIL_READY'
+  AND status IN ('PENDING','QUEUED','SENDING');
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_sms_ready_pending
+ON notifications (special_order_item_id, channel)
+WHERE special_order_item_id IS NOT NULL
+  AND channel='SMS_READY'
+  AND status IN ('PENDING','QUEUED','SENDING');
