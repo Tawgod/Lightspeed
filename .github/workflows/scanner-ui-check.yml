@@ -22,6 +22,8 @@ on:
       - 'server.js'
       - 'services/scannerPreorderStaging.js'
       - 'tests/scannerPreorderStaging.test.js'
+      - 'tests/scannerSharedUiAdoption.test.js'
+      - 'extension/shared-ui/clipboard.mjs'
       - 'tests/scannerProductReviewQueue.test.js'
       - 'tests/scannerIsolatedTestCreation.test.js'
       - 'tests/scannerDuplicateSafety.test.js'
@@ -113,3 +115,5 @@ jobs:
           node --test tests/scannerProductReviewQueue.test.js
           node --test tests/scannerIsolatedTestCreation.test.js
           node --test tests/scannerEmployeeAccess.test.js
+      - name: Verify shared scanner UI adoption and exact clipboard data
+        run: node --test tests/scannerSharedUiAdoption.test.js
