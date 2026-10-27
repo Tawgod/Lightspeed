@@ -847,11 +847,18 @@ async function startServer() {
   // The scanner gateway is enabled only on the explicitly configured
   // Special Orders service, NEVER by default on lightspeed-api or timeclock.
   if(process.env.SCANNER_ENABLED==='true'){
-    if(!process.env.SPECIAL_ORDERS_ADMIN_KEY || !process.env.SCANNER_TIMECLOCK_ORIGIN ||
-      !process.env.SCANNER_SERVICE_SECRET || !process.env.SCANNER_SESSION_SECRET ||
-      !process.env.SCANNER_LOGIN_LIMIT_SECRET || !process.env.DATABASE_URL){
-      throw new Error('Scanner enabled but required server-only configuration is missing.');
-    }
+    const requiredScannerConfig=[
+      'SPECIAL_ORDERS_ADMIN_KEY',
+      'SCANNER_TIMECLOCK_ORIGIN',
+      'SCANNER_SERVICE_SECRET',
+      'SCANNER_SESSION_SECRET',
+      'SCANNER_LOGIN_LIMIT_SECRET',
+      'DATABASE_URL'
+    ];
+    const missingScannerConfig=requiredScannerConfig.filter(name=>!String(process.env[name]||'').trim());
+    if(missingScannerConfig.length){
+      console.error('[scanner] gateway disabled; missing required server-only configuration:',missingScannerConfig.join(', '));
+    }else{
     const scannerPool=new pg.Pool({
       connectionString:process.env.DATABASE_URL,
       ssl:process.env.PGSSL==='true'?{rejectUnauthorized:false}:undefined
@@ -883,6 +890,7 @@ async function startServer() {
       next();
     },scannerGateway);
     console.log('[scanner] authenticated read-only gateway enabled');
+    }
   }
   app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
 }
