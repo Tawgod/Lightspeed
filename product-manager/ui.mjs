@@ -26,7 +26,7 @@ detail.innerHTML=`<div class="pm-field"><label for="edit-name">Product name</lab
 <p class="hc-small hc-muted">SKU: <span class="pm-sku">${escapeHTML(p.sku)}</span> (read-only sample)</p>
 <div class="pm-action-row"><button type="button" id="stage-fields" class="hc-button">Stage edited fields</button></div>`;
 $('stage-fields').onclick=()=>{const name=$('edit-name').value,price=$('edit-price').value;const n=Number(price);
-if(!name.trim()||!/^(?:0|[1-9]\\d*)(?:\\.\\d{1,2})?$/.test(price)||!Number.isFinite(n)){message('Validation failed. Name and a nonnegative price with at most two decimals are required. Nothing staged.');return}
+if(!name.trim()||!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(price)||!Number.isFinite(n)){message('Validation failed. Name and a nonnegative price with at most two decimals are required. Nothing staged.');return}
 stage('name',name);stage('price',n);stage('itemOnline',$('edit-online').value==='true')};}
 function renderReview(){const updates=[...drafts.values()],result=previewChanges(products,updates);
 $('change-count').textContent=String(updates.length);
