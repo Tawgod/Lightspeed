@@ -32,6 +32,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Install app dependencies
+        run: npm install --omit=dev --no-audit --no-fund
       - name: Syntax and invariants
         run: |
           node --check server.js
