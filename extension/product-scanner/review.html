@@ -1,9 +1,9 @@
 <!doctype html>
-<html><head><meta charset="utf-8"><title>Hobby Corner Product Review</title><link rel="stylesheet" href="review.css"></head>
-<body>
+<html><head><meta charset="utf-8"><title>Hobby Corner Product Review</title><link rel="stylesheet" href="review.css"><link rel="stylesheet" href="hc-beta.css"></head>
+<body class="hc-ui">
 <header>
   <div class="header-top">
-    <h1>Product Scanner — Review</h1>
+    <div class="hc-scanner-brand"><img src="hc-wordmark.webp" alt="Hobby Corner" width="150" height="43"><h1>Product Scanner</h1></div>
     <form id="employee-sign-in" autocomplete="off" class="compact-sign-in">
       <label for="employee-pin">Timeclock PIN</label>
       <input id="employee-pin" type="password" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" autocomplete="off" required placeholder="4-digit PIN">
@@ -48,6 +48,15 @@
     </div>
     <button type="button" id="create-item" disabled>Prepare Create Item</button>
     <pre id="create-preview" role="status" hidden></pre>
+    <div class="proposal-review-controls">
+      <button type="button" id="submit-product-proposal" disabled>Submit New Item for Review</button>
+      <p id="product-proposal-status" role="status">New items require duplicate verification before submission.</p>
+      <details id="proposal-inbox">
+        <summary>Pending product review queue</summary>
+        <button type="button" id="refresh-product-proposals">Refresh review queue</button>
+        <div id="product-proposal-list" role="status"></div>
+      </details>
+    </div>
     <p class="hint">Creation and updates are disabled. No supplier values automatically overwrite Lightspeed records.</p>
   </section>
 </main><script type="module" src="review.js"></script>

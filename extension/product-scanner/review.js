@@ -21,6 +21,88 @@ let employeeEditedGeneralSku=false;
 let capturedSupplierSku='';
 let lookupBusy=false;
 let pendingLookup=false;
+let proposalSourceUrl='';
+let proposalRequiresSelection=false;
+const submitProposalButton=document.getElementById('submit-product-proposal');
+const proposalStatus=document.getElementById('product-proposal-status');
+const proposalList=document.getElementById('product-proposal-list');
+function setProposalEligibility(){
+  submitProposalButton.disabled=!(scannerSession && scannerSession.expiresAt>Date.now() &&
+    draftAvailable && !proposalRequiresSelection && supplierMatched &&
+    Array.isArray(lastMatches) && lastMatches.length===0 &&
+    verifiedProductSignature && verifiedProductSignature===signature());
+}
+async function loadProductProposals(){
+  if(!scannerSession || scannerSession.expiresAt<=Date.now()){proposalList.textContent='Sign in to view proposed items.';return;}
+  proposalList.textContent='Loading…';
+  try{
+    const response=await fetch(SCANNER_API+'/product-proposals',{cache:'no-store',headers:{Authorization:'Bearer '+scannerSession.token}});
+    if(!response.ok)throw new Error('Could not load product review queue ('+response.status+').');
+    const data=await response.json();
+    proposalList.replaceChildren();
+    if(!data.proposals?.length){proposalList.textContent='No pending product proposals.';return;}
+    let testEnabled=false;
+    try{
+      const capability=await fetch(SCANNER_API+'/product-test-creation/status',{
+        cache:'no-store',headers:{Authorization:'Bearer '+scannerSession.token}});
+      if(capability.ok)testEnabled=(await capability.json()).enabled===true;
+    }catch{}
+    for(const entry of data.proposals){
+      const item=document.createElement('div');
+      item.className='hc-review-item';
+      const summary=document.createElement('p');
+      summary.textContent=(entry.product_name||'Product')+' · '+(entry.product_sku||entry.supplier_sku||'No SKU')+' · '+(entry.status||'PENDING_REVIEW')+' · Submitted '+new Date(entry.submitted_at).toLocaleString();
+      item.append(summary);
+      if(entry.status==='PENDING_REVIEW'){
+        const action=document.createElement('button');
+        action.type='button';
+        action.textContent=testEnabled?'Create in Isolated Test Store':'Test creation unavailable';
+        action.disabled=!testEnabled;
+        if(testEnabled)action.addEventListener('click',async()=>{
+          if(!window.confirm('Create this product in the isolated Lightspeed TEST store? This will not create it in the live store.'))return;
+          action.disabled=true;
+          proposalStatus.textContent='Checking duplicates and testing product creation…';
+          try{
+            const response=await fetch(SCANNER_API+'/product-proposals/'+entry.id+'/test-create',{
+              method:'POST',cache:'no-store',
+              headers:{'Content-Type':'application/json',Authorization:'Bearer '+scannerSession.token},
+              body:JSON.stringify({confirmation:'CREATE TEST PRODUCT',expectedSku:entry.product_sku||entry.supplier_sku||''})
+            });
+            const answer=await response.json().catch(()=>({}));
+            if(!response.ok)throw Error(answer.error||'Test creation could not be verified ('+response.status+').');
+            proposalStatus.textContent='Created test product '+(answer.product?.sku||'')+' in the isolated store. Live Lightspeed unchanged.';
+            await loadProductProposals();
+          }catch(error){proposalStatus.textContent=error.message;}
+        });
+        item.append(action);
+      }
+      proposalList.append(item);
+    }
+  }catch(error){proposalList.textContent=error.message;}
+}
+document.getElementById('refresh-product-proposals').addEventListener('click',loadProductProposals);
+submitProposalButton.addEventListener('click',async()=>{
+  if(submitProposalButton.disabled)return;
+  const snapshot=signature();
+  const supplierId=supplierVerifiedId;
+  const product=currentProduct();
+  const sourceUrl=proposalSourceUrl;
+  submitProposalButton.disabled=true;
+  proposalStatus.textContent='Rechecking duplicates and submitting review request…';
+  try{
+    const response=await fetch(SCANNER_API+'/product-proposals',{
+      method:'POST',cache:'no-store',
+      headers:{'Content-Type':'application/json',Authorization:'Bearer '+scannerSession.token},
+      body:JSON.stringify({supplierId,product,sourceUrl})
+    });
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.error||'Unable to submit proposal ('+response.status+').');
+    proposalStatus.textContent='Submitted '+product.name+' for review. No product was created in Lightspeed.';
+    await loadProductProposals();
+  }catch(error){proposalStatus.textContent=error.message;}
+  if(snapshot===signature())setProposalEligibility();
+});
+
 const SUPPLIER_DOMAINS={'acdd.com':['ACD Distribution','ACD']};
 function normalizedSupplierName(value){return String(value||'').toLowerCase().replace(/[^a-z0-9]/g,'');}
 function chosenSupplierId(){const name=normalizedSupplierName(supplierInput.value);const exact=supplierRecords.filter(s=>normalizedSupplierName(s.name)===name);return exact.length===1?exact[0].id:null;}
@@ -59,7 +141,7 @@ function clearScannerSession(){
   signInButton.hidden=false;
   pinField.disabled=false;
   checkButton.disabled=true;
-  lookupGeneration++;pendingLookup=false;createButton.disabled=true;stagePreorderButton.disabled=true;
+  lookupGeneration++;pendingLookup=false;createButton.disabled=true;stagePreorderButton.disabled=true;submitProposalButton.disabled=true;
   employeeStatus.textContent='Not signed in. Use your Timeclock PIN.';
 }
 signOutButton.addEventListener('click',clearScannerSession);
@@ -94,7 +176,7 @@ signInForm.addEventListener('submit',async event=>{
     signOutButton.hidden=false;
     const role=data.employee.role?' ('+data.employee.role+')':'';
     const reasons={lightspeed_account_not_linked:'No Lightspeed user link was found for this PIN.',lightspeed_user_not_found:'The linked Lightspeed account could not be found.',lightspeed_role_not_recognized:'The Lightspeed role could not be verified.',lightspeed_lookup_unavailable:'Lightspeed permissions could not be checked.',role_read_only:'Lightspeed returned a read-only role.'};
-    employeeStatus.textContent='Signed in as '+(data.employee.name||'employee')+role+'. '+(data.employee.canApprove===true?'Approval access verified (product writes disabled).':'Read-only: '+(reasons[data.employee.permissionReason]||'Approval permission not verified.'));
+    employeeStatus.textContent='Signed in as '+(data.employee.name||'employee')+'. '+(data.employee.canApprove===true?'Scanner review access enabled. Live product writes remain separately protected.':'Scanner access restricted: '+(reasons[data.employee.permissionReason]||'Employee authorization pending.'));
     checkButton.disabled=!draftAvailable;
     await lookupSuppliers();
     if(preorderCheckbox.checked)await loadPreorderCampaigns();
@@ -180,7 +262,7 @@ stagePreorderButton.addEventListener('click',async()=>{
   if(stagePreorderButton.disabled||!preorderCheckbox.checked)return;
   stagePreorderButton.disabled=true;
   if(!scannerSession || scannerSession.expiresAt<=Date.now() || !scannerSession.canApprove){
-    preorderStatus.textContent='Manager or Admin approval required. Sign in again.';return;
+    preorderStatus.textContent='Active Timeclock employee sign-in required. Sign in again.';return;
   }
   if(!verifiedProductSignature||verifiedProductSignature!==signature()||!Array.isArray(lastMatches)||!supplierMatched){
     preorderStatus.textContent='Product and supplier must pass duplicate verification before staging.';stageEligibility();return;
@@ -265,7 +347,7 @@ let verifiedProductSignature=null;
 let lastMatches=null;
 function signature(){return JSON.stringify({...currentProduct(),supplier:supplierInput.value.trim()});}
 supplierInput.addEventListener('input',()=>{invalidateVerification();resolveSupplier();queueProductLookup();});
-function invalidateVerification(){stagePreorderButton.disabled=true;lookupGeneration++;verifiedProductSignature=null;lastMatches=null;createButton.disabled=true;createPreview.hidden=true;matchStatus.textContent='Product changed — checking for existing products…';}
+function invalidateVerification(){submitProposalButton.disabled=true;stagePreorderButton.disabled=true;lookupGeneration++;verifiedProductSignature=null;lastMatches=null;createButton.disabled=true;createPreview.hidden=true;matchStatus.textContent='Product changed — checking for existing products…';}
 
 function currentProduct(){
   const product=Object.fromEntries(keys.map(k=>[k,document.getElementById('field-'+k).value.trim()]));
@@ -304,18 +386,20 @@ function showMatches(matches){
 }
 
 function loadScannerDraft(d){
-  verifiedProductSignature=null;lastMatches=null;createButton.disabled=true;stagePreorderButton.disabled=true;createPreview.hidden=true;matchesElement.replaceChildren();
+  verifiedProductSignature=null;lastMatches=null;createButton.disabled=true;stagePreorderButton.disabled=true;submitProposalButton.disabled=true;createPreview.hidden=true;matchesElement.replaceChildren();
   document.getElementById('fields').replaceChildren();
+  proposalSourceUrl=d?.sourceUrl||'';
+  proposalRequiresSelection=d?.requiresSelection===true;
   draftAvailable=false;
   if(!d){status.textContent='No product has been captured. Use Scan Current Page in the extension.';checkButton.disabled=true;return;}
   if(d.requiresSelection){
-    status.textContent='Multiple products detected on this page. Open one individual supplier product page and scan it instead.';
+    status.textContent='Multiple products detected. Open one individual product page.';
     matchStatus.textContent='No matching or new-item proposal allowed from a multi-product page.';
+    document.getElementById('warnings').textContent='Scan a single supplier product page, not a catalog.';
     checkButton.disabled=true;
-    document.getElementById('warnings').textContent='Catalog and listing pages cannot be imported as individual products.';
     return;
   }
-  status.textContent=d.requiresSelection?'Multiple products detected — automatic selection is disabled. Verify manually.':'Review extracted information; no changes have been sent to Lightspeed.';
+  status.textContent='Review extracted information; no changes have been sent to Lightspeed.';
   draftAvailable=true;
   employeeEditedGeneralSku=false;
   const p=d.product||{};
@@ -388,6 +472,7 @@ async function checkExistingProducts(){
     verifiedProductSignature=signature();lastMatches=result.matches;
     createButton.disabled=result.matches.length!==0||!supplierMatched;
     stageEligibility();
+    setProposalEligibility();
     matchStatus.textContent=result.matches.length
       ? result.matches.length+' potential product match(es). Review missing information below.'
       : supplierMatched?'No existing products matched. You can prepare a new-item proposal.':'No product matched, but supplier selection needs review.';
