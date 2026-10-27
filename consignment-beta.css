@@ -47,3 +47,55 @@ th:first-child,td:first-child{padding-left:18px}th:last-child,td:last-child{padd
 .footer{font-size:11px;color:#87979d;margin-top:20px}
 @media(max-width:1060px){.shell{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:660px){main{padding:16px 12px}.metrics{gap:7px}.metric{padding:13px}.metric .number{font-size:24px}.itemgrid,.three{grid-template-columns:1fr}.two{grid-template-columns:1fr}.controls{display:block}.controls .field{margin:7px 0}table{min-width:570px}.table-scroll{overflow:auto}}
+
+
+/* Hobby Corner shared UI beta theme — 2026-10-27
+   Layered surfaces, stronger section boundaries, consistent controls and focus. */
+:root{
+ --hc-canvas:#eaf0f3;--hc-surface:#f8fafb;--hc-surface-muted:#eef4f6;
+ --hc-surface-raised:#ffffff;--hc-border:#cad9df;--hc-header:#193d49;
+ --hc-ink:#18333d;--hc-muted:#48636e;--hc-accent:#146d74;
+ --hc-focus:#176d91;--hc-shadow:0 3px 12px rgba(19,48,59,.08);
+ color:var(--hc-ink);background:var(--hc-canvas)
+}
+body{background:linear-gradient(180deg,#e3edf1 0,#edf3f5 210px,#edf2f4 100%);min-height:100vh}
+header{background:var(--hc-header);border-bottom:3px solid #3f8990}
+nav a{border:1px solid transparent;transition:background-color .15s ease}
+nav a:hover{background:#305b66}nav .active,nav a[aria-current="page"]{background:#316c75;border-color:#7eb2b8}
+main{padding-top:27px}
+.top{padding:6px 0 10px;border-bottom:1px solid #cbdbe1}
+h1{color:#173640}h2,h3{color:#213d48}
+.panel{background:var(--hc-surface);border:1px solid #bfd1d8;box-shadow:var(--hc-shadow)}
+.panel-head{background:var(--hc-surface-muted);border-bottom:1px solid #cfdee3;padding:16px 19px 13px}
+.panel-head h2{margin:0}
+.panel-body{background:var(--hc-surface);padding:19px}
+.metric{background:#f8fbfc;border:1px solid #bdced5;border-left:4px solid #46888e;box-shadow:0 2px 8px rgba(19,48,59,.05)}
+.metric:nth-child(2){border-left-color:#537d92}.metric:nth-child(3){border-left-color:#8278a5}.metric:nth-child(4){border-left-color:#b58b52}
+.metric .label{color:#4d6670}.metric .number{color:#1e3f4b}
+.tabs{background:#eaf1f4;border-bottom:1px solid #c7d7dd}
+.tab{color:#415f6c}.tab.active{background:#f9fcfd;border-bottom-color:#17717a;color:#0f5e65}
+.tab:hover{background:#e1ecef;color:#174c59}
+.controls{background:#eaf1f4;border-bottom:1px solid #d2dfe4}
+th{background:#e2edf1;color:#365463}td{background:#f9fbfc;border-color:#e0e8ec}
+tbody tr:nth-child(even) td{background:#f0f5f7}
+tr.itemrow:hover td,tr.itemrow.selected td{background:#dbefee}
+.btn{background:#146a72;border-color:#146a72;transition:background-color .15s ease,transform .15s ease}
+.btn:hover:not(:disabled){background:#0d555c;border-color:#0d555c}
+.btn.secondary{background:#eaf3f5;border-color:#a9c5cd;color:#254c58}
+.btn.secondary:hover:not(:disabled){background:#d5e8ec}
+.btn.ghost:hover:not(:disabled){background:#dfecee;color:#164e57}
+input:not([type="checkbox"]),select,textarea{background:#fff;border-color:#aec4ce}
+input[type="checkbox"]{width:auto;accent-color:#176e77}
+input:focus-visible,select:focus-visible,textarea:focus-visible,.btn:focus-visible,button:focus-visible,a:focus-visible{outline:3px solid var(--hc-focus);outline-offset:2px}
+:disabled{cursor:not-allowed}
+.field label{color:#345661}.muted{color:#526c76}
+.match,.item-box,.item-card{background:#edf4f6;border:1px solid #cbdde2;box-shadow:0 2px 5px rgba(22,54,66,.04)}
+.match.best{border-left:4px solid #25818a}
+.note{background:#e4f0f2;border:1px solid #c5dde2;color:#2b555f}
+.customer-head{background:#dcecef!important;border:1px solid #bed5dc;box-shadow:var(--hc-shadow)}
+.customer-wrap .panel{margin-bottom:12px}
+.customer-wrap .panel-body>h2:first-child{padding-bottom:10px;border-bottom:1px solid #cfdee3}
+.subhead{color:#2d5663;border-top:1px solid #d3e0e4;padding-top:13px}
+.demo{background:#f9f0dc;border-color:#dfc58d;color:#765216}
+.footer{color:#536b75}
+@media (max-width:660px){header{gap:8px}nav{width:100%;gap:4px}nav a{padding:8px 10px}.metric{padding:12px}.panel-body{padding:15px}}
