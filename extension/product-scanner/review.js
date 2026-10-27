@@ -1,6 +1,7 @@
 import {checkProductMatches,toSpecialOrderMatchRequest} from './special-orders-adapter.js';
 import {captureSupplierProductPage} from './page-capture.js';
 import {productCompleteness} from './completeness.js';
+import {copyHobbyCornerField} from '../shared-ui/clipboard.mjs';
 
 
 // Keep PIN and signed session strictly in this review window's memory.
@@ -436,7 +437,7 @@ function loadScannerDraft(d){
 }
 chrome.storage.local.get('scannerDraft',({scannerDraft:d})=>loadScannerDraft(d));
 document.getElementById('copy').addEventListener('click',async()=>{
-  try{await navigator.clipboard.writeText(JSON.stringify(currentProduct(),null,2));status.textContent='Proposed data copied. No Lightspeed changes made.';}
+  try{await copyHobbyCornerField({plainText:JSON.stringify(currentProduct(),null,2)});status.textContent='Proposed data copied. No Lightspeed changes made.';}
   catch(e){status.textContent='Clipboard failed: '+e.message;}
 });
 
