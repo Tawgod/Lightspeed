@@ -62,7 +62,7 @@ export function createScannerProductReviewRouter({pool,verifyEmployee,lookup}={}
     try{
       await requireEmployee(req);
       const result=await pool.query(`SELECT id,supplier_id,item_key,proposal_type,status,
-          product_payload->>'name' AS product_name,submitted_at,submitted_by
+          product_payload->>'name' AS product_name,product_payload->>'sku' AS product_sku,product_payload->>'supplierSku' AS supplier_sku,submitted_at,submitted_by
           FROM scanner_product_review_proposals ORDER BY submitted_at DESC LIMIT 100`);
       res.json({proposals:result.rows});
     }catch(e){failure(res,e);}
