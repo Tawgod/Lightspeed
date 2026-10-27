@@ -3612,10 +3612,18 @@ export function createSpecialOrdersRouter({
     if(!po)return res.status(404).json({error:'Current Lightspeed purchase order not found.'});
     const poRef=lsPoReference(po);
     const poProductIds=new Set((po.line_items||[]).map(l=>lightspeedProductId(l)).filter(Boolean));
+    const poReceivedByProduct=new Map();
+    for(const line of po.line_items||[]){
+      const pid=lightspeedProductId(line);
+      if(!pid)continue;
+      const received=Number(line.received_quantity ?? line.quantity_received ?? line.received_count ?? line.received ?? 0)||0;
+      poReceivedByProduct.set(String(pid),Math.max(Number(poReceivedByProduct.get(String(pid))||0),received));
+    }
     const db=await pool.connect();
     try{
       await db.query('BEGIN');
       const outcomes=[];
+      const proposedProductTotals=new Map();
       for(const a of allocations){
         const itemId=Number(a.special_order_item_id);
         const target=Math.max(0,Math.floor(Number(a.target_allocated_quantity)||0));
@@ -3634,6 +3642,26 @@ export function createSpecialOrdersRouter({
         const prior=await db.query('SELECT * FROM lightspeed_po_receipt_allocations WHERE lightspeed_purchase_order_id=$1 AND special_order_item_id=$2 FOR UPDATE',[String(po.id),itemId]);
         const previous=Number(prior.rows[0]?.allocated_quantity||0);
         if(target<previous)throw new Error('Received target for Special Order line '+itemId+' cannot be reduced below '+previous+'.');
+
+        const productKey=String(item.lightspeed_product_id);
+        if(!proposedProductTotals.has(productKey)){
+          const existingProductTotal=await db.query(
+            'SELECT COALESCE(sum(allocated_quantity),0)::int AS qty FROM lightspeed_po_receipt_allocations WHERE lightspeed_purchase_order_id=$1 AND lightspeed_product_id=$2',
+            [String(po.id),productKey]
+          );
+          proposedProductTotals.set(productKey,Number(existingProductTotal.rows[0].qty||0));
+        }
+        const currentProductTotal=Number(proposedProductTotals.get(productKey)||0);
+        const proposedProductTotal=currentProductTotal-previous+target;
+        const reportedReceived=Number(poReceivedByProduct.get(productKey)||0);
+        if(reportedReceived>0 && proposedProductTotal>reportedReceived){
+          throw new Error(
+            'Receiving allocation for '+item.requested_name+' would allocate '+proposedProductTotal+
+            ' unit(s) from PO '+poRef+' but Lightspeed reports only '+reportedReceived+' received for that product.'
+          );
+        }
+        proposedProductTotals.set(productKey,proposedProductTotal);
+
         const allAllocated=await db.query('SELECT COALESCE(sum(quantity),0)::int AS qty FROM inventory_allocations WHERE special_order_item_id=$1 AND released_at IS NULL',[itemId]);
         const currentlyAllocated=Number(allAllocated.rows[0].qty||0);
         const remainingBefore=Math.max(0,Number(item.quantity||0)-currentlyAllocated);
