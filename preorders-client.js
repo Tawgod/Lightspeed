@@ -1,9 +1,45 @@
 const api='/api/special-orders';
-function accessKey(){return sessionStorage.getItem('hcSpecialOrdersKey')||''}
+function accessKey(){return window.HCStaffAuth?.legacyKey?.()||''}
+function authHeaders(extra={}){return window.HCStaffAuth?.headers?.(extra)||{...extra}}
+function authEmployee(){return window.HCStaffAuth?.employee?.()||null}
 function showNotice(t){const e=document.getElementById('notice');e.textContent=t;e.style.display='block'}
-function setAuth(ok){document.getElementById('authStatus').textContent=ok?'Unlocked':'Locked';document.querySelectorAll('button:not(#unlockButton),select').forEach(e=>e.disabled=!ok)}
-async function getJson(url,opts={}){const r=await fetch(url,{...opts,headers:{...(opts.headers||{}),'x-hobby-corner-key':accessKey()},cache:'no-store'});let d={};try{d=await r.json()}catch{}if(r.status===401){setAuth(false);throw new Error('Access key missing or incorrect.')}if(!r.ok)throw new Error(d.error||r.statusText);return d}
-async function saveKey(){const v=document.getElementById('accessKey').value.trim();if(!v)return;sessionStorage.setItem('hcSpecialOrdersKey',v);try{await getJson(api+'/auth-check');setAuth(true);await Promise.all([loadPreorders(),loadDiscordWatch()])}catch(e){sessionStorage.removeItem('hcSpecialOrdersKey');showNotice(e.message)}}
+function setAuth(ok){
+  document.getElementById('authStatus').textContent=ok?'Unlocked':'Locked';
+  document.querySelectorAll('button:not(#unlockButton):not(#legacyUnlockButton):not(#signOutButton),select').forEach(e=>e.disabled=!ok);
+  const signOut=document.getElementById('signOutButton');
+  if(signOut)signOut.style.display=ok&&authEmployee()?'inline-block':'none';
+  const identity=document.getElementById('authEmployee');
+  if(identity)identity.textContent=authEmployee()?.name?'Signed in as '+authEmployee().name:'';
+}
+async function getJson(url,opts={}){
+  const r=await fetch(url,{...opts,headers:authHeaders(opts.headers||{}),cache:'no-store'});
+  let d={};try{d=await r.json()}catch{}
+  if(r.status===401){
+    window.HCStaffAuth?.signOut?.();
+    setAuth(false);
+    throw new Error('Employee sign-in required.');
+  }
+  if(!r.ok)throw new Error(d.error||r.statusText);
+  return d
+}
+async function staffSignIn(){
+  const pin=document.getElementById('employeePin').value.trim();
+  if(!pin)return showNotice('Enter your 4-digit Timeclock PIN.');
+  try{
+    const session=await window.HCStaffAuth.signIn(pin);
+    document.getElementById('employeePin').value='';
+    setAuth(true);
+    showNotice('Signed in as '+(session.employee?.name||'employee')+'.');
+    await Promise.all([loadPreorders(),loadDiscordWatch()]);
+  }catch(e){setAuth(false);showNotice(e.message)}
+}
+function staffSignOut(){window.HCStaffAuth?.signOut?.();setAuth(false);showNotice('Signed out.')}
+async function saveKey(){
+  const v=document.getElementById('accessKey').value.trim();if(!v)return;
+  window.HCStaffAuth?.setLegacyKey?.(v);
+  try{await getJson(api+'/auth-check');setAuth(true);await Promise.all([loadPreorders(),loadDiscordWatch()])}
+  catch(e){window.HCStaffAuth?.setLegacyKey?.('');setAuth(false);showNotice(e.message)}
+}
 function esc(v){return String(v??'').replace(/[&<>\"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[ch]))}
 function watchCustomerLabel(w){
   if(w.customer_name)return '<b>'+esc(w.customer_name)+'</b><div class="form-note">'+esc([w.customer_email,w.customer_phone].filter(Boolean).join(' · ')||w.discord_display_name||w.discord_username||'Discord customer')+'</div>';
@@ -55,4 +91,12 @@ async function loadPreorders(){const c=await getJson(api+'/preorders/campaigns')
 async function loadPreorderCampaign(){const id=document.getElementById('preorderCampaign').value;document.getElementById('allocationSuggestions').innerHTML='';if(!id){document.getElementById('preorderProducts').innerHTML='';return}try{const d=await getJson(api+'/preorders/campaigns/'+id);document.getElementById('campaignSummary').textContent='Status: '+(d.campaign.status||'—')+' · Due: '+(d.campaign.order_due_at?new Date(d.campaign.order_due_at).toLocaleString():'—')+' · Release: '+(d.campaign.release_date||'—');document.getElementById('preorderProducts').innerHTML='<table><tr><th>Product</th><th>Ordered</th><th>Received</th><th>Requested</th><th>Allocated</th><th>Available</th><th>Actions</th></tr>'+d.products.map(x=>{const a=Math.max(0,Number(x.received_quantity||0)-Number(x.reserved_floor_quantity||0)-Number(x.allocated_total||0));return '<tr><td>'+x.item_description+'</td><td>'+x.ordered_quantity+'</td><td>'+x.received_quantity+'</td><td>'+x.requested_total+'</td><td>'+x.allocated_total+'</td><td>'+a+'</td><td><button onclick="showAllocationSuggestions('+x.id+','+a+')">Suggested</button> <button onclick="allocatePreorder('+x.id+',\'FAIR_SHARE\')">Fair share</button> <button onclick="allocatePreorder('+x.id+',\'QUEUE\')">Queue</button></td></tr>'}).join('')+'</table>'}catch(e){showNotice(e.message)}}
 async function showAllocationSuggestions(id,available){const box=document.getElementById('allocationSuggestions');box.innerHTML='<p>Calculating suggested allocation…</p>';try{const d=await getJson(api+'/preorders/products/'+id+'/allocation-suggestions?available_quantity='+encodeURIComponent(available)+'&refresh_lightspeed=1');const rows=d.suggestions||[];box.innerHTML='<h3>Suggested allocation <span class="pill">Advisory only</span></h3>'+(!rows.length?'<p>No unallocated requests.</p>':'<table><tr><th>Rank</th><th>Customer</th><th>Score</th><th>Suggested Qty</th><th>History</th><th>Flags</th></tr>'+rows.map((x,i)=>'<tr><td>'+(i+1)+'</td><td>'+(x.customer_name||x.discord_handle||'Customer')+'</td><td><b>'+x.allocation_score+'</b></td><td>'+x.suggested_quantity+'</td><td>'+(x.picked_up||0)+' picked up · '+(x.late_pickups||0)+' late · '+(x.no_pickups||0)+' missed</td><td>'+((x.flags||[]).join('; ')||'—')+'</td></tr>').join('')+'</table>')}catch(e){box.innerHTML='';showNotice(e.message)}}
 async function allocatePreorder(id,method){if(!confirm('Allocate currently available inventory using '+method+'?'))return;try{const d=await getJson(api+'/preorders/products/'+id+'/allocate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({method})});showNotice('Allocated '+d.newlyAllocated+'; '+d.remaining+' still available.');await loadPreorderCampaign()}catch(e){showNotice(e.message)}}
-document.getElementById('accessKey').value=accessKey();setAuth(false);if(accessKey())saveKey();
+async function initializeAuth(){
+  document.getElementById('accessKey').value=accessKey();
+  setAuth(false);
+  const existing=await window.HCStaffAuth?.verify?.();
+  if(existing){setAuth(true);await Promise.all([loadPreorders(),loadDiscordWatch()]);return}
+  if(accessKey())await saveKey();
+  else showNotice('Preorder Campaigns is locked. Sign in with your Timeclock PIN.');
+}
+initializeAuth();
