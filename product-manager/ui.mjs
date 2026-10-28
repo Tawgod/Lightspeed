@@ -40,3 +40,59 @@ $('profile').onchange=e=>{profile=e.target.value;message(profile+' layout select
 $('reset').onclick=()=>{drafts.clear();message('All local draft edits discarded.');render()};
 $('review-top').onclick=()=>{renderReview();$('changes').scrollIntoView({behavior:'smooth'})};
 render();
+/* Timeclock staff-auth integration: tokens are memory-only and never stored in
+   localStorage. Profiles are keyed server-side exclusively by verified employee ID.
+   No product data is transmitted to this profile endpoint. */
+const authState={token:null,employee:null,expiresAt:0,profiles:{}};
+const profileLayout=()=>({columns:['sku','name','price','itemOnline','active'],hidden:[],widths:{},detailsOrder:[]});
+function clearEmployeeSession(note='Signed out. Your saved layouts remain on the server.'){
+  authState.token=null;authState.employee=null;authState.expiresAt=0;authState.profiles={};
+  $('pm-pin').value='';$('pm-pin').disabled=false;$('pm-login').hidden=false;
+  $('pm-sign-out').hidden=true;$('pm-save-profile').disabled=true;
+  $('pm-auth-state').textContent='Not signed in';$('pm-employee').textContent=note;
+  $('profile').value='Default';profile='Default';drafts.clear();render();
+}
+async function profileRequest(path,options={}){
+  if(!authState.token||Date.now()>=authState.expiresAt){clearEmployeeSession('Session expired. Sign in again.');throw Error('Employee session required.')}
+  const response=await fetch('/api/product-manager'+path,{
+    ...options,cache:'no-store',headers:{Authorization:'Bearer '+authState.token,...options.headers}
+  });
+  if(response.status===401||response.status===403){clearEmployeeSession('Employee access revoked or session expired.');throw Error('Employee access denied.')}
+  if(!response.ok)throw Error(response.status===503?'Profile service unavailable. No changes saved.':'Profile request failed. No changes saved.');
+  return response.json();
+}
+$('pm-sign-in').addEventListener('submit',async e=>{
+  e.preventDefault();const pin=$('pm-pin').value;
+  if(!/^\d{4}$/.test(pin)){$('pm-employee').textContent='Enter a four-digit Timeclock PIN.';return}
+  $('pm-login').disabled=true;$('pm-employee').textContent='Verifying employee…';
+  try{
+    const response=await fetch('/api/staff-auth/session',{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin})});
+    if(!response.ok)throw Error('Employee PIN not recognized or authentication unavailable.');
+    const data=await response.json();
+    if(!data.token||!Number.isSafeInteger(Number(data.employee?.id))||Number(data.expiresIn)<=0)throw Error('Invalid employee session.');
+    authState.token=data.token;authState.employee={id:data.employee.id,name:data.employee.name};
+    authState.expiresAt=Date.now()+Math.min(data.expiresIn,900)*1000;
+    $('pm-auth-state').textContent='Signed in';$('pm-pin').disabled=true;$('pm-login').hidden=true;
+    $('pm-sign-out').hidden=false;$('pm-save-profile').disabled=false;
+    $('pm-employee').textContent='Signed in: '+(data.employee.name||'Employee')+'. Personal layouts enabled.';
+    await loadEmployeeProfiles();
+  }catch(err){if(!authState.employee)clearEmployeeSession(err.message);else $('pm-employee').textContent=err.message;}
+  finally{$('pm-pin').value='';$('pm-login').disabled=false}
+});
+async function loadEmployeeProfiles(){
+  try{const result=await profileRequest('/profiles');authState.profiles={};
+    for(const p of result.profiles||[])authState.profiles[p.slot]=p.config;
+    $('pm-employee').textContent='Signed in: '+(authState.employee?.name||'Employee')+'. Personal layouts loaded.';
+  }catch(err){$('pm-employee').textContent=err.message}
+}
+$('pm-sign-out').onclick=()=>clearEmployeeSession();
+$('pm-save-profile').onclick=async()=>{
+  if(!authState.employee){$('pm-employee').textContent='Sign in before saving a layout.';return}
+  const button=$('pm-save-profile');button.disabled=true;
+  try{const saved=await profileRequest('/profiles/'+encodeURIComponent(profile),{
+    method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({config:profileLayout()})
+  });authState.profiles[profile]=saved.profile.config;
+    $('pm-employee').textContent=profile+' saved for '+(authState.employee?.name||'employee')+'.';
+  }catch(err){$('pm-employee').textContent=err.message}
+  finally{button.disabled=!authState.employee}
+};
