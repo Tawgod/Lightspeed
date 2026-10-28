@@ -32,3 +32,12 @@
 2. Define reusable authenticated read-only PO query using current Ordering 2026-04 API contract and server-side Timeclock identity, not supplier-page PIN storage.
 3. Verify supplier-specific SKU/UPC mapping and identifier fidelity on real PO data; reject ambiguous mappings.
 4. Reconcile shared UI/navigation and background worker with other extension PRs immediately before merge; update release queue then.
+
+## October 28 read-only API milestone
+- Added `routes/poCompanionRead.js` (GET `/api/scanner/purchase-orders/:id`).
+- Wired it into `services/scannerTimeclockGateway.js` using existing signed employee session verifier and live `identity.authorize` recheck; `server.js` passes server-side Lightspeed API 2026-04 GET implementation and existing scanner Postgres pool. No alternate employee identity or business writes.
+- Performs PO listing and selected PO line-items reads; maps supplier via `suppliers.lightspeed_supplier_id`; product supplier SKU uses only `supplier_products` for the selected local supplier. Missing mapping triggers warnings; retains UPC/SKU as exact strings (including leading zeros).
+- PO listing/line-item pagination and alternate response shapes require controlled live verification before this API can be considered operational. Current implementation reads page_size=1000 and is **not** proven complete for larger POs/catalogs.
+- Added isolated endpoint tests in `tests/po-companion-read.test.mjs` and GitHub Actions `.github/workflows/po-companion-readonly.yml`. Initial workflow failed on `npm ci` setup, which has been changed to `npm install`; do not claim test pass until workflow completes.
+- Extension worker continues to reject `HCT_PO_LOGIN`/`HCT_PO_LOAD`, preventing unverified PIN flow from supplier DOM. Employee authentication for live panel read still needs a secure extension-owned UI, tests, and explicit backend activation. Review approval and every Lightspeed write remain disabled.
+- PR #13 review: useful feature files (panel, review, styling, logos, drafts, copy) are on PR #31. Former independent navigation.json, old consignment endpoint and historical duplicate test/docs are intentionally superseded by PR #26 and new tests. PR #13 can be **closed as superseded** after manager acknowledgment; it must not be merged.
