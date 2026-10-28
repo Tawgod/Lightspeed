@@ -10,6 +10,11 @@ export async function initializeProductManagerProfiles(pool) {
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (employee_id,slot)
   )`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS product_manager_work_drafts (
+    employee_id BIGINT PRIMARY KEY,
+    payload JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`);
 }
 export function validateProfileConfig(config){
   if(!config || typeof config!=='object'||Array.isArray(config))return false;
@@ -59,5 +64,34 @@ export function createProductManagerProfilesRouter({pool,verifyEmployee}={}){
      res.json({profile:result.rows[0]});
    }catch{res.status(503).json({error:'Profile not saved. Try again.'});}
  });
+
+ router.get('/work-draft',async(req,res)=>{
+   try{const result=await pool.query('SELECT payload,updated_at FROM product_manager_work_drafts WHERE employee_id=$1',[req.productManagerEmployeeId]);
+     res.json({draft:result.rows[0]||null});
+   }catch{res.status(503).json({error:'Work backup unavailable.'});}
+ });
+ router.put('/work-draft',async(req,res)=>{
+   const payload=req.body?.payload;
+   if(!validateWorkDraft(payload))return res.status(400).json({error:'Invalid work backup.'});
+   try{const result=await pool.query(`INSERT INTO product_manager_work_drafts(employee_id,payload) VALUES ($1,$2::jsonb)
+      ON CONFLICT(employee_id) DO UPDATE SET payload=EXCLUDED.payload,updated_at=now()
+      RETURNING updated_at`,[req.productManagerEmployeeId,JSON.stringify(payload)]);
+     res.json({saved:true,updatedAt:result.rows[0].updated_at});
+   }catch{res.status(503).json({error:'Work backup failed; current draft remains in this tab.'});}
+ });
  return router;
+}
+export function validateWorkDraft(payload){
+ if(!payload||typeof payload!=='object'||Array.isArray(payload))return false;
+ if(Object.keys(payload).some(k=>!['changes','layout','slot','selection','filter','savedAt'].includes(k)))return false;
+ if(!Array.isArray(payload.changes)||payload.changes.length>250||!validateProfileConfig(payload.layout))return false;
+ if(!['Default','Profile 1','Profile 2','Profile 3'].includes(payload.slot))return false;
+ if(typeof payload.selection!=='string'||payload.selection.length>128||typeof payload.filter!=='string'||payload.filter.length>200)return false;
+ if(!Number.isFinite(payload.savedAt))return false;
+ return payload.changes.every(c=>c&&typeof c==='object'&&Object.keys(c).sort().join(',')==='field,newValue,oldValue,productId'
+  &&typeof c.productId==='string'&&c.productId.length<=128
+  &&['name','price','itemOnline'].includes(c.field)
+  &&JSON.stringify(c).length<3000
+  &&(typeof c.oldValue==='string'||typeof c.oldValue==='boolean'||typeof c.oldValue==='number')
+  &&(typeof c.newValue==='string'||typeof c.newValue==='boolean'||typeof c.newValue==='number'));
 }
