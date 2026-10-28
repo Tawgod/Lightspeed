@@ -40,3 +40,11 @@ Status: In Development. No live employee screen or production route is changed.
 - Static checks: all 11 requested tool labels present; current-page link marked; existing grid and draft review element IDs retained; demo JS has no fetch/XMLHttpRequest; no extension or production modifications.
 - Remaining: real browser screenshots, 100%/125%/200% zoom, keyboard/More-menu behavior, authenticated navigation, and cross-tool regression checks. The native `details` menu closes on selection/navigation; click-away refinement may follow browser review.
 - Dependency: PR #23 and #16 remain draft/unmerged. PR #18 also remains draft/unmerged. Avoid merging before resolving overlapping shared-navigation changes.
+
+## Consolidated refresh — 2026-10-28
+- Old PR #18 has 17 changed files, including stale shared-ui library copies and assets. Replaced with clean draft PR #28 based on current consolidated branch; do not merge PR #18 wholesale.
+- PR #24 remains draft; Product Manager UI uses its coordinated navigation patterns but neither imports nor overwrites that draft's shared compatibility adapter.
+- Current consolidated has shared-ui/hc.css. Source-logo files were not found under shared-ui/assets on the consolidated branch during this review; interim accessible text wordmark is used rather than a broken image link. The approved original asset should be restored after its authoritative route is present.
+- The refresh is demonstration-only. No live read adapter, employee PIN, product creation, approval, or write routes are in the Product Manager files.
+- Added product-manager/ui-regression.test.mjs and .github/workflows/product-manager-ui.yml. CI results were not available at documentation time; do not treat tests as passed until GitHub Actions completes.
+- Browser keyboard/zoom/responsive acceptance, auth restrictions in future live UI, and routing tests are pending.
