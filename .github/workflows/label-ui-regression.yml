@@ -1,0 +1,23 @@
+name: Avery Label UI Regression
+on:
+  push:
+    branches:
+      - feature/labels-shared-ui-reconciled-20261028
+  pull_request:
+    paths:
+      - index.html
+      - server.js
+      - shared-ui/**
+      - Templates/**
+      - tests/labelSharedUi.test.mjs
+      - .github/workflows/label-ui-regression.yml
+jobs:
+  label-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify label UI and Avery print contracts
+        run: node --test tests/labelSharedUi.test.mjs
