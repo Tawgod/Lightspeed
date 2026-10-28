@@ -1,0 +1,17 @@
+name: Product Manager isolated UI tests
+on:
+  pull_request:
+    paths:
+      - 'product-manager/**'
+      - '.github/workflows/product-manager-ui.yml'
+  workflow_dispatch:
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check product-manager/ui.mjs
+      - run: node --test product-manager/validation.test.js product-manager/ui-regression.test.mjs
