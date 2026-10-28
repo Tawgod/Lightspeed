@@ -27,3 +27,11 @@ button:focus-visible{outline:3px solid #ce9b35;outline-offset:3px}
 .hc-ui .section-header{background:var(--hc-surface-inset)}
 .hc-ui footer button{background:var(--hc-primary)}
 .hc-ui .hc-wordmark{width:140px;max-width:40vw}
+
+.hc-ui .hc-review-nav{max-width:1000px;margin:12px auto 0;padding:10px 15px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.hc-ui .hc-nav-current{font-weight:800;color:var(--hc-header);padding:7px 10px;border-bottom:3px solid var(--hc-primary)}
+.hc-ui .hc-review-nav details{flex:1;min-width:150px}
+.hc-ui .hc-review-nav summary{cursor:pointer;font-weight:650;color:var(--hc-info)}
+.hc-ui .hc-review-links{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.hc-ui .hc-tool-link{padding:8px 10px;background:var(--hc-surface);border:1px solid var(--hc-border);color:var(--hc-info);border-radius:var(--hc-radius-sm);text-decoration:none;font-weight:650}
+.hc-ui .hc-tool-link:hover{background:var(--hc-surface-inset)}
