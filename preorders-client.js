@@ -92,11 +92,10 @@ async function loadPreorderCampaign(){const id=document.getElementById('preorder
 async function showAllocationSuggestions(id,available){const box=document.getElementById('allocationSuggestions');box.innerHTML='<p>Calculating suggested allocation…</p>';try{const d=await getJson(api+'/preorders/products/'+id+'/allocation-suggestions?available_quantity='+encodeURIComponent(available)+'&refresh_lightspeed=1');const rows=d.suggestions||[];box.innerHTML='<h3>Suggested allocation <span class="pill">Advisory only</span></h3>'+(!rows.length?'<p>No unallocated requests.</p>':'<table><tr><th>Rank</th><th>Customer</th><th>Score</th><th>Suggested Qty</th><th>History</th><th>Flags</th></tr>'+rows.map((x,i)=>'<tr><td>'+(i+1)+'</td><td>'+(x.customer_name||x.discord_handle||'Customer')+'</td><td><b>'+x.allocation_score+'</b></td><td>'+x.suggested_quantity+'</td><td>'+(x.picked_up||0)+' picked up · '+(x.late_pickups||0)+' late · '+(x.no_pickups||0)+' missed</td><td>'+((x.flags||[]).join('; ')||'—')+'</td></tr>').join('')+'</table>')}catch(e){box.innerHTML='';showNotice(e.message)}}
 async function allocatePreorder(id,method){if(!confirm('Allocate currently available inventory using '+method+'?'))return;try{const d=await getJson(api+'/preorders/products/'+id+'/allocate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({method})});showNotice('Allocated '+d.newlyAllocated+'; '+d.remaining+' still available.');await loadPreorderCampaign()}catch(e){showNotice(e.message)}}
 async function initializeAuth(){
-  document.getElementById('accessKey').value=accessKey();
   setAuth(false);
   const existing=await window.HCStaffAuth?.verify?.();
   if(existing){setAuth(true);await Promise.all([loadPreorders(),loadDiscordWatch()]);return}
-  if(accessKey())await saveKey();
-  else showNotice('Preorder Campaigns is locked. Sign in with your Timeclock PIN.');
+  showNotice('Preorder Campaigns is locked. Sign in with your Timeclock PIN in the header.');
 }
+document.getElementById('employeePin')?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();staffSignIn()}});
 initializeAuth();
