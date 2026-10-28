@@ -52,3 +52,13 @@
  .hc-ui .hc-operations-links a{flex:1 1 auto;justify-content:center}
 }
 
+
+/* Current consolidated shared kit tokens; PR #24 core nav patterns, scoped to PM. */
+.hc-ui .pm-text-wordmark{color:#f7941d;font-size:1.05rem;letter-spacing:.08em;white-space:nowrap}
+.hc-ui .pm-operations-nav{background:var(--hc-header);display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:12px;padding:12px 16px;box-shadow:var(--hc-shadow)}
+.hc-ui .pm-operations-nav .hc-operations-brand{font-size:1.05rem;font-weight:700;color:#fff}
+.hc-ui .pm-operations-nav .hc-operations-links{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.hc-ui .pm-operations-nav .hc-operations-links>a{border-radius:7px;color:#eaf4ff;padding:9px 10px;text-decoration:none;font-weight:600}
+.hc-ui .pm-operations-nav .hc-operations-links>a[aria-current=page],.hc-ui .pm-operations-nav .hc-operations-links>a:hover{background:var(--hc-primary)}
+.hc-ui .pm-operations-nav .pm-more>summary{min-height:42px}
+@media(max-width:760px){.hc-ui .pm-operations-nav{padding:10px}.hc-ui .pm-operations-nav .hc-operations-links{width:100%}}
