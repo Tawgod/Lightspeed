@@ -16,7 +16,7 @@ async function awaitReady(){
 }
 async function render(name,startRow,startCol,items){
  const r=await fetch(base+'/api/labels/generate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({poId:'SYNTHETIC',startRow,startCol,templateId:'Avery_5960',customText:'TEST',items})});
- assert.equal(r.status,200,await r.text().catch(()=>'')); // PDF only, no Lightspeed reads/writes
+ assert.equal(r.status,200,'PDF endpoint succeeded'); // PDF only, no Lightspeed reads/writes
  assert.match(r.headers.get('content-type')||'',/application\/pdf/);
  const buffer=Buffer.from(await r.arrayBuffer());
  const raw=buffer.toString('latin1');
