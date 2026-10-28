@@ -34,10 +34,6 @@
   </nav>
 <h1>Special Orders</h1><div class="sub">Hobby Corner order, supplier, and fulfillment control center</div>
 <div id="notice" class="notice"></div>
-<div class="panel">
-  <div class="section-heading"><div><h2 style="margin:0">Legacy workbook import</h2><p class="form-note">Administrative migration utility.</p></div></div>
-  <div class="toolbar"><input id="legacyWorkbook" type="file" accept=".xlsx" style="max-width:320px"><button onclick="importWorkbook()">Import legacy workbook</button></div>
-</div>
 <div class="cards">
   <div class="card"><div class="value" id="open">—</div><div class="label">Open items</div></div>
   <div class="card"><div class="value" id="needs_ordering">—</div><div class="label">Needs ordering</div></div>
@@ -304,6 +300,10 @@
   </div>
   <table><thead><tr><th>Customer</th><th>Item</th><th>SKU</th><th>Qty</th><th>Status</th><th>Supplier</th><th>Age</th><th>Notes</th><th></th></tr></thead>
   <tbody id="orders"></tbody></table>
+</div>
+<div class="panel">
+  <div class="section-heading"><div><h2 style="margin:0">Legacy workbook import</h2><p class="form-note">Administrative migration utility.</p></div></div>
+  <div class="toolbar"><input id="legacyWorkbook" type="file" accept=".xlsx" style="max-width:320px"><button onclick="importWorkbook()">Import legacy workbook</button></div>
 </div>
 </div>
 <script src="/shared-ui/staff-auth.js"></script>
