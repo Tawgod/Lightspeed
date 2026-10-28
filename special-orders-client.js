@@ -325,7 +325,7 @@ async function configureAutoRefresh(){
     const r=await fetch(api+'/health');const h=await r.json();
     if(autoRefreshTimer){clearInterval(autoRefreshTimer);autoRefreshTimer=null}
     if(h.liveMode){
-      autoRefreshTimer=setInterval(()=>{if(accessKey()){loadStats();loadOrders();loadSuppliers();}},60000);
+      autoRefreshTimer=setInterval(()=>{if(authEmployee()||accessKey()){loadStats();loadOrders();loadSuppliers();}},60000);
     }
   }catch{}
 }
@@ -1708,7 +1708,6 @@ async function loadAll(){await Promise.allSettled([loadStats(),loadOrders(),load
 document.addEventListener('input',e=>{if(orderDraftIds.includes(e.target.id)||productDraftIds.includes(e.target.id))saveDrafts()});
 document.addEventListener('change',e=>{if(orderDraftIds.includes(e.target.id)||productDraftIds.includes(e.target.id)||e.target.id==='newSuppliers')saveDrafts()});
 async function initializeAuth(){
-  document.getElementById('accessKey').value=accessKey();
   setAuthState(false);
   const existing=await window.HCStaffAuth?.verify?.();
   if(existing){
@@ -1718,10 +1717,7 @@ async function initializeAuth(){
     configureAutoRefresh();
     return;
   }
-  if(accessKey()){
-    await saveKey();
-    return;
-  }
-  showNotice('Special Orders is locked. Sign in with your Timeclock PIN.');
+  showNotice('Special Orders is locked. Sign in with your Timeclock PIN in the header.');
 }
+document.getElementById('employeePin')?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();staffSignIn()}});
 initializeAuth();
