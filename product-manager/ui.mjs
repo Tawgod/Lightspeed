@@ -66,6 +66,7 @@ render();
    localStorage. Profiles are keyed server-side exclusively by verified employee ID.
    No product data is transmitted to this profile endpoint. */
 const authState={token:null,employee:null,expiresAt:0,profiles:{}};
+let frozenWork=null;
 const profileLayout=()=>structuredClone(layout);
 function clearEmployeeSession(note='Signed out. Your saved layouts remain on the server.'){
   authState.token=null;authState.employee=null;authState.expiresAt=0;authState.profiles={};
@@ -92,14 +93,19 @@ $('pm-sign-in').addEventListener('submit',async e=>{
     if(!response.ok)throw Error('Employee PIN not recognized or authentication unavailable.');
     const data=await response.json();
     if(!data.token||!Number.isSafeInteger(Number(data.employee?.id))||Number(data.expiresIn)<=0)throw Error('Invalid employee session.');
-    // A previous employee's frozen draft must never become visible to a different PIN user.
+    // Never expose one employee's frozen work to a different employee.
+    const sameEmployeeFreeze=frozenWork&&String(frozenWork.employeeId)===String(data.employee.id);
+    const frozenSnapshot=sameEmployeeFreeze?frozenWork.snapshot:null;
     drafts.clear();availableBackup=null;render();
+    frozenWork=null;
     authState.token=data.token;authState.employee={id:data.employee.id,name:data.employee.name};
     authState.expiresAt=Date.now()+Math.min(data.expiresIn,900)*1000;
     $('pm-auth-state').textContent='Signed in';$('pm-pin').disabled=true;$('pm-login').hidden=true;
     $('pm-sign-out').hidden=false;$('pm-save-profile').disabled=false;$('pm-save-work').disabled=false;
     $('pm-employee').textContent='Signed in: '+(data.employee.name||'Employee')+'. Personal layouts enabled.';
     await loadEmployeeProfiles();await checkSavedWork();
+    if(frozenSnapshot){availableBackup=frozenSnapshot;$('pm-restore-work').disabled=false;
+      $('pm-backup-status').textContent='Unsaved work from this tab was frozen. Review to restore it.';}
   }catch(err){if(!authState.employee)clearEmployeeSession(err.message);else $('pm-employee').textContent=err.message;}
   finally{$('pm-pin').value='';$('pm-login').disabled=false}
 });
@@ -170,6 +176,7 @@ $('pm-confirm-restore').onclick=()=>{
 function freezeWork(note){
  // Preserve current draft in memory for possible sign-in recovery; do not transmit
  // an expired credential, and never imply an unsaved draft reached the server.
+ if(authState.employee)frozenWork={employeeId:authState.employee.id,snapshot:snapshotWork()};
  authState.token=null;authState.employee=null;authState.expiresAt=0;
  $('pm-save-work').disabled=true;$('pm-save-profile').disabled=true;$('pm-sign-out').hidden=true;
  $('pm-login').hidden=false;$('pm-pin').disabled=false;$('pm-auth-state').textContent='Session expired';
