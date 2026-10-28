@@ -16,6 +16,7 @@ on:
       - 'tests/scannerReviewAutoMatch.test.js'
       - 'tests/scannerDuplicateSafety.test.js'
       - 'tests/scannerSharedNavigation.test.mjs'
+      - 'tests/scannerSharedUiAdoption.test.js'
       - 'extension/product-scanner/completeness.js'
       - 'routes/specialOrderProducts.js'
       - 'services/scannerTimeclockGateway.js'
@@ -117,3 +118,5 @@ jobs:
           node --test tests/scannerEmployeeAccess.test.js
       - name: Verify coordinated shared scanner and toolkit navigation
         run: node --test tests/scannerSharedNavigation.test.mjs
+      - name: Verify PR19 exact clipboard and shared component compatibility
+        run: node --test tests/scannerSharedUiAdoption.test.js
