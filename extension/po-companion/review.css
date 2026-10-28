@@ -1,0 +1,37 @@
+:root{color-scheme:light;font:14px system-ui,-apple-system,"Segoe UI",sans-serif;color:#21313b;background:#e8eef1}
+*{box-sizing:border-box}body{margin:0;min-height:100vh}
+.top{background:#183f53;color:#fff;padding:23px clamp(18px,4vw,46px);border-bottom:4px solid #a9ceca}
+.brand{font-size:11px;font-weight:800;letter-spacing:.12em;color:#cce5e7}.brand span{font-weight:500}
+h1{font-size:23px;letter-spacing:-.02em;margin:8px 0 4px}#po{margin:0;color:#d7e8ed}
+main{max-width:1000px;padding:22px;margin:auto}
+.notice{border-left:4px solid #ad791f;background:#fff1d1;color:#513e19;border-radius:9px;padding:13px 16px;margin-bottom:20px}
+.notice p{margin:5px 0 0;line-height:1.5}
+.review-section{background:#f8fafb;border:1px solid #bfd0d8;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px #173a4a14}
+.section-header{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:15px 19px;background:#dce8ee;border-bottom:1px solid #bfced5}
+h2{font-size:16px;margin:0}.phase{font-size:12px;font-weight:700;color:#315669}
+.changes{padding:12px 18px 18px;line-height:1.45}
+article{background:#fff;border:1px solid #d1dce2;border-radius:9px;padding:15px;margin:9px 0 13px}
+article h2{margin-bottom:12px}
+table{border-collapse:collapse;width:100%}th,td{padding:10px;text-align:left;border-bottom:1px solid #d7e1e6}
+th{background:#e8f0f3;font-size:12px;color:#375768}td{overflow-wrap:anywhere}
+footer{display:flex;align-items:center;justify-content:space-between;gap:15px;margin-top:18px;padding:15px 2px;font-size:12px;color:#526874}
+button{background:#176e76;color:white;border:0;border-radius:8px;font:700 14px system-ui;padding:11px 15px}
+button:disabled{background:#a7b9bf;color:#32434b;cursor:not-allowed}
+button:focus-visible{outline:3px solid #ce9b35;outline-offset:3px}
+@media(max-width:650px){main{padding:12px}footer{align-items:flex-start;flex-direction:column}table{font-size:12px}th,td{padding:6px}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important}}
+
+/* Feature-local layout only. Shared UI owns tokens/components. */
+.hc-ui .top{background:var(--hc-header);color:#fff}
+.hc-ui .review-section{background:var(--hc-surface)}
+.hc-ui .section-header{background:var(--hc-surface-inset)}
+.hc-ui footer button{background:var(--hc-primary)}
+.hc-ui .hc-wordmark{width:140px;max-width:40vw}
+
+.hc-ui .hc-review-nav{max-width:1000px;margin:12px auto 0;padding:10px 15px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.hc-ui .hc-nav-current{font-weight:800;color:var(--hc-header);padding:7px 10px;border-bottom:3px solid var(--hc-primary)}
+.hc-ui .hc-review-nav details{flex:1;min-width:150px}
+.hc-ui .hc-review-nav summary{cursor:pointer;font-weight:650;color:var(--hc-info)}
+.hc-ui .hc-review-links{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.hc-ui .hc-tool-link{padding:8px 10px;background:var(--hc-surface);border:1px solid var(--hc-border);color:var(--hc-info);border-radius:var(--hc-radius-sm);text-decoration:none;font-weight:650}
+.hc-ui .hc-tool-link:hover{background:var(--hc-surface-inset)}
