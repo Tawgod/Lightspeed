@@ -92,6 +92,8 @@ $('pm-sign-in').addEventListener('submit',async e=>{
     if(!response.ok)throw Error('Employee PIN not recognized or authentication unavailable.');
     const data=await response.json();
     if(!data.token||!Number.isSafeInteger(Number(data.employee?.id))||Number(data.expiresIn)<=0)throw Error('Invalid employee session.');
+    // A previous employee's frozen draft must never become visible to a different PIN user.
+    drafts.clear();availableBackup=null;render();
     authState.token=data.token;authState.employee={id:data.employee.id,name:data.employee.name};
     authState.expiresAt=Date.now()+Math.min(data.expiresIn,900)*1000;
     $('pm-auth-state').textContent='Signed in';$('pm-pin').disabled=true;$('pm-login').hidden=true;
@@ -103,12 +105,13 @@ $('pm-sign-in').addEventListener('submit',async e=>{
 });
 async function loadEmployeeProfiles(){
   try{const result=await profileRequest('/profiles');authState.profiles={};
-    for(const p of result.profiles||[])authState.profiles[p.slot]=p.config;\n    applyLayout(authState.profiles[profile]);
+    for(const p of result.profiles||[])authState.profiles[p.slot]=p.config;
+    applyLayout(authState.profiles[profile]);
     $('pm-employee').textContent='Signed in: '+(authState.employee?.name||'Employee')+'. Personal layouts loaded.';
   }catch(err){$('pm-employee').textContent=err.message}
 }
 $('pm-sign-out').onclick=async()=>{
- if(drafts.size){$('pm-backup-status').textContent='Saving work before sign-out…';
+ if(drafts.size || authState.employee){$('pm-backup-status').textContent='Saving work before sign-out…';
   try{await saveWorkBackup()}catch{ $('pm-backup-status').textContent='Backup failed. Sign-out cancelled; copy or retry your work before signing out.';return }
  }
  clearEmployeeSession();
