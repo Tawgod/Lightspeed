@@ -1,7 +1,7 @@
 name: Scanner review UI regression
 on:
   push:
-    branches: [feature/scanner-fields-create-preview, feature/scanner-review-auto-lookup, feature/scanner-sku-role-diagnostics, feature/scanner-duplicate-safety-review-20261027]
+    branches: [feature/scanner-fields-create-preview, feature/scanner-review-auto-lookup, feature/scanner-sku-role-diagnostics, feature/scanner-duplicate-safety-review-20261027, feature/scanner-consignment-nav-alignment-20261028]
     paths:
       - 'extension/**'
       - 'services/scannerSupplierTemplates.js'
@@ -15,6 +15,7 @@ on:
       - 'routes/scannerMatchGateway.js'
       - 'tests/scannerReviewAutoMatch.test.js'
       - 'tests/scannerDuplicateSafety.test.js'
+      - 'tests/scannerSharedNavigation.test.mjs'
       - 'extension/product-scanner/completeness.js'
       - 'routes/specialOrderProducts.js'
       - 'services/scannerTimeclockGateway.js'
@@ -53,6 +54,7 @@ jobs:
           node --check routes/scannerMatchGateway.js
           node --check services/scannerTimeclockGateway.js
           node --check services/scannerTimeclockIdentity.js
+          node --check extension/shared-ui/navigation.mjs
           node --check timeclock/server.js
           node --check timeclock/scannerLightspeedRoles.js
           node --check extension/content.js
@@ -113,3 +115,5 @@ jobs:
           node --test tests/scannerProductReviewQueue.test.js
           node --test tests/scannerIsolatedTestCreation.test.js
           node --test tests/scannerEmployeeAccess.test.js
+      - name: Verify coordinated shared scanner and toolkit navigation
+        run: node --test tests/scannerSharedNavigation.test.mjs

@@ -1,59 +1,60 @@
 <!doctype html>
-<html><head><meta charset="utf-8"><title>Hobby Corner Product Review</title><link rel="stylesheet" href="review.css"><link rel="stylesheet" href="hc-beta.css"></head>
+<html><head><meta charset="utf-8"><title>Hobby Corner Product Review</title><link rel="stylesheet" href="review.css"><link rel="stylesheet" href="hc-beta.css"><link rel="stylesheet" href="../shared-ui/navigation.css"></head>
 <body class="hc-ui">
 <header>
   <div class="header-top">
     <div class="hc-scanner-brand"><img src="hc-wordmark.webp" alt="Hobby Corner" width="150" height="43"><h1>Product Scanner</h1></div>
     <form id="employee-sign-in" autocomplete="off" class="compact-sign-in">
       <label for="employee-pin">Timeclock PIN</label>
-      <input id="employee-pin" type="password" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" autocomplete="off" required placeholder="4-digit PIN">
-      <button type="submit" id="sign-in">Sign in</button>
-      <button type="button" id="sign-out" hidden>Sign out</button>
+      <input id="employee-pin" class="hc-input" type="password" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" autocomplete="off" required placeholder="4-digit PIN">
+      <button type="submit" id="sign-in" class="hc-button">Sign in</button>
+      <button type="button" id="sign-out" class="hc-button hc-button--secondary" hidden>Sign out</button>
     </form>
   </div>
   <p id="employee-status" role="status" aria-live="polite">Sign in to check existing products.</p>
-  <div class="scan-tab-tools"><label for="supplier-tab">Open supplier tab</label><select id="supplier-tab" aria-label="Choose an open supplier tab"></select><button type="button" id="refresh-supplier-tabs">Refresh tabs</button><button type="button" id="scan-open-supplier">Scan Open Supplier Page</button></div>
+  <div class="scan-tab-tools"><label for="supplier-tab">Open supplier tab</label><select id="supplier-tab" class="hc-select" aria-label="Choose an open supplier tab"></select><button type="button" id="refresh-supplier-tabs" class="hc-button hc-button--secondary">Refresh tabs</button><button type="button" id="scan-open-supplier" class="hc-button">Scan Open Supplier Page</button></div>
   <div id="status">Loading captured product…</div>
 </header>
+<nav id="hc-shared-navigation" class="hc-extension-nav" aria-label="Hobby Corner tools"></nav>
 <main>
-  <section class="product-editor">
-    <div class="section-title"><h2>Supplier product</h2><a id="source" target="_blank" rel="noopener noreferrer">Source page</a></div>
+  <section class="product-editor hc-panel">
+    <div class="section-title hc-panel-header"><h2>Supplier product</h2><a id="source" target="_blank" rel="noopener noreferrer">Source page</a></div>
     <p id="supplier-name"></p><p id="supplier-status" role="status"></p>
     <label for="supplier-default">Supplier for new item (editable)</label>
-    <input id="supplier-default" list="supplier-options" placeholder="Select existing supplier or enter new name" autocomplete="off"><datalist id="supplier-options"></datalist>
-    <p id="supplier-verification" role="status">Supplier not yet verified.</p>
-    <details id="supplier-snapshot-panel"><summary>Supplier snapshot / template reference</summary><p class="hint">Optional local reference only. Images do not automatically create extraction rules.</p>
+    <input id="supplier-default" class="hc-input" list="supplier-options" placeholder="Select existing supplier or enter new name" autocomplete="off"><datalist id="supplier-options"></datalist>
+    <p id="supplier-verification" class="hc-field-note" role="status">Supplier not yet verified.</p>
+    <details id="supplier-snapshot-panel" class="hc-inset"><summary>Supplier snapshot / template reference</summary><p class="hint">Optional local reference only. Images do not automatically create extraction rules.</p>
       <input id="supplier-image-upload" type="file" accept="image/png,image/jpeg,image/webp" aria-label="Select supplier screenshot">
       <button id="remove-supplier-snapshot" type="button">Delete saved snapshot</button><p id="supplier-snapshot-status" role="status"></p>
       <img id="supplier-snapshot-preview" alt="Saved supplier layout reference" hidden>
     </details>
-    <form id="product-form"><div id="fields"></div><label>Description<textarea id="description" rows="6"></textarea></label><p id="warnings" role="alert"></p><button type="button" id="copy">Copy product data</button></form>
+    <form id="product-form"><div id="fields" class="hc-inset"></div><label>Description<textarea id="description" class="hc-textarea" rows="6"></textarea></label><p id="warnings" class="hc-alert hc-alert--warning" role="alert"></p><button type="button" id="copy" class="hc-button hc-button--secondary">Copy product data</button></form>
   </section>
-  <section class="match-review">
+  <section class="match-review hc-panel">
     <h2>Existing products</h2>
     <p class="hint">Matching runs automatically after sign-in and each scan. Changing product or supplier fields requires a fresh check.</p>
-    <button type="button" id="check-matches" disabled>Recheck products</button>
-    <p id="match-status" role="status">Sign in to check the captured product.</p>
+    <button type="button" id="check-matches" class="hc-button hc-button--secondary" disabled>Recheck products</button>
+    <p id="match-status" class="hc-field-note" role="status">Sign in to check the captured product.</p>
     <div id="matches"></div>
-    <div id="preorder-selector" class="preorder-selector">
+    <div id="preorder-selector" class="preorder-selector hc-inset">
       <label class="preorder-check"><input type="checkbox" id="add-to-preorder"> Add to preorder campaign</label>
       <div id="preorder-options" hidden>
         <label for="preorder-campaign">Choose campaign</label>
-        <select id="preorder-campaign"><option value="">Select an existing campaign</option></select>
+        <select id="preorder-campaign" class="hc-select"><option value="">Select an existing campaign</option></select>
         <p id="preorder-status" role="status">Sign in to load campaigns.</p>
         <div id="preorder-queued-list" class="preorder-queued-list" aria-live="polite"></div>
-        <button id="stage-preorder" type="button" disabled>Stage in Campaign</button>
+        <button id="stage-preorder" class="hc-button" type="button" disabled>Stage in Campaign</button>
         <p class="hint">Staged for review in Hobby Corner; not yet a published campaign product or Discord post.</p>
       </div>
     </div>
     <button type="button" id="create-item" disabled>Prepare Create Item</button>
     <pre id="create-preview" role="status" hidden></pre>
-    <div class="proposal-review-controls">
-      <button type="button" id="submit-product-proposal" disabled>Submit New Item for Review</button>
-      <p id="product-proposal-status" role="status">New items require duplicate verification before submission.</p>
+    <div class="proposal-review-controls hc-inset">
+      <button type="button" id="submit-product-proposal" class="hc-button" disabled>Submit New Item for Review</button>
+      <p id="product-proposal-status" class="hc-field-note" role="status">New items require duplicate verification before submission.</p>
       <details id="proposal-inbox">
         <summary>Pending product review queue</summary>
-        <button type="button" id="refresh-product-proposals">Refresh review queue</button>
+        <button type="button" id="refresh-product-proposals" class="hc-button hc-button--secondary">Refresh review queue</button>
         <div id="product-proposal-list" role="status"></div>
       </details>
     </div>
