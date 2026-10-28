@@ -2,10 +2,49 @@ const api='/api/special-orders';
 let noticeTimer=null,lastPreviewCampaignId=null,lastPreview=null;
 
 function showNotice(text,ms=0){const e=document.getElementById('notice');if(noticeTimer)clearTimeout(noticeTimer);e.textContent=text;e.style.display='block';if(ms)noticeTimer=setTimeout(()=>{e.style.display='none'},ms)}
-function accessKey(){return sessionStorage.getItem('hcSpecialOrdersKey')||''}
-function setAuthState(ok,msg=''){document.getElementById('authStatus').textContent=ok?'Unlocked':'Locked';document.querySelectorAll('button:not(#unlockButton), input:not(#accessKey), select').forEach(e=>e.disabled=!ok);document.getElementById('gwPublishButton').disabled=true;if(msg)showNotice(msg)}
-async function getJson(url,opts={}){const headers={...(opts.headers||{}),'x-hobby-corner-key':accessKey()};const r=await fetch(url,{...opts,headers,cache:'no-store'});let d={};try{d=await r.json()}catch{}if(r.status===401){sessionStorage.removeItem('hcSpecialOrdersKey');setAuthState(false,'Access key required.');throw new Error('Access key missing or incorrect.')}if(!r.ok){const e=new Error(d.error||r.statusText);e.details=d;e.status=r.status;throw e}return d}
-async function saveKey(){const v=document.getElementById('accessKey').value.trim();if(!v)return;sessionStorage.setItem('hcSpecialOrdersKey',v);try{await getJson(api+'/auth-check');setAuthState(true);await loadGwCampaigns();showNotice('GW Preorders ready.',1200)}catch(e){sessionStorage.removeItem('hcSpecialOrdersKey');setAuthState(false,e.message)}}
+function accessKey(){return window.HCStaffAuth?.legacyKey?.()||''}
+function authHeaders(extra={}){return window.HCStaffAuth?.headers?.(extra)||{...extra}}
+function authEmployee(){return window.HCStaffAuth?.employee?.()||null}
+function setAuthState(ok,msg=''){
+  document.getElementById('authStatus').textContent=ok?'Unlocked':'Locked';
+  document.querySelectorAll('button:not(#unlockButton):not(#legacyUnlockButton):not(#signOutButton), input:not(#employeePin):not(#accessKey), select').forEach(e=>e.disabled=!ok);
+  document.getElementById('gwPublishButton').disabled=true;
+  const signOut=document.getElementById('signOutButton');
+  if(signOut)signOut.style.display=ok&&authEmployee()?'inline-block':'none';
+  const identity=document.getElementById('authEmployee');
+  if(identity)identity.textContent=authEmployee()?.name?'Signed in as '+authEmployee().name:'';
+  if(msg)showNotice(msg);
+}
+async function getJson(url,opts={}){
+  const headers=authHeaders(opts.headers||{});
+  const r=await fetch(url,{...opts,headers,cache:'no-store'});
+  let d={};try{d=await r.json()}catch{}
+  if(r.status===401){
+    window.HCStaffAuth?.signOut?.();
+    setAuthState(false,'Your employee session expired. Sign in again with your Timeclock PIN.');
+    throw new Error('Employee sign-in required.');
+  }
+  if(!r.ok){const e=new Error(d.error||r.statusText);e.details=d;e.status=r.status;throw e}
+  return d
+}
+async function staffSignIn(){
+  const pin=document.getElementById('employeePin').value.trim();
+  if(!pin)return setAuthState(false,'Enter your 4-digit Timeclock PIN.');
+  try{
+    const session=await window.HCStaffAuth.signIn(pin);
+    document.getElementById('employeePin').value='';
+    setAuthState(true,'Signed in as '+(session.employee?.name||'employee')+'.');
+    await loadGwCampaigns();
+    showNotice('GW Preorders ready.',1200);
+  }catch(e){setAuthState(false,e.message)}
+}
+function staffSignOut(){window.HCStaffAuth?.signOut?.();setAuthState(false,'Signed out.')}
+async function saveKey(){
+  const v=document.getElementById('accessKey').value.trim();if(!v)return;
+  window.HCStaffAuth?.setLegacyKey?.(v);
+  try{await getJson(api+'/auth-check');setAuthState(true);await loadGwCampaigns();showNotice('GW Preorders ready.',1200)}
+  catch(e){window.HCStaffAuth?.setLegacyKey?.('');setAuthState(false,e.message)}
+}
 
 function chicagoLocal(iso){if(!iso)return'';const d=new Date(iso);const p=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(d);const g=t=>p.find(x=>x.type===t)?.value||'';return g('year')+'-'+g('month')+'-'+g('day')+'T'+g('hour')+':'+g('minute')}
 function setTiming(c){if(c.gw_supplier_deadline_at)document.getElementById('gwSupplierDeadline').value=chicagoLocal(c.gw_supplier_deadline_at);if(c.order_due_at){document.getElementById('gwCustomerCutoff').value=chicagoLocal(c.order_due_at);document.getElementById('gwOrderDue').value=chicagoLocal(c.order_due_at)}if(c.gw_auto_submit_at)document.getElementById('gwAutoSubmitAt').value=chicagoLocal(c.gw_auto_submit_at);if([10,15,20,30,60].includes(Number(c.auto_submit_minutes_before)))document.getElementById('gwSubmitLeadMinutes').value=String(c.auto_submit_minutes_before)}
@@ -61,5 +100,12 @@ async function previewGwDiscordPosts(){const id=document.getElementById('gwCampa
 async function publishGwDiscordPosts(){const id=document.getElementById('gwCampaignSelect').value;if(!lastPreview||lastPreviewCampaignId!==String(id)||!lastPreview.ready_to_publish)return showNotice('Preview immediately before posting.');if(!confirm('Post '+lastPreview.counts.posts+' GW item(s) to Discord now?'))return;try{const d=await getJson(api+'/preorders/gw/campaigns/'+id+'/discord-publish',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({published_by:'gw-web'})});document.getElementById('gwDiscordStatus').textContent='Posted '+d.published_count+' item(s) to Discord.';document.getElementById('gwPublishButton').disabled=true;await loadGwCampaign()}catch(e){document.getElementById('gwDiscordStatus').textContent='Post failed: '+e.message}}
 
 document.getElementById('gwSubmitLeadMinutes').value='15';
-document.getElementById('accessKey').value=accessKey();setAuthState(false);
-if(accessKey())saveKey();else showNotice('Enter the Special Orders access key to begin.');
+async function initializeAuth(){
+  document.getElementById('accessKey').value=accessKey();
+  setAuthState(false);
+  const existing=await window.HCStaffAuth?.verify?.();
+  if(existing){setAuthState(true);await loadGwCampaigns();return}
+  if(accessKey())await saveKey();
+  else showNotice('GW Preorders is locked. Sign in with your Timeclock PIN.');
+}
+initializeAuth();
