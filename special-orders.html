@@ -30,13 +30,24 @@
 <div id="notice" class="notice"></div>
 <div class="panel">
   <div class="toolbar">
-    <input id="accessKey" type="password" placeholder="Internal access key" size="24">
-    <button id="unlockButton" onclick="saveKey()">Unlock</button>
+    <input id="employeePin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="Timeclock PIN" size="14">
+    <button id="unlockButton" onclick="staffSignIn()">Sign in</button>
+    <button id="signOutButton" type="button" onclick="staffSignOut()" style="display:none">Sign out</button>
     <span id="authStatus" class="pill">Locked</span>
+    <span id="authEmployee" class="form-note"></span>
+  </div>
+  <details style="margin-top:10px">
+    <summary class="form-note">Admin access-key fallback</summary>
+    <div class="toolbar" style="margin-top:8px">
+      <input id="accessKey" type="password" placeholder="Internal admin key" size="24">
+      <button id="legacyUnlockButton" type="button" onclick="saveKey()">Use admin key</button>
+    </div>
+  </details>
+  <div class="toolbar" style="margin-top:10px">
     <input id="legacyWorkbook" type="file" accept=".xlsx" style="max-width:260px">
     <button onclick="importWorkbook()">Import legacy workbook</button>
   </div>
-  <div style="font-size:12px;color:#6b7280">The workbook is uploaded directly to the private database importer; customer data is not stored in GitHub.</div>
+  <div style="font-size:12px;color:#6b7280">Employee access uses the same 4-digit PIN as the Hobby Corner Timeclock. The workbook is uploaded directly to the private database importer; customer data is not stored in GitHub.</div>
 </div>
 <div class="cards">
   <div class="card"><div class="value" id="open">—</div><div class="label">Open items</div></div>
@@ -306,4 +317,5 @@
   <tbody id="orders"></tbody></table>
 </div>
 </div>
+<script src="/shared-ui/staff-auth.js"></script>
 <script src="/special-orders-client.js"></script></body></html>
