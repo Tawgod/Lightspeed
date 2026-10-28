@@ -12,6 +12,7 @@ import { createDepositConversionRouter } from './routes/depositConversion.js';
 import { createWorkOrderCombineRouter } from './routes/workOrderCombine.js';
 import { createSpecialOrdersRouter, initializeSpecialOrdersDb } from './special-orders.js';
 import pg from 'pg';
+import { createConsignmentBetaRouter } from './routes/consignmentBeta.js';
 import { createTimeclockScannerGateway } from './services/scannerTimeclockGateway.js';
 import { createTimeclockScannerIdentity } from './services/scannerTimeclockIdentity.js';
 import { createSpecialOrdersMatchLookup } from './services/scannerSpecialOrdersLookup.js';
@@ -167,6 +168,32 @@ app.use('/api/order-split', createDepositConversionRouter({
 app.use('/api/work-orders', createWorkOrderCombineRouter({
   domain: LIGHTSPEED_DOMAIN,
   token: LIGHTSPEED_TOKEN
+}));
+
+// Consignment review beta: no production records or Lightspeed writes.
+app.get('/consignment', (req, res) => res.sendFile(path.join(__dirname,'consignment-beta.html')));
+app.get('/consignment/submit', (req, res) => res.sendFile(path.join(__dirname,'consignment-customer.html')));
+for (const [route,file] of [
+ ['/consignment-beta.css','consignment-beta.css'],
+ ['/consignment-beta.js','consignment-beta.js'],
+ ['/consignment-customer.js','consignment-customer.js'],
+ ['/consignment-adapter.css','shared-ui/consignment-adapter.css'],
+ ['/consignment-brand.css','shared-ui/consignment-brand.css'],
+ ['/consignment-shared-ui.css','shared-ui/hc.css'],
+ ['/consignment-match-utils.js','extension/product-scanner/special-orders-adapter.js'],
+ ['/consignment-form-rules.js','services/consignmentFormRules.js']]) {
+ app.get(route,(req,res)=>{
+  res.set('Cache-Control','no-store');
+  res.sendFile(path.join(__dirname,file));
+ });
+}
+// Separate database and staff key required; beta storage writes default off.
+const consignmentBetaPool=process.env.CONSIGNMENT_BETA_DATABASE_URL&&process.env.CONSIGNMENT_BETA_STAFF_KEY
+ ?new pg.Pool({connectionString:process.env.CONSIGNMENT_BETA_DATABASE_URL,max:4,connectionTimeoutMillis:3500,
+ ssl:process.env.CONSIGNMENT_BETA_PGSSL==='true'?{rejectUnauthorized:false}:undefined}):null;
+app.use('/api/consignment-beta',createConsignmentBetaRouter({
+ pool:consignmentBetaPool,staffKey:process.env.CONSIGNMENT_BETA_STAFF_KEY,
+ allowWrites:process.env.CONSIGNMENT_BETA_ALLOW_DB_WRITES==='true'
 }));
 
 app.get('/special-orders', (req, res) => {
