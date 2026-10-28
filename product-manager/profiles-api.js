@@ -75,7 +75,9 @@ export function createProductManagerProfilesRouter({pool,verifyEmployee}={}){
    if(!validateWorkDraft(payload))return res.status(400).json({error:'Invalid work backup.'});
    try{const result=await pool.query(`INSERT INTO product_manager_work_drafts(employee_id,payload) VALUES ($1,$2::jsonb)
       ON CONFLICT(employee_id) DO UPDATE SET payload=EXCLUDED.payload,updated_at=now()
+      WHERE COALESCE((product_manager_work_drafts.payload->>'savedAt')::numeric,0) <= (EXCLUDED.payload->>'savedAt')::numeric
       RETURNING updated_at`,[req.productManagerEmployeeId,JSON.stringify(payload)]);
+     if(!result.rows[0])return res.status(409).json({error:'A newer backup exists. Reload and review it before replacing.'});
      res.json({saved:true,updatedAt:result.rows[0].updated_at});
    }catch{res.status(503).json({error:'Work backup failed; current draft remains in this tab.'});}
  });
