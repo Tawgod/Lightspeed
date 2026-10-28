@@ -8,25 +8,32 @@
 <link rel="stylesheet" href="/shared-ui/core-ops-compat.css">
 </head>
 <body class="hc-ui"><div class="wrap hc-page">
-  <div class="toolbar hc-core-header">
-    <a href="/special-orders" aria-current="page">Special Orders</a>
-    <a href="/ordering">Ordering</a>
-    <a href="/preorders">Preorders</a>
-    <a href="/gw-preorders">GW Preorders</a>
-    <span class="hc-header-spacer"></span>
-    <label class="hc-header-login-label" for="employeePin">Employee PIN</label>
-    <input id="employeePin" class="hc-header-pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" placeholder="4-digit PIN">
-    <button id="unlockButton" type="button" onclick="staffSignIn()">Sign in</button>
-    <span id="authStatus" class="pill">Signed out</span>
-    <span id="authEmployee" class="hc-header-employee"></span>
-    <button id="signOutButton" type="button" class="secondary-button" onclick="staffSignOut()" style="display:none">Sign out</button>
-  </div>
+    <nav class="hc-operations-nav hc-core-header" aria-label="Hobby Corner tools">
+    <a class="hc-operations-brand" href="/special-orders" aria-label="Hobby Corner Store Operations home">
+      <img src="/shared-ui/assets/hc-wordmark.webp" alt="Hobby Corner" width="174" height="48">
+      <span class="hc-brand-subtitle">Store Operations</span>
+    </a>
+    <div class="hc-operations-links">
+      <a href="/special-orders" aria-current="page">Special Orders</a>
+      <a href="/ordering">Ordering</a>
+      <a href="/preorders">Preorders</a>
+      <a href="/gw-preorders">GW Preorders</a>
+      <details class="hc-operations-more"><summary>More tools</summary><div class="hc-operations-menu">
+        <a href="https://consignment-beta-test.up.railway.app/consignment" target="_blank" rel="noopener noreferrer">Consignment <span class="hc-nav-beta">Beta / Test</span></a>
+        <a href="https://lightspeed-api-production-c087.up.railway.app/extension" target="_blank" rel="noopener noreferrer">Lightspeed Toolkit</a>
+      </div></details>
+    </div>
+    <div class="hc-operations-auth" aria-label="Employee session">
+      <label class="hc-header-login-label" for="employeePin">Employee PIN</label>
+      <input id="employeePin" class="hc-header-pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" placeholder="4-digit PIN">
+      <button id="unlockButton" type="button" onclick="staffSignIn()">Sign in</button>
+      <span id="authStatus" class="pill">Signed out</span>
+      <span id="authEmployee" class="hc-header-employee"></span>
+      <button id="signOutButton" type="button" class="secondary-button" onclick="staffSignOut()" style="display:none">Sign out</button>
+    </div>
+  </nav>
 <h1>Special Orders</h1><div class="sub">Hobby Corner order, supplier, and fulfillment control center</div>
 <div id="notice" class="notice"></div>
-<div class="panel">
-  <div class="section-heading"><div><h2 style="margin:0">Legacy workbook import</h2><p class="form-note">Administrative migration utility.</p></div></div>
-  <div class="toolbar"><input id="legacyWorkbook" type="file" accept=".xlsx" style="max-width:320px"><button onclick="importWorkbook()">Import legacy workbook</button></div>
-</div>
 <div class="cards">
   <div class="card"><div class="value" id="open">—</div><div class="label">Open items</div></div>
   <div class="card"><div class="value" id="needs_ordering">—</div><div class="label">Needs ordering</div></div>
@@ -293,6 +300,10 @@
   </div>
   <table><thead><tr><th>Customer</th><th>Item</th><th>SKU</th><th>Qty</th><th>Status</th><th>Supplier</th><th>Age</th><th>Notes</th><th></th></tr></thead>
   <tbody id="orders"></tbody></table>
+</div>
+<div class="panel">
+  <div class="section-heading"><div><h2 style="margin:0">Legacy workbook import</h2><p class="form-note">Administrative migration utility.</p></div></div>
+  <div class="toolbar"><input id="legacyWorkbook" type="file" accept=".xlsx" style="max-width:320px"><button onclick="importWorkbook()">Import legacy workbook</button></div>
 </div>
 </div>
 <script src="/shared-ui/staff-auth.js"></script>
