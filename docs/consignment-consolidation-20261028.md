@@ -31,3 +31,8 @@ New integration: feature/consignment-consolidated-v2-20261028 / draft PR #30.
 4. Wire authenticated read-only Lightspeed customer/product matching, verify duplicates and historical records.
 5. Test product create previews and transaction reconciliation in an explicitly authorized sandbox, before enabling any actual POS change or delayed credit.
 6. Merge the selectively reconciled work only after required approval; leave outdated PR #11/#25 unmerged and record deferral.
+
+## Verified CI results
+- Commit e179a3d5128d7ef9e27bcdffb8efa16ff54dbd65: Consignment consolidated safety SUCCESS; Scanner integration regression SUCCESS; Chromium browser acceptance SUCCESS.
+- Chromium automation exercised six staff/customer viewport and zoom combinations (1440px at 100%, 900px at 125%, 390px at 200%), keyboard Enter on native More disclosure, verified navigation and original logo, selected a pending staff item, and added a second customer item. Screenshots uploaded as GitHub Actions artifact consignment-navigation-screenshots.
+- This verifies automated browser interactions only; staff visual sign-off and production authentication/credit integration remain pending.
