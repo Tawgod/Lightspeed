@@ -103,3 +103,12 @@ Feature branch: feature/consignment-layout-foundation
 - Files: shared-ui/hc.css, shared-ui/consignment-brand.css, shared-ui/consignment-adapter.css, consignment-beta.html, consignment-customer.html, server.js, .github/workflows/consignment-beta-smoke.yml.
 - No changes to Chrome extension files or release queue; no Chrome release. No new POS, customer or credit writes.
 - Tests: CI smoke now verifies shared CSS routes and scoped class usage. Manual browser visual tests at 100/125/200%, keyboard, copy/paste and screen-reader review still pending. Separate Railway test deployment only; no production merge.
+
+## Cross-tool navigation correction — 2026-10-28
+- Draft PR #25 targets the Consignment feature branch and coordinates with draft core-operations navigation PR #23; no direct competing changes to PR #23.
+- Both staff and customer beta screens now use the exact six verified PR #23 destination set: Special Orders, Ordering, Preorder Campaigns, GW Preorders, Consignment Manager (Beta), Lightspeed Toolkit. Local customer intake remains in an accessible native More disclosure.
+- Core-operation links use the verified special-orders-test-production.up.railway.app service host (rather than accidentally opening a stale copy in the isolated Consignment beta). Lightspeed Toolkit uses PR #23's verified extension launcher URL.
+- Original wordmark, shared UI PR #16 CSS and scoped compatibility adapter preserved. Only HTML navigation markup, adapter CSS, and tests changed; no JavaScript workflow, extension, backend, customer or Lightspeed write modifications.
+- Intentionally omit Timeclock, Product Scanner, Product Manager, PO Companion and Split/Recall until stable URL + authorization path are verified by shared navigation workstream. Avoid displaying links that appear available but fail.
+- CI: tests/consignment-shared-navigation.test.mjs and dedicated GitHub Actions; separate visual keyboard, 100%/125%/200% zoom and browser screenshot acceptance pending.
+- This branch is review only and is not deployed in Railway; existing beta stays on feature/consignment-layout-foundation until explicit test-environment promotion.
