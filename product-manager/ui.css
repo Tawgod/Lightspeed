@@ -27,3 +27,28 @@
 .hc-ui .pm-more-list a:hover{background:var(--hc-surface-inset)}
 .hc-ui .pm-more-list span{color:var(--hc-muted);background:var(--hc-surface-inset)}
 @media(max-width:760px){.hc-ui .pm-operations-nav{margin:0 8px}.hc-ui .pm-more-list{right:auto;left:0}}
+
+/* Unified beta navigation: one complete tool directory on all four core-ops pages. */
+.hc-ui .hc-operations-nav{
+ display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px 18px;
+ background:var(--hc-header);color:#fff;padding:12px 16px;margin:-20px -20px 18px;
+ border-radius:0 0 var(--hc-radius) var(--hc-radius);box-shadow:var(--hc-shadow);
+}
+.hc-ui .hc-operations-brand{font-size:1.12rem;font-weight:800;white-space:nowrap;color:#fff}
+.hc-ui .hc-operations-brand small{display:block;font-weight:450;font-size:.76rem;color:#d8e7f7}
+.hc-ui .hc-operations-links{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
+.hc-ui .hc-operations-links a{
+ display:inline-flex;align-items:center;min-height:40px;padding:8px 11px;
+ color:#ecf5ff;background:transparent;border-radius:7px;
+ text-decoration:none;font-weight:650;font-size:.91rem;border:1px solid transparent;
+}
+.hc-ui .hc-operations-links a:hover,
+.hc-ui .hc-operations-links a:focus-visible{background:#21496f}
+.hc-ui .hc-operations-links a[aria-current="page"]{background:var(--hc-primary);color:#fff}
+.hc-ui .hc-operations-links a[href*="consignment-beta-test"]{border-color:#6785a8}
+@media(max-width:760px){
+ .hc-ui .hc-operations-nav{margin:-12px -12px 14px}
+ .hc-ui .hc-operations-links{width:100%}
+ .hc-ui .hc-operations-links a{flex:1 1 auto;justify-content:center}
+}
+
