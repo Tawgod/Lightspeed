@@ -52,7 +52,7 @@
     footer button{background:#176e76;border-color:#176e76;color:#fff}
     footer button:hover:not(:disabled){background:#155b63}
     .collapsed{width:44px;min-width:44px;resize:none}
-    .collapsed .body,.collapsed footer,.collapsed h2,.collapsed header img,.collapsed header button:last-child{display:none}
+    .collapsed .body,.collapsed footer,.collapsed h2,.collapsed header img,.collapsed header button:last-child,.collapsed details{display:none}
     .collapsed header{height:100%;align-items:flex-start;justify-content:center;padding:8px 4px}
     @media(prefers-reduced-motion:no-preference){button{transition:background .12s ease}}
   `;
@@ -66,6 +66,25 @@
   collapse.onclick=()=>{const yes=shell.classList.toggle('collapsed');collapse.textContent=yes?'+':'−';};
   const close=document.createElement('button');close.className='hc-button hc-button--secondary';close.textContent='×';close.title='Close';
   close.onclick=()=>host.remove();header.append(brand,title,collapse,close);
+  // The same verified destinations as core-operations navigation PR #23.
+  // A collapsible menu keeps the supplier panel narrow.
+  const nav=document.createElement('details');nav.className='hc-inset';nav.style.cssText='margin:8px 10px 0;padding:7px 10px';
+  const navTitle=document.createElement('summary');navTitle.textContent='More Hobby Corner tools';navTitle.style.cursor='pointer';
+  const navLinks=document.createElement('nav');navLinks.setAttribute('aria-label','Other Hobby Corner tools');navLinks.style.cssText='display:grid;gap:5px;padding-top:8px';
+  nav.append(navTitle,navLinks);
+  try {
+    const list=await chrome.runtime.sendMessage({type:'HCT_PO_NAV'});
+    if(list?.ok&&Array.isArray(list.entries)){
+      for(const entry of list.entries){
+        if(typeof entry.label!=='string'||typeof entry.url!=='string')continue;
+        const a=document.createElement('a');a.textContent=entry.label;a.href=entry.url;
+        a.target='_blank';a.rel='noopener noreferrer';
+        a.style.cssText='display:block;padding:8px 10px;color:#1355b2;border-radius:7px;background:#edf3f9;font-weight:600';
+        navLinks.append(a);
+      }
+    }
+  }catch{navTitle.textContent='Other tools unavailable';}
+  shell.append(nav);
   const body=document.createElement('div');body.className='body hc-stack';
   const description=document.createElement('p');description.className='muted';
   const toolbar=document.createElement('div');toolbar.className='toolbar hc-inset';
