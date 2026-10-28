@@ -57,3 +57,11 @@ Status: In Development. No live employee screen or production route is changed.
 - New product create / matching must reuse scanner special-orders-adapter and SO product matching, duplicate SKU/UPC review, supplier resolution, and approved create path rather than a parallel write endpoint.
 - Browser acceptance: this session has no runnable current-branch checkout for Chromium execution; screenshot, keyboard and 100/125/200% zoom verification remain **NOT VERIFIED**. Previous UI source/static checks are not substitutes.
 - No production deployment; no Lightspeed writes. Employee-edit draft remains local and review-only. 
+
+## Timeclock-authenticated employee layouts — 2026-10-28
+- Reuses existing `/api/staff-auth/session` from `services/staffAuthGateway.js`, which verifies four-digit PINs with Timeclock, issues short-lived signed bearer tokens, applies login throttling and reauthorizes active employees.
+- Product Manager client stores bearer token only in running tab memory, never in localStorage. Sign-out clears session, loaded profiles and unsaved product drafts; no automatic login after refresh.
+- New `product-manager/profiles-api.js`: isolated Express router and PostgreSQL table initialized explicitly; **NOT mounted on production server.js**. Authentication middleware calls the existing server-side `verifyEmployee` on each request, then reads/writes profile slots under that verified numeric employee ID only. The browser cannot submit an employee ID. Profile payload schema and size are bounded; operations parameterized.
+- Four slots: Default, Profile 1, Profile 2, Profile 3. Save button is disabled without verified login. Profile load/save returns clear failure feedback. The present demo baseline is not yet draggable/customizable, so persistence of actual user-chosen column arrangements remains an implementation dependency.
+- Profiles are distinct from product records. This introduces **no** Lightspeed write path. DB init, HTTP router mounting, authentication tests using active/revoked employee identities and full end-to-end browser tests are required before enabling the feature on Railway.
+- Frontend still shows sample catalog while signed out. That catalog is local demonstration data, **not authenticated live product access**; future live endpoints must be protected server-side.
