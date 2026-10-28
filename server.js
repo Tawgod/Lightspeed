@@ -183,6 +183,11 @@ app.get('/shared-ui/hc.css', (req, res) => {
   res.type('text/css').sendFile(path.join(__dirname, 'shared-ui', 'hc.css'));
 });
 
+app.get('/shared-ui/assets/hc-wordmark.webp', (req, res) => {
+  res.set('Cache-Control','no-store');
+  res.type('image/webp').sendFile(path.join(__dirname, 'shared-ui', 'assets', 'hc-wordmark.webp'));
+});
+
 app.get('/shared-ui/core-ops-compat.css', (req, res) => {
   res.set('Cache-Control','no-store');
   res.type('text/css').sendFile(path.join(__dirname, 'shared-ui', 'core-ops-compat.css'));
