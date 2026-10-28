@@ -4,68 +4,92 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>The Hobby Corner - Label Maker</title>
+  <link rel="stylesheet" href="/label-ui/hc.css">
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f4f6f8; color: #333; margin: 0; padding: 20px; }
-    .container { max-width: 900px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-    h1 { margin-top: 0; color: #1a1a1a; font-size: 24px; border-bottom: 2px solid #eee; padding-bottom: 10px; }
-    .settings-panel { display: flex; gap: 20px; margin-bottom: 25px; background: #f9fafb; padding: 15px; border-radius: 6px; border: 1px solid #e1e4e8; flex-wrap: wrap; }
-    .setting-group { display: flex; flex-direction: column; }
-    label { font-size: 13px; font-weight: bold; margin-bottom: 5px; color: #555; }
-    select, input { padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 25px; }
-    th, td { text-align: left; padding: 12px; border-bottom: 1px solid #eee; }
-    th { background-color: #f9fafb; font-weight: bold; font-size: 13px; color: #555; }
-    .qty-input { width: 60px; text-align: center; }
-    .btn { background-color: #007bff; color: white; border: none; padding: 12px 24px; font-size: 16px; font-weight: bold; border-radius: 4px; cursor: pointer; transition: background 0.2s; width: 100%; }
-    .btn:hover { background-color: #0056b3; }
-    #loading { display: none; text-align: center; color: #666; font-style: italic; margin-bottom: 15px; }
+    body { margin:0; }
+    .hc-ui.label-app { min-height:100vh; }
+    .label-app .hc-shell { grid-template-columns:minmax(0,1fr); }
+    .label-app .hc-topbar { justify-content:space-between; }
+    .label-app .hc-topbar img { width:162px;max-height:60px;object-fit:contain;background:#fff;border-radius:7px;padding:5px; }
+    .label-app .hc-page { max-width:1120px;width:100%; }
+    .label-app .hc-panel { margin-bottom:18px; }
+    .label-app .settings-panel { display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px; }
+    .label-app .setting-group { display:grid;align-content:start;gap:5px; }
+    .label-app .setting-group label { font-weight:650; }
+    .label-app .qty-input { width:90px;min-width:74px; }
+    .label-app .hc-table { min-width:760px; }
+    .label-app .hc-table td { vertical-align:middle; }
+    .label-app .hc-table input[type=text] { min-width:130px; }
+    .label-app .hc-table td:first-child { min-width:180px; }
+    .label-app .hc-table .hc-mono { word-break:break-word; }
+    .label-app #generateBtn { width:100%;min-height:46px; }
+    .label-app #loading { display:none; }
+    .label-app .hc-panel-body > .hc-alert { margin:0; }
+    @media(max-width:600px){.label-app .hc-page{padding:12px}.label-app .hc-topbar{padding:12px}.label-app .hc-topbar img{width:120px}}
+    @media print {.label-app .hc-topbar{display:none}}
   </style>
 </head>
 <body>
-
-  <div class="container">
-    <h1>The Hobby Corner | PO Label Maker</h1>
-    
-    <div class="settings-panel">
-      <div class="setting-group">
-        <label for="templateSelect">Label Template</label>
-        <select id="templateSelect">
-          <option value="">Loading templates...</option>
-        </select>
+<div class="hc-ui label-app">
+  <div class="hc-shell">
+    <main class="hc-workspace">
+      <header class="hc-topbar">
+        <div>
+          <div class="hc-title">Purchase Order Labels</div>
+          <div class="hc-small">Hobby Corner · Lightspeed Toolkit</div>
+        </div>
+        <img src="/label-ui/hc-wordmark.webp" alt="The Hobby Corner">
+      </header>
+      <div class="hc-page">
+        <div class="hc-page-heading">
+          <div><h1>Prepare product labels</h1><p>Review quantities and special orders before opening a printable PDF.</p></div>
+          <span class="hc-badge hc-badge--info">Avery label maker</span>
+        </div>
+        <section class="hc-panel" aria-labelledby="label-settings-title">
+          <div class="hc-panel-header"><h2 id="label-settings-title">Sheet &amp; template</h2></div>
+          <div class="hc-panel-body">
+            <div class="settings-panel">
+              <div class="setting-group hc-field">
+                <label for="templateSelect">Label template</label>
+                <select class="hc-select" id="templateSelect"><option value="">Loading templates...</option></select>
+              </div>
+              <div class="setting-group hc-field">
+                <label for="startRow">Start row (1–10)</label>
+                <input class="hc-input" type="number" id="startRow" min="1" max="10" value="1">
+              </div>
+              <div class="setting-group hc-field">
+                <label for="startCol">Start column (1–3)</label>
+                <input class="hc-input" type="number" id="startCol" min="1" max="3" value="1">
+              </div>
+              <div class="setting-group hc-field">
+                <label for="customText">Custom text (date / store)</label>
+                <input class="hc-input" type="text" id="customText" placeholder="e.g. 0926">
+              </div>
+            </div>
+          </div>
+        </section>
+        <section class="hc-panel" aria-labelledby="label-items-title">
+          <div class="hc-panel-header"><h2 id="label-items-title">Purchase order items</h2><span class="hc-small hc-muted">Adjust quantities or skip individual products</span></div>
+          <div class="hc-panel-body hc-stack">
+            <div id="loading" class="hc-alert hc-loading" role="status" aria-live="polite">Fetching Purchase Order data from Lightspeed...</div>
+            <div class="hc-table-scroll">
+              <table class="hc-table" id="itemsTable">
+                <thead><tr><th scope="col">Product name</th><th scope="col">SKU</th><th scope="col">Total qty</th><th scope="col">Special-order qty</th><th scope="col">Customer name</th><th scope="col">Action</th></tr></thead>
+                <tbody id="itemsBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+        <section class="hc-panel" aria-label="Generate labels">
+          <div class="hc-panel-body hc-stack">
+            <p class="hc-muted hc-small">Labels are generated as a PDF for review. Opening a PDF does not change Lightspeed records.</p>
+            <button class="hc-button" type="button" id="generateBtn">Open PDF Labels</button>
+          </div>
+        </section>
       </div>
-      <div class="setting-group">
-        <label for="startRow">Start Row (1-10)</label>
-        <input type="number" id="startRow" min="1" max="10" value="1">
-      </div>
-      <div class="setting-group">
-        <label for="startCol">Start Column (1-3)</label>
-        <input type="number" id="startCol" min="1" max="3" value="1">
-      </div>
-      <div class="setting-group">
-        <label for="customText">Custom Text (Date/Store)</label>
-        <input type="text" id="customText" placeholder="e.g. 0926" style="width: 140px;">
-      </div>
-    </div>
-
-    <div id="loading">Fetching Purchase Order data from Lightspeed...</div>
-
-   <table id="itemsTable">
-      <thead>
-        <tr>
-          <th>Product Name</th>
-          <th>SKU</th>
-          <th>Total Qty</th>
-          <th>Status / Special Order</th>
-          <th>Action</th>
-        </tr>
-      </thead>
-      <tbody id="itemsBody">
-        <!-- Javascript will inject line items here -->
-      </tbody>
-    </table>
-
-    <button class="btn" id="generateBtn">Open PDF Labels</button>
+    </main>
   </div>
+</div>
 
   <script>
     const urlParams = new URLSearchParams(window.location.search);
@@ -126,18 +150,18 @@
             itemsBody.innerHTML += `
               <tr>
                 <td style="font-size: 12px;">${item.name}</td>
-                <td><strong>${item.sku}</strong></td>
+                <td><strong class="hc-mono">${item.sku}</strong></td>
                 <td>
-                  <input type="number" class="qty-input" id="qty-${index}" value="${item.qty}" min="0">
+                  <input type="number" class="qty-input hc-input" id="qty-${index}" value="${item.qty}" min="0">
                 </td>
                 <td>
-                  <input type="number" class="qty-input" id="soQty-${index}" value="${item.autoSoQty || 0}" min="0">
+                  <input type="number" class="qty-input hc-input" id="soQty-${index}" value="${item.autoSoQty || 0}" min="0">
                 </td>
                 <td>
-                  <input type="text" id="custName-${index}" value="${item.autoCustomerName || ''}" placeholder="Customer Name..." style="padding: 6px; width: 130px;">
+                  <input type="text" id="custName-${index}" value="${item.autoCustomerName || ''}" placeholder="Customer Name..." class="hc-input">
                 </td>
                 <td>
-                  <button type="button" onclick="document.getElementById('qty-${index}').value = 0; document.getElementById('soQty-${index}').value = 0;" style="padding: 4px 8px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">Skip</button>
+                  <button type="button" onclick="document.getElementById('qty-${index}').value = 0; document.getElementById('soQty-${index}').value = 0;" class="hc-button hc-button--secondary">Skip</button>
                 </td>
               </tr>
             `;
