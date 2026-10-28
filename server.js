@@ -20,6 +20,7 @@ import { initializeScannerPreorderStaging } from './services/scannerPreorderStag
 import { initializeScannerProductReviewQueue } from './services/scannerProductReviewQueue.js';
 import { initializeScannerTestCreation } from './services/scannerTestCreationRouter.js';
 import { createScannerIsolatedTestWriter } from './services/scannerIsolatedTestWriter.js';
+import { createStaffAuthGateway } from './services/staffAuthGateway.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -35,6 +36,7 @@ app.get('/index.html', (req, res) => {
 
 const LIGHTSPEED_DOMAIN = process.env.LIGHTSPEED_DOMAIN;
 const LIGHTSPEED_TOKEN = process.env.LIGHTSPEED_TOKEN;
+let verifyStaffEmployee = async () => { throw Object.assign(new Error('Employee sign-in is not configured.'), { status:503 }); };
 
 let uspsTokenCache = { token:null, expiresAt:0 };
 
@@ -219,6 +221,7 @@ app.get('/gw-preorders-client.js', (req, res) => {
 });
 
 app.use('/api/special-orders', createSpecialOrdersRouter({
+  verifyEmployee: req => verifyStaffEmployee(req),
   lightspeedDomain: LIGHTSPEED_DOMAIN,
   lightspeedToken: LIGHTSPEED_TOKEN,
   adminKey: process.env.SPECIAL_ORDERS_ADMIN_KEY,
@@ -886,6 +889,16 @@ async function startServer() {
       baseUrl:process.env.SCANNER_TIMECLOCK_ORIGIN,
       serviceSecret:process.env.SCANNER_SERVICE_SECRET
     });
+
+    const staffAuth=createStaffAuthGateway({
+      identity,
+      sessionSecret:process.env.SCANNER_SESSION_SECRET,
+      loginLimiter
+    });
+    verifyStaffEmployee=staffAuth.verifyEmployee;
+    app.use('/api/staff-auth', staffAuth.router);
+    console.log('[staff-auth] Timeclock PIN employee authentication enabled');
+
     const lookup=createSpecialOrdersMatchLookup({
       baseUrl:'http://127.0.0.1:'+PORT,
       adminKey:process.env.SPECIAL_ORDERS_ADMIN_KEY
