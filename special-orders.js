@@ -1622,7 +1622,23 @@ export function createSpecialOrdersRouter({
     const release=product.release_date||campaign.release_date||null;
     const sku=String(product.sku||'NO_CODE').trim()||'NO_CODE';
     const detailLines=[];
-    if(msrp!=null&&Number.isFinite(msrp))detailLines.push('MSRP: 
+    if(msrp!=null&&Number.isFinite(msrp))detailLines.push("MSRP: $"+msrp.toFixed(2));
+    if(release){
+      const rawRelease=String(release).slice(0,10);
+      const releaseDate=new Date(rawRelease+'T00:00:00Z');
+      const releaseLabel=Number.isNaN(releaseDate.getTime())?rawRelease:releaseDate.toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:'UTC'});
+      detailLines.push('Release: '+releaseLabel);
+    }
+    detailLines.push('React to this message to preorder.');
+    return {
+      publish:true,product_id:product.id,campaign_id:campaign.id,title,
+      description:detailLines.join(String.fromCharCode(10)),
+      sku,msrp,release_date:release,
+      image_url:product.image_url||product.source_image_url||null,
+      mode:isPack?'SPLIT_TO_SINGLES':'AS_IS',
+      case_pack_size:isPack?packSize:null,
+      footer:sku==='NO_CODE'?'GW preorder':'Code: '+sku
+    };
   }
   async function gwDiscordApi(pathname,options={}){
     if(!discordToken)throw Object.assign(new Error('Discord bot token is not configured for Special Orders.'),{status:503});
