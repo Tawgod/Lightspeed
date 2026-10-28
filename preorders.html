@@ -5,31 +5,23 @@
 <link rel="stylesheet" href="/shared-ui/hc.css">
 <link rel="stylesheet" href="/shared-ui/core-ops-compat.css"></head>
 <body class="hc-ui"><div class="wrap hc-page">
-  <div class="toolbar" style="justify-content:flex-end;margin-bottom:10px">
-    <a href="/special-orders" style="display:inline-block;padding:9px 12px;border-radius:8px;background:#0f766e;color:#fff;text-decoration:none;font-weight:700">Special Orders</a>
-    <a href="/gw-preorders" style="display:inline-block;padding:9px 12px;border-radius:8px;background:#7c3aed;color:#fff;text-decoration:none;font-weight:700">GW Preorders</a>
-    <a href="/ordering" style="display:inline-block;padding:9px 12px;border-radius:8px;background:#0369a1;color:#fff;text-decoration:none;font-weight:700">Ordering</a>
+  <div class="toolbar hc-core-header">
+    <a href="/special-orders">Special Orders</a>
+    <a href="/ordering">Ordering</a>
+    <a href="/preorders" aria-current="page">Preorders</a>
+    <a href="/gw-preorders">GW Preorders</a>
+    <span class="hc-header-spacer"></span>
+    <label class="hc-header-login-label" for="employeePin">Employee PIN</label>
+    <input id="employeePin" class="hc-header-pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" placeholder="4-digit PIN">
+    <button id="unlockButton" type="button" onclick="staffSignIn()">Sign in</button>
+    <span id="authStatus" class="pill">Signed out</span>
+    <span id="authEmployee" class="hc-header-employee"></span>
+    <button id="signOutButton" type="button" class="secondary-button" onclick="staffSignOut()" style="display:none">Sign out</button>
   </div>
   <h1>Preorder Campaigns & Allocations</h1>
   <div class="sub">Manage preorder campaign demand, allocation suggestions, and received inventory separately from normal Special Orders.</div>
   <div id="notice" class="notice"></div>
-  <div class="panel">
-    <div class="toolbar">
-      <input id="employeePin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="Timeclock PIN" size="14">
-      <button id="unlockButton" onclick="staffSignIn()">Sign in</button>
-      <button id="signOutButton" type="button" onclick="staffSignOut()" style="display:none">Sign out</button>
-      <span id="authStatus" class="pill">Locked</span>
-      <span id="authEmployee" class="form-note"></span>
-    </div>
-    <details style="margin-top:10px">
-      <summary class="form-note">Admin access-key fallback</summary>
-      <div class="toolbar" style="margin-top:8px">
-        <input id="accessKey" type="password" placeholder="Internal admin key" size="24">
-        <button id="legacyUnlockButton" type="button" onclick="saveKey()">Use admin key</button>
-      </div>
-    </details>
-    <div class="form-note">Use the same 4-digit PIN as the Hobby Corner Timeclock.</div>
-  </div>
+  
   <div class="panel">
     <div class="section-heading"><div>
       <h2 style="margin:0">Discord Preorder Watch</h2>
