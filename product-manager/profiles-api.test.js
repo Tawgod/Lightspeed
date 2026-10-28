@@ -8,3 +8,14 @@ test('Profiles require staff authentication and database',()=>{
  assert.throws(()=>createProductManagerProfilesRouter({pool:{query:()=>{} }}));
  assert.throws(()=>createProductManagerProfilesRouter({verifyEmployee:()=>({id:1})}));
 });
+
+test('Work backups reject malformed and excessive staged edits',async()=>{
+ const {validateWorkDraft}=await import('./profiles-api.js');
+ const valid={changes:[{productId:'a',field:'name',oldValue:'Old',newValue:'New'}],
+   layout:{columns:['sku','name'],hidden:[],widths:{},detailsOrder:[]},
+   slot:'Profile 1',selection:'a',filter:'0000123',savedAt:Date.now()};
+ assert.equal(validateWorkDraft(valid),true);
+ assert.equal(validateWorkDraft({...valid,slot:'Other'}),false);
+ assert.equal(validateWorkDraft({...valid,changes:[{...valid.changes[0],employeeId:7}]}),false);
+ assert.equal(validateWorkDraft({...valid,changes:Array(251).fill(valid.changes[0])}),false);
+});
