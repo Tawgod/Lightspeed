@@ -336,45 +336,72 @@ function showNotice(t,autoHideMs=0){
   n.textContent=t;n.style.display='block';
   if(autoHideMs>0)noticeTimer=setTimeout(()=>{n.style.display='none';n.textContent='';noticeTimer=null},autoHideMs);
 }
-function accessKey(){return sessionStorage.getItem('hcSpecialOrdersKey')||''}
+function accessKey(){return window.HCStaffAuth?.legacyKey?.()||''}
+function authHeaders(extra={}){return window.HCStaffAuth?.headers?.(extra)||{...extra}}
+function authEmployee(){return window.HCStaffAuth?.employee?.()||null}
+function renderAuthIdentity(){
+  const employee=authEmployee();
+  const target=document.getElementById('authEmployee');
+  if(target)target.textContent=employee?.name?'Signed in as '+employee.name:'';
+}
 function setAuthState(ok,msg=''){
   const s=document.getElementById('authStatus');
   s.textContent=ok?'Unlocked':'Locked';
   s.style.background=ok?'#dcfce7':'#fee2e2';
   s.style.color=ok?'#166534':'#991b1b';
-  document.querySelectorAll('button:not(#unlockButton), input:not(#accessKey), select, textarea').forEach(el=>{
+  document.querySelectorAll('button:not(#unlockButton):not(#legacyUnlockButton):not(#signOutButton), input:not(#employeePin):not(#accessKey), select, textarea').forEach(el=>{
     if(el.id==='legacyWorkbook') return;
     el.disabled=!ok;
   });
+  const signOut=document.getElementById('signOutButton');
+  if(signOut)signOut.style.display=ok&&authEmployee()?'inline-block':'none';
+  renderAuthIdentity();
   if(msg)showNotice(msg);
+}
+async function staffSignIn(){
+  const pin=document.getElementById('employeePin').value.trim();
+  if(!pin)return setAuthState(false,'Enter your 4-digit Timeclock PIN.');
+  try{
+    const session=await window.HCStaffAuth.signIn(pin);
+    document.getElementById('employeePin').value='';
+    setAuthState(true,'Signed in as '+(session.employee?.name||'employee')+'. Loading Special Orders…');
+    await loadAll();
+    restoreDrafts();
+    configureAutoRefresh();
+    showNotice('Special Orders ready.',1800);
+  }catch(e){
+    setAuthState(false,e.message);
+  }
+}
+function staffSignOut(){
+  window.HCStaffAuth?.signOut?.();
+  setAuthState(false,'Signed out.');
 }
 async function saveKey(){
   const v=document.getElementById('accessKey').value.trim();
-  if(!v)return setAuthState(false,'Enter the internal access key first.');
-  sessionStorage.setItem('hcSpecialOrdersKey',v);
+  if(!v)return setAuthState(false,'Enter the admin access key first.');
+  window.HCStaffAuth?.setLegacyKey?.(v);
   try{
     await getJson(api+'/auth-check');
-    setAuthState(true,'Access key accepted. Loading Special Orders…');
+    setAuthState(true,'Admin key accepted. Loading Special Orders…');
     await loadAll();
     restoreDrafts();
-    showNotice('Special Orders ready.',2500);
     configureAutoRefresh();
+    showNotice('Special Orders ready.',1800);
   }catch(e){
-    sessionStorage.removeItem('hcSpecialOrdersKey');
-    setAuthState(false,e.message==='Access key missing or incorrect.'
-      ? 'Access key was not accepted. Please re-enter the test access key.'
-      : 'Access key accepted, but the Special Orders service is not ready: '+e.message);
+    window.HCStaffAuth?.setLegacyKey?.('');
+    setAuthState(false,e.message);
   }
 }
 async function getJson(url,opts={}){
-  const headers={...(opts.headers||{}),'x-hobby-corner-key':accessKey()};
+  const headers=authHeaders(opts.headers||{});
   const fetchOpts={...opts,headers};
   if(!fetchOpts.method || String(fetchOpts.method).toUpperCase()==='GET')fetchOpts.cache='no-store';
   const r=await fetch(url,fetchOpts);let d={};try{d=await r.json()}catch{}
   if(r.status===401){
-    sessionStorage.removeItem('hcSpecialOrdersKey');
-    setAuthState(false,'Special Orders is locked. Enter the internal access key and click Unlock.');
-    throw new Error('Access key missing or incorrect.');
+    window.HCStaffAuth?.signOut?.();
+    setAuthState(false,'Your employee session expired. Sign in again with your Timeclock PIN.');
+    throw new Error('Employee sign-in required.');
   }
   if(!r.ok){
     const err=new Error(d.error||r.statusText);
@@ -1680,10 +1707,21 @@ async function loadGwCampaign(){
 async function loadAll(){await Promise.allSettled([loadStats(),loadOrders(),loadSuppliers(),loadBrands(),loadDepartments(),loadProductCategories(),loadPreorders(),loadProductReconcileStatus(),loadGwCampaigns()])}
 document.addEventListener('input',e=>{if(orderDraftIds.includes(e.target.id)||productDraftIds.includes(e.target.id))saveDrafts()});
 document.addEventListener('change',e=>{if(orderDraftIds.includes(e.target.id)||productDraftIds.includes(e.target.id)||e.target.id==='newSuppliers')saveDrafts()});
-document.getElementById('accessKey').value=accessKey();
-setAuthState(false);
-if(accessKey()){
-  saveKey();
-}else{
-  showNotice('Special Orders is locked. Enter the internal access key above and click Unlock.');
+async function initializeAuth(){
+  document.getElementById('accessKey').value=accessKey();
+  setAuthState(false);
+  const existing=await window.HCStaffAuth?.verify?.();
+  if(existing){
+    setAuthState(true);
+    await loadAll();
+    restoreDrafts();
+    configureAutoRefresh();
+    return;
+  }
+  if(accessKey()){
+    await saveKey();
+    return;
+  }
+  showNotice('Special Orders is locked. Sign in with your Timeclock PIN.');
 }
+initializeAuth();
