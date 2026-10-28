@@ -23,11 +23,15 @@
 <a href="https://lightspeed-api-production-c087.up.railway.app/extension" target="_blank" rel="noopener noreferrer">Lightspeed Toolkit</a>
 <span>Timeclock — launcher unverified</span><span>Product Scanner — launcher unverified</span>
 <span>Purchase Order Companion — launcher unverified</span><span>Split / Recall — inside Toolkit</span>
-</div></details></div></nav><main class="hc-page" id="products"><div class="hc-page-heading"><div><h1>Product catalog</h1><p>Search, review and stage changes; never applies live product edits.</p></div><button class="hc-button" type="button" id="review-top">Review changes <span id="change-count">0</span></button></div>
+</div></details></div></nav><main class="hc-page" id="products">
+<section class="hc-panel pm-auth" aria-labelledby="pm-auth-title"><div class="hc-panel-header"><h2 id="pm-auth-title">Employee session</h2><span id="pm-auth-state" class="hc-badge hc-badge--warning">Not signed in</span></div>
+<div class="hc-panel-body"><form id="pm-sign-in" class="hc-row"><label for="pm-pin">Timeclock PIN</label><input class="hc-input pm-pin" id="pm-pin" type="password" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" autocomplete="off" required>
+<button class="hc-button" id="pm-login" type="submit">Sign in</button><button class="hc-button hc-button--secondary" id="pm-sign-out" type="button" hidden>Sign out</button>
+<span id="pm-employee" role="status" aria-live="polite">Sign in to load or save your personal layouts. Sample catalog preview remains available.</span></form></div></section><div class="hc-page-heading"><div><h1>Product catalog</h1><p>Search, review and stage changes; never applies live product edits.</p></div><button class="hc-button" type="button" id="review-top">Review changes <span id="change-count">0</span></button></div>
 <p class="hc-alert hc-alert--warning" role="status">Sample data only. Editing adds a local draft, not a Lightspeed update.</p>
 <div class="pm-layout">
 <section class="hc-panel" aria-labelledby="grid-title"><div class="hc-panel-header"><h2 id="grid-title">Products</h2>
-<div class="hc-row"><label class="hc-small" for="profile">Layout</label><select id="profile" class="hc-select pm-select"><option>Default</option><option>Profile 1</option><option>Profile 2</option><option>Profile 3</option></select></div></div>
+<div class="hc-row"><label class="hc-small" for="profile">Layout</label><select id="profile" class="hc-select pm-select"><option>Default</option><option>Profile 1</option><option>Profile 2</option><option>Profile 3</option></select><button id="pm-save-profile" class="hc-button hc-button--secondary" type="button" disabled>Save layout</button></div></div>
 <div class="hc-panel-body"><div class="hc-row"><div class="hc-field hc-grow"><label for="query">Find product / SKU / UPC</label><input class="hc-input" id="query" autocomplete="off"></div>
 <label class="hc-small"><input type="checkbox" id="hide-inactive" checked> Hide inactive</label><button class="hc-button hc-button--secondary" type="button" id="reset">Reset drafts</button></div>
 <div class="hc-table-scroll pm-scroll"><table class="hc-table"><thead><tr><th scope="col">SKU</th><th scope="col">Product</th><th scope="col">Retail</th><th scope="col">Online (X)</th><th scope="col">Status</th></tr></thead><tbody id="rows"></tbody></table></div><p id="empty" class="hc-empty" hidden>No matching products.</p></div></section>
