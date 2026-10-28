@@ -40,3 +40,20 @@
 .hc-ui .warnings{background:var(--hc-warning-bg);color:var(--hc-warning)}
 .hc-ui :is(button,input,select,textarea,a):focus-visible{outline:2px solid #fff;outline-offset:2px;box-shadow:0 0 0 4px var(--hc-focus)}
 @media(prefers-reduced-motion:reduce){.hc-ui *, .hc-ui *::before,.hc-ui *::after{transition:none!important;scroll-behavior:auto!important}}
+
+
+/* Core-operations navigation coordinated with draft PR #23. */
+.hc-ui .hc-consignment-nav{flex:1 1 650px;min-width:0}
+.hc-ui .hc-consignment-links{display:flex;align-items:center;flex-wrap:wrap;justify-content:flex-end;gap:3px}
+.hc-ui .hc-consignment-links a,.hc-ui .hc-consignment-more summary{color:#eaf4ff;padding:9px 11px;min-height:44px;display:inline-flex;align-items:center;border-radius:7px;font-weight:650;font-size:13px;text-decoration:none;cursor:pointer}
+.hc-ui .hc-consignment-links a:hover,.hc-ui .hc-consignment-more summary:hover{background:#21496f}
+.hc-ui .hc-consignment-links a[aria-current=page]{background:var(--hc-primary);color:#fff}
+.hc-ui .hc-consignment-more{position:relative}
+.hc-ui .hc-consignment-more summary{list-style:none}
+.hc-ui .hc-consignment-more summary::-webkit-details-marker{display:none}
+.hc-ui .hc-consignment-more summary::after{content:" ▾"}
+.hc-ui .hc-consignment-more-content{position:absolute;right:0;top:100%;min-width:240px;background:var(--hc-nav);border:1px solid #51728d;border-radius:9px;box-shadow:var(--hc-shadow-raised);padding:7px;z-index:12}
+.hc-ui .hc-consignment-more-content a{display:flex}
+.hc-ui .hc-beta-text{font-size:11px;margin-left:4px;color:#f8d8a8}
+@media(max-width:950px){.hc-ui .hc-consignment-links{justify-content:flex-start}.hc-ui .hc-consignment-nav{flex-basis:100%}}
+@media(max-width:550px){.hc-ui .hc-consignment-links a{font-size:12px;padding:7px 8px;min-height:42px}.hc-ui .hc-consignment-more-content{right:auto;left:0}}
