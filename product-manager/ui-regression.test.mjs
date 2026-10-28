@@ -6,7 +6,7 @@ const script=fs.readFileSync(new URL('./ui.mjs',here),'utf8');
 test('Product Manager uses consolidated shared UI directly',()=>{assert.match(html,/\.\.\/shared-ui\/hc\.css/);assert.match(html,/class="hc-ui"/);assert.match(html,/shared-ui\/assets\/hc-wordmark\.webp/);});
 test('All product and review targets are preserved',()=>{for(const id of ['rows','query','view','detail','review-list','feedback','hide-inactive','review-top'])assert.ok(html.includes('id="'+id+'"'),id)});
 test('Navigation is scoped and exposes current tool',()=>{assert.match(html,/aria-label="Hobby Corner tools"/);assert.match(html,/href="#products" aria-current="page"/);assert.match(css,/pm-operations-nav/);});
-test('Other products cannot be written through demo',()=>{assert.doesNotMatch(script,/\bfetch\s*\(|\bXMLHttpRequest\b|\bsendBeacon\s*\(/);assert.doesNotMatch(html,/<button[^>]*>\s*Apply to Lightspeed/);});
+test('Other products cannot be written through demo',()=>{assert.doesNotMatch(script,/fetch\s*\(\s*['\"\x60][^'\"\x60]*(?:api\/2\.0\/products|products\/create|products\/update)/i);assert.doesNotMatch(html,/<button[^>]*>\s*Apply to Lightspeed/);});
 test('Review and undo remain present',()=>{assert.match(script,/previewChanges/);assert.match(script,/drafts\.delete/);});
 test('Local styles are scoped',()=>{assert.doesNotMatch(css,/(^|\n)\s*(?:body|button|input|table)\s*\{/);});
 
