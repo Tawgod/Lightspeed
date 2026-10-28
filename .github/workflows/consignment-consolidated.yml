@@ -1,0 +1,23 @@
+name: Consignment consolidated safety
+on:
+  push:
+    branches: [feature/consignment-consolidated-v2-20261028]
+  pull_request:
+    paths: ['consignment-*','routes/consignmentBeta.js','services/consignment*','tests/consignment*','server.js']
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --omit=dev --no-audit --no-fund
+      - run: node --check server.js && node --check consignment-beta.js && node --check consignment-customer.js
+      - run: node --test tests/consignment-beta.test.mjs tests/consignment-api.test.mjs tests/consignment-credit.test.mjs tests/consignment-shared-navigation.test.mjs
+      - name: Verify no old popup and no unguarded production writes
+        run: |
+          test -s consignment-beta.html
+          grep -q "CONSIGNMENT_BETA_DATABASE_URL" server.js
+          grep -q "CONSIGNMENT_BETA_ALLOW_DB_WRITES" server.js
+          grep -q "allowWrites:process.env.CONSIGNMENT_BETA_ALLOW_DB_WRITES==='true'" server.js
