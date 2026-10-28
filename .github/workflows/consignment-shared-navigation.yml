@@ -1,0 +1,16 @@
+name: Consignment coordinated navigation
+on:
+  push:
+    branches: [feature/consignment-shared-nav-20261028]
+  pull_request:
+    paths: ['consignment-beta.html','consignment-customer.html','shared-ui/consignment-adapter.css','tests/consignment-shared-navigation.test.mjs']
+jobs:
+  navigation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tests/consignment-shared-navigation.test.mjs
+      - run: node --check consignment-beta.js && node --check consignment-customer.js
