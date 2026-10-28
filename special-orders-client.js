@@ -415,7 +415,7 @@ async function importWorkbook(){
   const f=document.getElementById('legacyWorkbook').files[0];if(!f)return showNotice('Choose the HC Special Orders workbook first.');
   const fd=new FormData();fd.append('workbook',f);
   try{
-    const r=await fetch(api+'/import/workbook',{method:'POST',headers:{'x-hobby-corner-key':accessKey()},body:fd});
+    const r=await fetch(api+'/import/workbook',{method:'POST',headers:authHeaders(),body:fd});
     const d=await r.json();if(!r.ok)throw new Error(d.error||r.statusText);
     showNotice(d.alreadyImported?'That exact workbook has already been imported.':`Imported ${d.imported} rows. Skipped ${d.skipped} duplicates.`);
     await loadStats();await loadOrders();
