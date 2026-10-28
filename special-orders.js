@@ -339,6 +339,7 @@ export function createSpecialOrdersRouter({
   lightspeedDomain,
   lightspeedToken,
   adminKey,
+  verifyEmployee,
   liveMode = false,
   allowMigration = false,
   allowProductWrites = false,
@@ -371,23 +372,45 @@ export function createSpecialOrdersRouter({
     });
   });
 
-  router.use((req, res, next) => {
-    if (!adminKey) return res.status(503).json({ error: 'SPECIAL_ORDERS_ADMIN_KEY is not configured.' });
+  router.use(async (req, res, next) => {
     const suppliedKey = String(req.get('x-hobby-corner-key') || '').trim();
     const configuredKey = String(adminKey || '').trim();
-    if (!suppliedKey || suppliedKey !== configuredKey) {
-      console.log('Special Orders auth mismatch', {
-        suppliedLength: suppliedKey.length,
-        configuredLength: configuredKey.length,
-        path: req.path
-      });
-      return res.status(401).json({ error: 'Special-orders access key required.' });
+
+    if (suppliedKey && configuredKey && suppliedKey === configuredKey) {
+      req.hcAuth = { mode:'legacy_admin_key', employee:null };
+      return next();
     }
-    next();
+
+    const bearer = String(req.get('authorization') || '');
+    if (bearer.startsWith('Bearer ') && typeof verifyEmployee === 'function') {
+      try {
+        const employee = await verifyEmployee(req);
+        req.hcAuth = { mode:'timeclock_employee', employee };
+        return next();
+      } catch (error) {
+        return res.status(error.status || 401).json({ error:'Employee session is invalid or expired.' });
+      }
+    }
+
+    if (!adminKey && typeof verifyEmployee !== 'function') {
+      return res.status(503).json({ error:'Special Orders authentication is not configured.' });
+    }
+
+    console.log('Special Orders auth denied', {
+      suppliedKeyLength: suppliedKey.length,
+      hasBearer: bearer.startsWith('Bearer '),
+      path: req.path
+    });
+    return res.status(401).json({ error:'Timeclock employee sign-in or Special Orders admin key required.' });
   });
 
   router.get('/auth-check', (req, res) => {
-    res.json({ ok:true });
+    const employee=req.hcAuth?.employee||null;
+    res.json({
+      ok:true,
+      authMode:req.hcAuth?.mode||null,
+      employee:employee?{id:employee.id,name:employee.name}:null
+    });
   });
 
   router.post('/import/workbook', requireDb, upload.single('workbook'), async (req, res) => {
