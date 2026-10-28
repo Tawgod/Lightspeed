@@ -31,3 +31,12 @@ Status: In Development. No live employee screen or production route is changed.
 3. Keyboard select rows, edit staged fields, undo exactly one, discard all; validate wrong price and empty states.
 4. Paste and verify leading-zero UPCs and multiline descriptions on subsequent editor integration.
 5. Verify no external network requests / live writes, then obtain employee visual approval.
+
+## Navigation consistency correction — 2026-10-28
+- Source alignment: PR #23 (draft) `feature/core-ops-shared-navigation-20261027`; PR #16 (draft) shared tokens and logo assets; Consignment beta is the preferred visual reference.
+- Updated `product-manager/index.html` with PR #23's `hc-operations-nav`, `hc-operations-links`, `hc-operations-brand` patterns, current-page marking, and accessible More menu.
+- Updated `product-manager/ui.css` with the exact navigation selectors sourced from PR #23 plus small Product Manager-scoped More-menu responsive rules. The full legacy core-ops adapter is deliberately not loaded because it overrides demo button styles; PR #23 retains ownership of that adapter.
+- Available links reuse the PR #23 route mapping with the verified special-orders-test host and the explicitly labeled Consignment Beta domain. Destinations without verified launchers (Timeclock, Scanner, PO Companion, Split/Recall) appear as text without hyperlinks. Split / Recall is located in the Lightspeed Toolkit rather than a guessed standalone URL.
+- Static checks: all 11 requested tool labels present; current-page link marked; existing grid and draft review element IDs retained; demo JS has no fetch/XMLHttpRequest; no extension or production modifications.
+- Remaining: real browser screenshots, 100%/125%/200% zoom, keyboard/More-menu behavior, authenticated navigation, and cross-tool regression checks. The native `details` menu closes on selection/navigation; click-away refinement may follow browser review.
+- Dependency: PR #23 and #16 remain draft/unmerged. PR #18 also remains draft/unmerged. Avoid merging before resolving overlapping shared-navigation changes.
