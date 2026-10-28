@@ -13,6 +13,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - run: npm install --no-save express
       - run: node --check product-manager/ui.mjs
       - run: node --test product-manager/validation.test.js product-manager/profiles-api.test.js product-manager/ui-regression.test.mjs
       - run: npm install --no-save playwright
