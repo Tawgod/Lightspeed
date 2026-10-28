@@ -520,11 +520,10 @@ async function loadDeliveryQueue(){
   }catch(e){showNotice('Could not load delivery queue: '+e.message)}
 }
 async function initializeAuth(){
-  document.getElementById('accessKey').value=accessKey();
   setAuth(false);
   const existing=await window.HCStaffAuth?.verify?.();
   if(existing){setAuth(true);await refreshEverything();return}
-  if(accessKey())await saveKey();
-  else showNotice('Ordering is locked. Sign in with your Timeclock PIN.');
+  showNotice('Ordering is locked. Sign in with your Timeclock PIN in the header.');
 }
+document.getElementById('employeePin')?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();staffSignIn()}});
 initializeAuth();
