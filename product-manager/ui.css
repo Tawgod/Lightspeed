@@ -14,3 +14,16 @@
 .hc-ui .pm-image{min-height:155px;display:grid;place-items:center;background:var(--hc-surface-inset);border:1px dashed var(--hc-border);border-radius:8px}
 .hc-ui .pm-action-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 @media(max-width:1050px){.hc-ui .pm-layout{grid-template-columns:1fr}}
+
+/* Reuse PR #23 operations navigation classes and the shared beta palette. */
+.hc-ui .pm-operations-nav{margin:0 12px 0;border-radius:0 0 var(--hc-radius) var(--hc-radius)}
+.hc-ui .pm-more{position:relative;align-self:center}
+.hc-ui .pm-more>summary{list-style:none;cursor:pointer;border:1px solid #6a86a6;border-radius:7px;padding:8px 11px;min-height:40px;color:#eaf4ff;font-weight:650}
+.hc-ui .pm-more>summary::-webkit-details-marker{display:none}
+.hc-ui .pm-more>summary::after{content:" ▾"}
+.hc-ui .pm-more[open]>summary,.hc-ui .pm-more>summary:hover{background:#21496f}
+.hc-ui .pm-more-list{position:absolute;top:calc(100% + 6px);right:0;z-index:15;width:min(320px,90vw);background:var(--hc-surface);border:1px solid var(--hc-border);box-shadow:var(--hc-shadow-raised);border-radius:8px;padding:8px;display:grid;gap:3px}
+.hc-ui .pm-more-list a,.hc-ui .pm-more-list span{display:block;color:var(--hc-text);padding:9px 10px;border-radius:6px;font-size:.92rem}
+.hc-ui .pm-more-list a:hover{background:var(--hc-surface-inset)}
+.hc-ui .pm-more-list span{color:var(--hc-muted);background:var(--hc-surface-inset)}
+@media(max-width:760px){.hc-ui .pm-operations-nav{margin:0 8px}.hc-ui .pm-more-list{right:auto;left:0}}
