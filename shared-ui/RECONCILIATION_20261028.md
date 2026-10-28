@@ -44,3 +44,32 @@ This is a dependency-oriented sequence, not permission to deploy. PR #25 can pro
 - Check for identical/near-identical CSS or image assets before any further copies and document why extension CSP requires local variants.
 - Run Scanner / Consignment / core web integration suites on their *merged candidate* commit, not only isolated PR heads.
 - Record **implemented, tested, deployed** separately. Current branch: implemented (clipboard/tests/docs), automated tests pending, deployed **no**.
+
+## PR #16 unique-file disposition audit — 2026-10-28
+
+Cleaned authoritative manager matrix (HOBBY_CORNER_PROJECT.md) overrides older PR #25/#11 and PR #13 references: current Consignment candidate is **PR #30**, and current PO Companion candidate is **PR #31**. PR #24 and #26 remain current navigation coordination owners.
+
+| PR #16 file | Evidence and disposition |
+| --- | --- |
+| `shared-ui/hc.css` | Exact blob `c98ec1a8` already in consolidated; **preserved, no merge** |
+| `shared-ui/clipboard.mjs` | Exact blob `24867110` preserved in PR #27. Also exact same blob at `extension/shared-ui/clipboard.mjs` in PR #26; **clipboard API/implementation parity verified** |
+| `shared-ui/assets/hc-icon.webp`, `hc-wordmark.webp` | Source-derived original branding already represented by purpose-specific scanner images and proposed web wordmark in PR #24; **omit redundant files**, preserve original orange/blue brand standard |
+| `shared-ui/README.md` | Earlier installation/deployment expectations are now stale; **replaced functionally** by this current ownership, integration and acceptance guide and manager SHARED_ADDON_UI_UX.md |
+| `shared-ui/showcase.html`, `shared-ui/showcase.mjs` | Demo-only illustrative UI; no production runtime dependency. Older sidebar/navigation and binary logo relative paths do not match the coordinated navigation or current web asset route. **Do not port**: current actual Consignment beta plus targeted feature acceptance are the stronger maintained visual examples |
+| `tests/shared-ui-beta.test.mjs`, `.github/workflows/shared-ui-beta-tests.yml` | Old tests depend on the retired gallery and asset paths; **replaced** by `tests/shared-ui-reconciliation.test.mjs` and dedicated CI. Feature/Chromium checks live with PR #24 and PR #26 |
+| `CHANGELOG.md` | Stale unreleased feature-branch snapshot; **replaced** by current reconciliation note, manager handoff and current PR history |
+
+**Conclusion:** There is no outstanding, still-useful unique runtime feature requiring whole-branch PR #16 integration. PR #16 **can be closed as superseded**, retaining it for historical review. Do not delete source history.
+
+### Updated current dependency order
+1. Reconcile/accept PR #24 core navigation and brand routes, then validate current core ops pages.
+2. PR #27 may merge independently after its own tests and review; its clipboard module is already API/byte-identical to PR #26, so there is no outstanding helper incompatibility.
+3. PR #26 must rebase onto accepted consolidated base for extension integration; it owns Chrome popup/scanner navigation and the vendored exact clipboard helper. Coordinate with #22 (Timeclock/Split), #31 (PO Companion), and PR #30 for approved Consignment launcher semantics.
+4. PR #30 owns current Consignment consolidation; old #11 and #25 remain historical, not independent integration targets.
+5. Complete real browser/employee checks and release queue reconciliation before any extension packaging; none is authorized by these shared UI changes.
+
+### Outstanding acceptance
+- Browser navigation clickthrough (real current routes), active-page indication, original wordmark across widths, keyboard focus/escape/return focus, zoom at 100/125/200%, high-contrast/error/empty states.
+- Scanner real employee PIN, supplier capture and permission prompts; no Lightspeed product writes.
+- Popup/Scanner automated mock Chromium tests in PR #26 are **not a substitute** for real employee/host acceptance.
+- Compare merged candidate commit and Railway/extension artifact separately before claiming any rollout.
