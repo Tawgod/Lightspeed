@@ -18,7 +18,8 @@ test('Timeclock identity and API behavior remain present',()=>{
   assert.match(source,/function openTimeclockOverlay\(\)/);
   assert.match(source,/employeeIdentifier/);
   assert.match(source,/\/api\/timeclock\/status\?identifier=/);
-  assert.match(source,/\/api\/timeclock\/.*clock-/);
+  assert.match(source,/const endpoint = currentStatus\.clockedIn \? 'clock-out' : 'clock-in';/);
+  assert.match(source,/HCT_TIMECLOCK_BACKEND \+ '\/api\/timeclock\/' \+ endpoint/);
 });
 
 test('Split Recall identification, retrieval and completion behavior remain present',()=>{
