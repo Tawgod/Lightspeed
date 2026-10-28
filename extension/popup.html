@@ -3,12 +3,13 @@
 <head>
   <meta charset="utf-8">
   <title>Hobby Corner Toolkit</title>
-  <link rel="stylesheet" href="popup.css"><link rel="stylesheet" href="popup-beta.css">
+  <link rel="stylesheet" href="popup.css"><link rel="stylesheet" href="popup-beta.css"><link rel="stylesheet" href="shared-ui/navigation.css">
 </head>
 <body class="hc-ui">
   <header>
     <div class="hc-popup-brand"><img src="product-scanner/hc-wordmark.webp" alt="Hobby Corner"><div><h1>Hobby Corner Toolkit</h1><div class="sub">Lightspeed X-Series</div></div></div>
   </header>
+  <nav id="hc-shared-navigation" class="hc-extension-nav" aria-label="Hobby Corner tools"></nav>
 
   <section>
     <label for="sale-ref">Invoice / order number</label>
@@ -19,7 +20,7 @@
   </section>
 
   <section><button id="scan-page" class="primary-scan">Scan Current Supplier Page</button><details style="margin-top:8px;font-size:12px"><summary>Supplier snapshot (optional)</summary><label style="display:block;margin-top:7px"><input id="save-supplier-snapshot" type="checkbox"> Save a small screenshot of the supplier tab with this scan</label><p>Saved locally on this browser as a supplier layout reference. Review pages for customer or employee information before capturing.</p></details><p class="scanner-scope">Scan one supplier product page. Product edits require employee review.</p></section>
-  <section class="actions">
+  <section aria-label="Purchase Order Companion"><button id="po-select" type="button" class="secondary">Select Current Lightspeed PO</button><button id="po-launch" type="button" class="secondary">Open PO Companion on Supplier Site</button><p class="scanner-scope">Development preview; PO loading and approval disabled.</p></section><section class="actions">
     <button id="split">Split / Partial Pickup</button>
     <button id="combine">Find Same-Customer Work Orders</button>
   </section>
