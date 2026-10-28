@@ -79,3 +79,14 @@
     margin:-12px -12px 14px!important;
   }
 }
+
+
+/* Shared employee login in the core navy header */
+.hc-ui .hc-core-header{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.hc-ui .hc-header-spacer{flex:1 1 24px}
+.hc-ui .hc-header-login-label{font-size:12px;font-weight:750;color:#dce9f6;white-space:nowrap}
+.hc-ui .hc-header-pin{width:112px!important;min-height:38px!important;padding:7px 10px!important;background:#fff!important;color:var(--hc-text)!important}
+.hc-ui .hc-header-employee{color:#dce9f6;font-size:12px;font-weight:650;white-space:nowrap}
+.hc-ui .hc-core-header #authStatus{background:#e0e7ef;color:#42556a;border-color:#c1d0df}
+.hc-ui .hc-core-header #signOutButton{min-height:38px}
+@media(max-width:900px){.hc-ui .hc-header-spacer{flex-basis:100%;height:0}}
