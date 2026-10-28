@@ -10,6 +10,7 @@ on:
       - shared-ui/**
       - Templates/**
       - tests/labelSharedUi.test.mjs
+      - tests/labelBrowserSmoke.mjs
       - .github/workflows/label-ui-regression.yml
 jobs:
   label-ui:
@@ -21,3 +22,9 @@ jobs:
           node-version: '22'
       - name: Verify label UI and Avery print contracts
         run: node --test tests/labelSharedUi.test.mjs
+      - name: Install Chromium test runner
+        run: npm install --no-save --ignore-scripts playwright
+      - name: Install browser
+        run: npx playwright install chromium
+      - name: Run browser acceptance smoke
+        run: node tests/labelBrowserSmoke.mjs
