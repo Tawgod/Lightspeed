@@ -1,0 +1,27 @@
+[
+  {
+    "label": "Special Orders",
+    "url": "https://special-orders-test-production.up.railway.app/special-orders"
+  },
+  {
+    "label": "Ordering",
+    "url": "https://special-orders-test-production.up.railway.app/ordering"
+  },
+  {
+    "label": "Preorder Campaigns",
+    "url": "https://special-orders-test-production.up.railway.app/preorders"
+  },
+  {
+    "label": "GW Preorders",
+    "url": "https://special-orders-test-production.up.railway.app/gw-preorders"
+  },
+  {
+    "label": "Consignment Manager (Beta)",
+    "url": "https://consignment-beta-test.up.railway.app/consignment",
+    "beta": true
+  },
+  {
+    "label": "Lightspeed Toolkit",
+    "url": "https://lightspeed-api-production-c087.up.railway.app/extension"
+  }
+]
