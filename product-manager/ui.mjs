@@ -73,7 +73,8 @@ function clearEmployeeSession(note='Signed out. Your saved layouts remain on the
   $('pm-pin').value='';$('pm-pin').disabled=false;$('pm-login').hidden=false;
   $('pm-sign-out').hidden=true;$('pm-save-profile').disabled=true;
   $('pm-auth-state').textContent='Not signed in';$('pm-employee').textContent=note;
-  $('profile').value='Default';profile='Default';$('pm-save-work').disabled=true;$('pm-restore-work').disabled=true;\n  $('pm-restore-panel').hidden=true;drafts.clear();layout={columns:Object.keys(columnSpecs),hidden:[],widths:{},detailsOrder:[]};renderLayoutControls();render();
+  $('profile').value='Default';profile='Default';$('pm-save-work').disabled=true;$('pm-restore-work').disabled=true;
+  $('pm-restore-panel').hidden=true;drafts.clear();layout={columns:Object.keys(columnSpecs),hidden:[],widths:{},detailsOrder:[]};renderLayoutControls();render();
 }
 async function profileRequest(path,options={}){
   if(!authState.token||Date.now()>=authState.expiresAt){freezeWork('Session expired. Last confirmed backup can be restored after signing in.');throw Error('Employee session required.')}
