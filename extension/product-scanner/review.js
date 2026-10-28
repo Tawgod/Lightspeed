@@ -1,3 +1,4 @@
+import {installHobbyCornerNavigation} from '../shared-ui/navigation.mjs';
 import {checkProductMatches,toSpecialOrderMatchRequest} from './special-orders-adapter.js';
 import {captureSupplierProductPage} from './page-capture.js';
 import {productCompleteness} from './completeness.js';
@@ -570,3 +571,5 @@ scanOpenButton.addEventListener('click',async()=>{
   finally{scanOpenButton.disabled=false;}
 });
 supplierTabs().catch(error=>{status.textContent='Supplier tabs unavailable: '+error.message;});
+
+installHobbyCornerNavigation(document.getElementById('hc-shared-navigation'),{current:'product-scanner'});
