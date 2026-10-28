@@ -1,5 +1,10 @@
 // PO Companion isolated review opener. No backend mutation or employee token storage.
 chrome.runtime.onMessage.addListener((message,_sender,respond)=>{
+ if(message?.type==='HCT_PO_NAV' && _sender?.tab?.id){
+  fetch(chrome.runtime.getURL('po-companion/navigation.json'))
+    .then(response=>response.json()).then(entries=>respond({ok:true,entries}),()=>respond({ok:false}));
+  return true;
+ }
  if(message?.type==='HCT_PO_BRAND' && _sender?.tab?.id){
   fetch(chrome.runtime.getURL('shared-ui/assets/hc-icon.webp'))
     .then(r=>r.arrayBuffer())
