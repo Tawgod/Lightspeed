@@ -14,12 +14,24 @@
   <div class="sub">Lightspeed is the purchase-order source of truth. Use this page to find what still needs ordering, organize by supplier/category, check current POs, update line status, and record notes.</div>
   <div id="notice" class="notice"></div>
 
-  <div class="panel"><div class="toolbar">
-    <input id="accessKey" type="password" placeholder="Internal access key" size="24">
-    <button id="unlockButton" onclick="saveKey()">Unlock</button>
-    <span id="authStatus" class="pill">Locked</span>
-    <button onclick="refreshEverything()">Refresh Lightspeed + Orders</button>
-  </div></div>
+  <div class="panel">
+    <div class="toolbar">
+      <input id="employeePin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="Timeclock PIN" size="14">
+      <button id="unlockButton" onclick="staffSignIn()">Sign in</button>
+      <button id="signOutButton" type="button" onclick="staffSignOut()" style="display:none">Sign out</button>
+      <span id="authStatus" class="pill">Locked</span>
+      <span id="authEmployee" class="form-note"></span>
+      <button onclick="refreshEverything()">Refresh Lightspeed + Orders</button>
+    </div>
+    <details style="margin-top:10px">
+      <summary class="form-note">Admin access-key fallback</summary>
+      <div class="toolbar" style="margin-top:8px">
+        <input id="accessKey" type="password" placeholder="Internal admin key" size="24">
+        <button id="legacyUnlockButton" type="button" onclick="saveKey()">Use admin key</button>
+      </div>
+    </details>
+    <div class="form-note">Use the same 4-digit PIN as the Hobby Corner Timeclock.</div>
+  </div>
 
   <div class="panel">
     <div class="section-heading"><div>
@@ -121,4 +133,5 @@
     <div id="lightspeedPurchaseOrders"></div>
   </div>
 </div>
+<script src="/shared-ui/staff-auth.js"></script>
 <script src="/ordering-client.js"></script></body></html>
