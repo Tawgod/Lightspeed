@@ -13,7 +13,7 @@ try{
    await page.waitForTimeout(200);
    assert.equal(await page.locator('nav[aria-label="Hobby Corner tools"]').count(),1);
    assert.equal(await page.locator('img[alt="The Hobby Corner"]').count(),1);
-   assert.equal(await page.locator('nav a[href*="special-orders"]').count(),1);
+   assert.equal(await page.locator('nav a[href="https://special-orders-test-production.up.railway.app/special-orders"]').count(),1);
    const more=page.locator('details.hc-consignment-more summary');
    await more.focus();await page.keyboard.press('Enter');
    assert.equal(await page.locator('details.hc-consignment-more').evaluate(el=>el.open),true);
