@@ -1370,36 +1370,109 @@ export function createSpecialOrdersRouter({
         campaign=updated.rows[0];
       }
 
-      let inserted=0,updated=0;
+      let inserted=0,updated=0,reconciled=0,conflicts=0;
       for(let i=0;i<(scrape.items||[]).length;i++){
         const item=scrape.items[i];
         const key=gwExternalEntryKey(item,i);
-        const result=await client.query(
-          "INSERT INTO preorder_products "+
-          "(preorder_campaign_id,item_description,gw_source_item_description,sku,msrp,cost,release_date,external_entry_id,"+
-          "gw_post_enabled,gw_post_disposition,gw_case_pack_size,gw_single_item_name,gw_single_msrp,gw_review_note,source_image_url) "+
-          "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) "+
-          "ON CONFLICT (preorder_campaign_id,external_entry_id) WHERE external_entry_id IS NOT NULL "+
-          "DO UPDATE SET "+
-          "item_description=EXCLUDED.item_description,gw_source_item_description=EXCLUDED.gw_source_item_description,"+
-          "sku=COALESCE(EXCLUDED.sku,preorder_products.sku),msrp=COALESCE(EXCLUDED.msrp,preorder_products.msrp),"+
-          "cost=COALESCE(EXCLUDED.cost,preorder_products.cost),release_date=EXCLUDED.release_date,"+
-          "source_image_url=COALESCE(preorder_products.image_url,EXCLUDED.source_image_url),"+
-          "gw_post_enabled=CASE WHEN preorder_products.gw_reviewed_at IS NULL THEN EXCLUDED.gw_post_enabled ELSE preorder_products.gw_post_enabled END,"+
-          "gw_post_disposition=CASE WHEN preorder_products.gw_reviewed_at IS NULL THEN EXCLUDED.gw_post_disposition ELSE preorder_products.gw_post_disposition END,"+
-          "gw_case_pack_size=CASE WHEN preorder_products.gw_reviewed_at IS NULL THEN EXCLUDED.gw_case_pack_size ELSE preorder_products.gw_case_pack_size END,"+
-          "gw_single_item_name=COALESCE(preorder_products.gw_single_item_name,EXCLUDED.gw_single_item_name),"+
-          "gw_single_msrp=COALESCE(preorder_products.gw_single_msrp,EXCLUDED.gw_single_msrp),"+
-          "gw_review_note=CASE WHEN preorder_products.gw_reviewed_at IS NULL THEN EXCLUDED.gw_review_note ELSE preorder_products.gw_review_note END "+
-          "RETURNING (xmax = 0) AS inserted",
-          [
-            campaign.id,item.item_description||item.name,item.source_item_description||item.source_name||item.name,
-            item.short_code||null,item.msrp??null,item.cost??null,releaseDate,key,Boolean(item.post_enabled),
-            item.disposition||'REVIEW',item.case_pack_size||null,item.suggested_single_name||null,
-            item.suggested_single_msrp??null,(item.reasons||[]).join('; ')||null,item.source_image_url||null
-          ]
+        const desiredSku=item.short_code?String(item.short_code).trim().toUpperCase():null;
+        const desiredName=String(item.item_description||item.name||'').trim();
+        const sourceName=String(item.source_item_description||item.source_name||item.name||desiredName).trim();
+
+        const byExternal=await client.query(
+          "SELECT * FROM preorder_products WHERE preorder_campaign_id=$1 AND external_entry_id=$2 FOR UPDATE",
+          [campaign.id,key]
         );
-        if(result.rows[0]?.inserted)inserted++;else updated++;
+        let target=byExternal.rows[0]||null;
+
+        if(!target && desiredSku){
+          const bySku=await client.query(
+            "SELECT * FROM preorder_products WHERE preorder_campaign_id=$1 AND upper(coalesce(sku,''))=upper($2) FOR UPDATE",
+            [campaign.id,desiredSku]
+          );
+          if(bySku.rows[0]){
+            target=bySku.rows[0];
+            reconciled++;
+          }
+        }
+
+        if(target){
+          let safeSku=desiredSku||target.sku||null;
+          let conflictRow=null;
+          if(desiredSku){
+            const duplicate=await client.query(
+              "SELECT id,item_description,external_entry_id FROM preorder_products WHERE preorder_campaign_id=$1 AND upper(coalesce(sku,''))=upper($2) AND id<>$3 LIMIT 1 FOR UPDATE",
+              [campaign.id,desiredSku,target.id]
+            );
+            conflictRow=duplicate.rows[0]||null;
+          }
+
+          const sameItem=conflictRow
+            ? String(conflictRow.item_description||'').trim().toLowerCase()===desiredName.toLowerCase()
+              || String(conflictRow.external_entry_id||'')===key
+            : false;
+
+          if(conflictRow && !sameItem){
+            safeSku=target.sku||null;
+            conflicts++;
+          }
+
+          const reviewNotes=[...(item.reasons||[])];
+          if(conflictRow && !sameItem){
+            reviewNotes.push('Short code '+desiredSku+' already belongs to another row in this campaign; kept existing SKU and flagged for review');
+          }
+
+          await client.query(
+            "UPDATE preorder_products SET "+
+            "item_description=$2,gw_source_item_description=$3,sku=$4,"+
+            "msrp=COALESCE($5,msrp),cost=COALESCE($6,cost),release_date=$7,"+
+            "external_entry_id=COALESCE(external_entry_id,$8),"+
+            "source_image_url=COALESCE(image_url,$15,source_image_url),"+
+            "gw_post_enabled=CASE WHEN gw_reviewed_at IS NULL THEN $9 ELSE gw_post_enabled END,"+
+            "gw_post_disposition=CASE WHEN gw_reviewed_at IS NULL THEN $10 ELSE gw_post_disposition END,"+
+            "gw_case_pack_size=CASE WHEN gw_reviewed_at IS NULL THEN $11 ELSE gw_case_pack_size END,"+
+            "gw_single_item_name=COALESCE(gw_single_item_name,$12),"+
+            "gw_single_msrp=COALESCE(gw_single_msrp,$13),"+
+            "gw_review_note=CASE WHEN gw_reviewed_at IS NULL THEN NULLIF($14,'') ELSE gw_review_note END "+
+            "WHERE id=$1",
+            [
+              target.id,desiredName,sourceName,safeSku,item.msrp??null,item.cost??null,releaseDate,key,
+              Boolean(item.post_enabled),item.disposition||'REVIEW',item.case_pack_size||null,
+              item.suggested_single_name||null,item.suggested_single_msrp??null,
+              reviewNotes.join('; '),item.source_image_url||null
+            ]
+          );
+          updated++;
+          continue;
+        }
+
+        try{
+          await client.query(
+            "INSERT INTO preorder_products "+
+            "(preorder_campaign_id,item_description,gw_source_item_description,sku,msrp,cost,release_date,external_entry_id,"+
+            "gw_post_enabled,gw_post_disposition,gw_case_pack_size,gw_single_item_name,gw_single_msrp,gw_review_note,source_image_url) "+
+            "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)",
+            [
+              campaign.id,desiredName,sourceName,desiredSku,item.msrp??null,item.cost??null,releaseDate,key,
+              Boolean(item.post_enabled),item.disposition||'REVIEW',item.case_pack_size||null,
+              item.suggested_single_name||null,item.suggested_single_msrp??null,
+              (item.reasons||[]).join('; ')||null,item.source_image_url||null
+            ]
+          );
+          inserted++;
+        }catch(error){
+          if(error?.code!=='23505')throw error;
+          // A concurrent/legacy SKU collision should not abort the entire GW campaign refresh.
+          conflicts++;
+          const fallback=await client.query(
+            "SELECT id FROM preorder_products WHERE preorder_campaign_id=$1 AND (external_entry_id=$2 OR ($3::text IS NOT NULL AND upper(coalesce(sku,''))=upper($3))) ORDER BY id LIMIT 1",
+            [campaign.id,key,desiredSku]
+          );
+          if(!fallback.rows[0])throw error;
+          await client.query(
+            "UPDATE preorder_products SET gw_review_note=concat_ws('; ',NULLIF(gw_review_note,''),$2) WHERE id=$1",
+            [fallback.rows[0].id,'GW Sync & Scrape detected a duplicate short-code/external-entry collision; review this row']
+          );
+        }
       }
 
       await client.query('COMMIT');
@@ -1420,7 +1493,7 @@ export function createSpecialOrdersRouter({
           auto_submit_at:autoSubmitAt
         },
         scrape_counts:scrape.counts,
-        products:{inserted,updated,total:(scrape.items||[]).length}
+        products:{inserted,updated,reconciled,conflicts,total:(scrape.items||[]).length}
       });
     }catch(error){
       try{await client.query('ROLLBACK')}catch{}
