@@ -1,0 +1,105 @@
+/* Compatibility adapter for existing Special Orders family pages.
+   Reuses shared-ui/hc.css tokens without changing IDs, handlers, or APIs. */
+.hc-ui body,.hc-ui{background:var(--hc-canvas);color:var(--hc-text)}
+.hc-ui .wrap{max-width:1450px;margin:0 auto;padding:20px}
+.hc-ui .panel,.hc-ui .card{
+  background:var(--hc-surface);
+  border:1px solid var(--hc-border);
+  box-shadow:var(--hc-shadow);
+  border-radius:var(--hc-radius);
+}
+.hc-ui .panel{padding:16px;margin-bottom:16px}
+.hc-ui .card{padding:14px}
+.hc-ui .toolbar a{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-height:40px;padding:9px 14px;border-radius:var(--hc-radius-sm);
+  background:var(--hc-primary)!important;color:#fff!important;
+  border:1px solid transparent;text-decoration:none;font-weight:650;
+}
+.hc-ui .toolbar a:hover{background:var(--hc-primary-hover)!important}
+.hc-ui button{
+  min-height:40px;border-radius:var(--hc-radius-sm);
+  background:var(--hc-primary);border:1px solid transparent;color:#fff;
+}
+.hc-ui button[type="button"]{background:#3f5f7f;border-color:#3f5f7f}
+.hc-ui input,.hc-ui select,.hc-ui textarea{
+  border:1px solid #9cb2c9;border-radius:var(--hc-radius-sm);
+  background:#fff;color:var(--hc-text);min-height:40px;
+}
+.hc-ui input:focus-visible,.hc-ui select:focus-visible,.hc-ui textarea:focus-visible,.hc-ui button:focus-visible,.hc-ui a:focus-visible{
+  outline:2px solid #fff;outline-offset:2px;box-shadow:0 0 0 4px var(--hc-focus);
+}
+.hc-ui .sub,.hc-ui .form-note{color:var(--hc-muted)}
+.hc-ui .pill{border:1px solid var(--hc-border-subtle);background:#e4edf6;color:#304964}
+.hc-ui .notice{background:var(--hc-warning-bg);color:var(--hc-warning);border-color:#ead193}
+.hc-ui table{background:#fff;border-color:var(--hc-border)}
+.hc-ui th{background:#dce9f5;color:#193d62}
+.hc-ui tbody tr:nth-child(even){background:#f2f7fc}
+.hc-ui tbody tr:hover{background:#e8f2fd}
+.hc-ui h1,.hc-ui h2{color:#153858}
+.hc-ui .section-heading{background:linear-gradient(#f6faff,#eaf2fa);border-radius:8px;padding:10px 12px;margin:-4px -4px 12px}
+@media(max-width:760px){.hc-ui .wrap{padding:12px}}
+
+
+/* Core operations beta adoption refinements */
+.hc-ui .wrap.hc-page{max-width:1500px}
+.hc-ui .toolbar:first-child:has(a[href="/special-orders"],a[href="/ordering"],a[href="/preorders"],a[href="/gw-preorders"]){
+  background:var(--hc-header);
+  color:#fff;
+  padding:10px 12px;
+  margin:-20px -20px 18px!important;
+  border-radius:0 0 var(--hc-radius) var(--hc-radius);
+  box-shadow:var(--hc-shadow);
+}
+.hc-ui .toolbar:first-child:has(a[href="/special-orders"],a[href="/ordering"],a[href="/preorders"],a[href="/gw-preorders"]) a{
+  background:transparent!important;
+  border-color:transparent;
+  color:#eaf4ff!important;
+}
+.hc-ui .toolbar:first-child:has(a[href="/special-orders"],a[href="/ordering"],a[href="/preorders"],a[href="/gw-preorders"]) a:hover{
+  background:var(--hc-primary)!important;
+}
+.hc-ui .toolbar:first-child:has(a[href="/special-orders"],a[href="/ordering"],a[href="/preorders"],a[href="/gw-preorders"]) a[aria-current="page"]{
+  background:var(--hc-primary)!important;
+}
+.hc-ui .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:12px;margin:16px 0}
+.hc-ui .cards .card{background:var(--hc-surface-raised);border-color:var(--hc-border-subtle)}
+.hc-ui .cards .value{color:#153858;font-size:1.7rem;font-weight:800}
+.hc-ui .cards .label{color:var(--hc-muted);font-size:.85rem;font-weight:650}
+.hc-ui .panel > h2:first-child{margin-bottom:14px}
+.hc-ui .panel > h3{color:#244b70;margin-top:18px}
+.hc-ui .ordering-age-chip{border:1px solid transparent}
+.hc-ui .ordering-age-green{border-color:#9bd3b3}
+.hc-ui .ordering-age-yellow{border-color:#e5ca78}
+.hc-ui .ordering-age-orange{border-color:#e6ad7f}
+.hc-ui .ordering-age-red{border-color:#e3a1a7}
+.hc-ui .gw-timing-panel{background:var(--hc-surface);border-color:var(--hc-border);box-shadow:var(--hc-shadow-raised)}
+@media(max-width:760px){
+  .hc-ui .toolbar:first-child:has(a[href="/special-orders"],a[href="/ordering"],a[href="/preorders"],a[href="/gw-preorders"]){
+    margin:-12px -12px 14px!important;
+  }
+}
+
+/* Unified beta navigation: one complete tool directory on all four core-ops pages. */
+.hc-ui .hc-operations-nav{
+ display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px 18px;
+ background:var(--hc-header);color:#fff;padding:12px 16px;margin:-20px -20px 18px;
+ border-radius:0 0 var(--hc-radius) var(--hc-radius);box-shadow:var(--hc-shadow);
+}
+.hc-ui .hc-operations-brand{font-size:1.12rem;font-weight:800;white-space:nowrap;color:#fff}
+.hc-ui .hc-operations-brand small{display:block;font-weight:450;font-size:.76rem;color:#d8e7f7}
+.hc-ui .hc-operations-links{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
+.hc-ui .hc-operations-links a{
+ display:inline-flex;align-items:center;min-height:40px;padding:8px 11px;
+ color:#ecf5ff;background:transparent;border-radius:7px;
+ text-decoration:none;font-weight:650;font-size:.91rem;border:1px solid transparent;
+}
+.hc-ui .hc-operations-links a:hover,
+.hc-ui .hc-operations-links a:focus-visible{background:#21496f}
+.hc-ui .hc-operations-links a[aria-current="page"]{background:var(--hc-primary);color:#fff}
+.hc-ui .hc-operations-links a[href*="consignment-beta-test"]{border-color:#6785a8}
+@media(max-width:760px){
+ .hc-ui .hc-operations-nav{margin:-12px -12px 14px}
+ .hc-ui .hc-operations-links{width:100%}
+ .hc-ui .hc-operations-links a{flex:1 1 auto;justify-content:center}
+}
