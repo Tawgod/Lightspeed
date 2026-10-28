@@ -26,7 +26,7 @@ export function installHobbyCornerNavigation(nav,{current,extensionUrl=path=>chr
     if(item.local!==undefined){a.target='_blank';a.rel='noopener noreferrer';}
     else {a.target='_blank';a.rel='noopener noreferrer';}
     if(item.id===current){a.setAttribute('aria-current','page');a.removeAttribute('target');}
-    if(['special-orders','ordering','product-scanner'].includes(item.id)){
+    if(item.id===current || ['special-orders','ordering','product-scanner'].includes(item.id)){
       primary.append(a);
     }else overflow.append(a);
   }
