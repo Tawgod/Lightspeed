@@ -1,0 +1,54 @@
+/* Only Product Manager-specific layout; colors/components from ../shared-ui/hc.css */
+.hc-ui .hc-sidebar-note{color:#dceafa;padding:12px}
+.hc-ui .pm-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(270px,345px);gap:16px;margin:16px 0}
+.hc-ui .pm-scroll{margin-top:14px;min-height:240px;max-height:60vh;overflow:auto}
+.hc-ui .pm-select{min-height:35px;width:auto;padding:5px 9px}
+.hc-ui .pm-review{margin-top:18px}
+.hc-ui .pm-feedback{margin-top:14px}
+.hc-ui .pm-field{display:grid;gap:5px;margin-bottom:13px}
+.hc-ui .pm-field label{font-weight:650}
+.hc-ui .pm-row{cursor:pointer}
+.hc-ui .pm-row[aria-selected=true]{background:#d5e7ff!important}
+.hc-ui .pm-sku{font-family:ui-monospace,monospace;white-space:pre}
+.hc-ui .pm-edited{border-left:3px solid var(--hc-accent);padding-left:8px}
+.hc-ui .pm-image{min-height:155px;display:grid;place-items:center;background:var(--hc-surface-inset);border:1px dashed var(--hc-border);border-radius:8px}
+.hc-ui .pm-action-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+@media(max-width:1050px){.hc-ui .pm-layout{grid-template-columns:1fr}}
+
+/* Reuse PR #23 operations navigation classes and the shared beta palette. */
+.hc-ui .pm-operations-nav{margin:0 12px 0;border-radius:0 0 var(--hc-radius) var(--hc-radius)}
+.hc-ui .pm-more{position:relative;align-self:center}
+.hc-ui .pm-more>summary{list-style:none;cursor:pointer;border:1px solid #6a86a6;border-radius:7px;padding:8px 11px;min-height:40px;color:#eaf4ff;font-weight:650}
+.hc-ui .pm-more>summary::-webkit-details-marker{display:none}
+.hc-ui .pm-more>summary::after{content:" ▾"}
+.hc-ui .pm-more[open]>summary,.hc-ui .pm-more>summary:hover{background:#21496f}
+.hc-ui .pm-more-list{position:absolute;top:calc(100% + 6px);right:0;z-index:15;width:min(320px,90vw);background:var(--hc-surface);border:1px solid var(--hc-border);box-shadow:var(--hc-shadow-raised);border-radius:8px;padding:8px;display:grid;gap:3px}
+.hc-ui .pm-more-list a,.hc-ui .pm-more-list span{display:block;color:var(--hc-text);padding:9px 10px;border-radius:6px;font-size:.92rem}
+.hc-ui .pm-more-list a:hover{background:var(--hc-surface-inset)}
+.hc-ui .pm-more-list span{color:var(--hc-muted);background:var(--hc-surface-inset)}
+@media(max-width:760px){.hc-ui .pm-operations-nav{margin:0 8px}.hc-ui .pm-more-list{right:auto;left:0}}
+
+/* Unified beta navigation: one complete tool directory on all four core-ops pages. */
+.hc-ui .hc-operations-nav{
+ display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px 18px;
+ background:var(--hc-header);color:#fff;padding:12px 16px;margin:-20px -20px 18px;
+ border-radius:0 0 var(--hc-radius) var(--hc-radius);box-shadow:var(--hc-shadow);
+}
+.hc-ui .hc-operations-brand{font-size:1.12rem;font-weight:800;white-space:nowrap;color:#fff}
+.hc-ui .hc-operations-brand small{display:block;font-weight:450;font-size:.76rem;color:#d8e7f7}
+.hc-ui .hc-operations-links{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
+.hc-ui .hc-operations-links a{
+ display:inline-flex;align-items:center;min-height:40px;padding:8px 11px;
+ color:#ecf5ff;background:transparent;border-radius:7px;
+ text-decoration:none;font-weight:650;font-size:.91rem;border:1px solid transparent;
+}
+.hc-ui .hc-operations-links a:hover,
+.hc-ui .hc-operations-links a:focus-visible{background:#21496f}
+.hc-ui .hc-operations-links a[aria-current="page"]{background:var(--hc-primary);color:#fff}
+.hc-ui .hc-operations-links a[href*="consignment-beta-test"]{border-color:#6785a8}
+@media(max-width:760px){
+ .hc-ui .hc-operations-nav{margin:-12px -12px 14px}
+ .hc-ui .hc-operations-links{width:100%}
+ .hc-ui .hc-operations-links a{flex:1 1 auto;justify-content:center}
+}
+
