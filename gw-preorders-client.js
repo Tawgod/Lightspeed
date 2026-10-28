@@ -101,11 +101,10 @@ async function publishGwDiscordPosts(){const id=document.getElementById('gwCampa
 
 document.getElementById('gwSubmitLeadMinutes').value='15';
 async function initializeAuth(){
-  document.getElementById('accessKey').value=accessKey();
   setAuthState(false);
   const existing=await window.HCStaffAuth?.verify?.();
   if(existing){setAuthState(true);await loadGwCampaigns();return}
-  if(accessKey())await saveKey();
-  else showNotice('GW Preorders is locked. Sign in with your Timeclock PIN.');
+  showNotice('GW Preorders is locked. Sign in with your Timeclock PIN in the header.');
 }
+document.getElementById('employeePin')?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();staffSignIn()}});
 initializeAuth();
