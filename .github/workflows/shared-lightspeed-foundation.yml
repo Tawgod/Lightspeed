@@ -1,0 +1,29 @@
+name: Shared Lightspeed foundation
+on:
+  pull_request:
+    branches: [integration/hobby-corner-consolidation]
+    paths:
+      - 'services/lightspeed/**'
+      - 'tests/shared-lightspeed-foundation.test.mjs'
+      - 'scripts/audit-lightspeed-consumers.mjs'
+      - '.github/workflows/shared-lightspeed-foundation.yml'
+  push:
+    branches: [feature/shared-lightspeed-services-phase1-20261029]
+permissions:
+  contents: read
+jobs:
+  foundation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Contract tests
+        run: node --test tests/shared-lightspeed-foundation.test.mjs
+      - name: Source inventory
+        run: node scripts/audit-lightspeed-consumers.mjs
+      - name: Reject newly introduced direct production Lightspeed clients
+        run: node scripts/audit-lightspeed-consumers.mjs --check-new
