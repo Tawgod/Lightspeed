@@ -1,13 +1,14 @@
 // Assembles the existing matching router, Timeclock PIN identity and signed
 // scanner sessions. Still opt-in: server.js does not mount this module.
 import express from 'express';
+import {createPoCompanionReadRouter} from '../routes/poCompanionRead.js';
 import {createScannerMatchGateway} from '../routes/scannerMatchGateway.js';
 import {createScannerSessions} from './scannerSessions.js';
 import {createScannerPreorderRouter} from './scannerPreorderStaging.js';
 import {createScannerProductReviewRouter} from './scannerProductReviewQueue.js';
 import {createScannerTestCreationRouter} from './scannerTestCreationRouter.js';
 
-export function createTimeclockScannerGateway({identity,lookup,sessionSecret,clock=()=>Date.now(),loginLimiter,supplierLookup,preorderPool,testWriter}={}){
+export function createTimeclockScannerGateway({identity,lookup,sessionSecret,clock=()=>Date.now(),loginLimiter,supplierLookup,preorderPool,testWriter,poReadLightspeed}={}){
   const router=express.Router();
   router.use((req,res,next)=>{res.set('Cache-Control','no-store');next();});
   if(!identity?.verifyPin||!identity?.authorize||typeof lookup!=='function'||typeof loginLimiter!=='function'){
@@ -35,6 +36,7 @@ export function createTimeclockScannerGateway({identity,lookup,sessionSecret,clo
     if(!employee.canLookup)throw Object.assign(new Error('Scanner lookup not permitted.'),{status:403});
     return employee;
   };
+  if(preorderPool && poReadLightspeed)router.use(createPoCompanionReadRouter({verifyEmployee,readLightspeed:poReadLightspeed,pool:preorderPool}));
   router.use(createScannerMatchGateway({verifyEmployee,lookup,supplierLookup}));
   if(preorderPool){
     router.use(createScannerPreorderRouter({pool:preorderPool,verifyEmployee}));

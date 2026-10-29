@@ -924,6 +924,11 @@ async function startServer() {
     if(testWriter)console.log('[scanner] isolated test product creation is enabled for a non-production tenant');
     const scannerGateway=createTimeclockScannerGateway({
       identity,lookup,sessionSecret:process.env.SCANNER_SESSION_SECRET,loginLimiter,preorderPool:scannerPool,testWriter,
+      poReadLightspeed: LIGHTSPEED_DOMAIN && LIGHTSPEED_TOKEN ? async endpoint => {
+        const response=await fetch('https://'+LIGHTSPEED_DOMAIN+'.retail.lightspeed.app/api/2026-04'+endpoint, {headers:{Authorization:'Bearer '+LIGHTSPEED_TOKEN,Accept:'application/json'}});
+        if(!response.ok)throw Object.assign(new Error('Lightspeed read failed'),{status:502});
+        return response.json();
+      } : null,
       supplierLookup:async()=>{
         const result=await scannerPool.query('SELECT id,name FROM suppliers WHERE is_active=TRUE ORDER BY name LIMIT 500');
         return result.rows;
