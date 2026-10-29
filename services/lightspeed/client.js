@@ -77,7 +77,7 @@ export function createLightspeedTransport({
         // A failed response read on a write is always an uncertain write outcome.
         if (typeof response.body?.getReader === 'function') {
           const reader = response.body.getReader();
-          const decoder = new TextDecoder();
+          const decoder = new TextDecoder('utf-8', { fatal: true });
           let received = 0;
           raw = '';
           try {
