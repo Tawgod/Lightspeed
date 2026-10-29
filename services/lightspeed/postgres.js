@@ -17,10 +17,10 @@ export function createPostgresLightspeedAuditAppend({ pool } = {}) {
   requirePool(pool);
   return async function append(event) {
     const result = await pool.query(
-      \`INSERT INTO hc_lightspeed_audit
+      `INSERT INTO hc_lightspeed_audit
        (occurred_at,stage,correlation_id,operation,actor_type,actor_id,entity_type,entity_id,fingerprint,outcome)
        VALUES ($1::timestamptz,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-       RETURNING event_id\`,
+       RETURNING event_id`,
       [event.timestamp,event.stage,event.correlationId,event.operation,event.actorType,event.actorId,
        event.entityType,event.entityId,event.fingerprint,event.outcome]
     );
@@ -34,17 +34,17 @@ export function createPostgresLightspeedIdempotencyStore({ pool } = {}) {
     async claim({ scope, key, fingerprint }) {
       const lease = randomUUID();
       const claimed = await pool.query(
-        \`INSERT INTO hc_lightspeed_idempotency
+        `INSERT INTO hc_lightspeed_idempotency
           (scope,operation_key,fingerprint,lease,state)
          VALUES ($1,$2,$3,$4::uuid,'pending')
          ON CONFLICT (scope,operation_key) DO NOTHING
-         RETURNING lease\`,
+         RETURNING lease`,
         [scope,key,fingerprint,lease]
       );
       if (claimed.rowCount === 1) return { state: 'claimed', lease };
       const existing = checkedRow(await pool.query(
-        \`SELECT fingerprint,state,result
-         FROM hc_lightspeed_idempotency WHERE scope=$1 AND operation_key=$2\`,
+        `SELECT fingerprint,state,result
+         FROM hc_lightspeed_idempotency WHERE scope=$1 AND operation_key=$2`,
         [scope,key]
       ), 'Existing mutation');
       if (existing.fingerprint !== fingerprint) return { state: 'conflict' };
@@ -58,20 +58,20 @@ export function createPostgresLightspeedIdempotencyStore({ pool } = {}) {
         throw new TypeError('Read-back verified result required.');
       }
       checkedRow(await pool.query(
-        \`UPDATE hc_lightspeed_idempotency
+        `UPDATE hc_lightspeed_idempotency
          SET state='verified',result=$5::jsonb,verified_at=now(),updated_at=now()
          WHERE scope=$1 AND operation_key=$2 AND fingerprint=$3 AND lease=$4::uuid AND state='pending'
-         RETURNING scope\`,
+         RETURNING scope`,
         [scope,key,fingerprint,lease,JSON.stringify(result)]
       ), 'Mutation verification');
     },
     async markUnknown({ scope, key, fingerprint, lease }) {
       // Never change a verified result into unknown (e.g. failure while writing audit).
       const result = await pool.query(
-        \`UPDATE hc_lightspeed_idempotency
+        `UPDATE hc_lightspeed_idempotency
          SET state='unknown',updated_at=now()
          WHERE scope=$1 AND operation_key=$2 AND fingerprint=$3 AND lease=$4::uuid AND state='pending'
-         RETURNING scope\`,
+         RETURNING scope`,
         [scope,key,fingerprint,lease]
       );
       if (result?.rowCount !== 1) {
