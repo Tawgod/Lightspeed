@@ -79,3 +79,5 @@ The mutation tests also prove that failure to append a terminal audit event **af
 ## Next development phase
 
 **Phase 2:** Extract/convert shared customer/product/catalog/inventory/PO/sale/fulfillment read contracts and migrate initial read consumers. Start from this branch's verified modules, not a second implementation. Check current integration head and open feature PRs before rebasing.
+
+- Additional transport integrity guard (2026-10-29): streaming JSON decoding uses fatal UTF-8 validation, rejecting malformed byte sequences instead of silently replacing characters in product identifiers. Covered by regression test; not mounted in production.
