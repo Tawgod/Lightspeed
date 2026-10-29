@@ -4,7 +4,8 @@ on:
     branches: [integration/hobby-corner-consolidation]
     paths:
       - 'services/lightspeed/**'
-      - 'tests/shared-lightspeed-foundation.test.mjs'
+      - 'tests/shared-lightspeed-*.test.mjs'
+      - 'db/lightspeed_shared_foundation.sql'
       - 'scripts/audit-lightspeed-consumers.mjs'
       - '.github/workflows/shared-lightspeed-foundation.yml'
   push:
@@ -14,6 +15,22 @@ permissions:
 jobs:
   foundation:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: hc_test
+          POSTGRES_PASSWORD: hc_test
+          POSTGRES_DB: hc_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hc_test -d hc_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      HC_TEST_DATABASE_URL: postgres://hc_test:hc_test@127.0.0.1:5432/hc_test
     steps:
       - uses: actions/checkout@v4
         with:
@@ -21,13 +38,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Contract tests
-        run: node --test tests/shared-lightspeed-foundation.test.mjs
+      - name: Install regression dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Foundation, adapter and disposable Postgres integration tests
+        run: node --test tests/shared-lightspeed-foundation.test.mjs tests/shared-lightspeed-adapters.test.mjs tests/shared-lightspeed-postgres.test.mjs
       - name: Existing backend parse check
         run: node --check server.js
       - name: Scanner and Core Operations regressions
         run: |
-          npm install --ignore-scripts --no-audit --no-fund
           node --test tests/scanner*.test.js
           node --test tests/core-ops-navigation.test.mjs tests/core-ops-auth-session.test.mjs
       - name: Source inventory
