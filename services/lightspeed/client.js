@@ -16,13 +16,17 @@ export class LightspeedTransportError extends Error {
 }
 
 export function createLightspeedTransport({
-  domain, token, fetchImpl = globalThis.fetch, timeoutMs = 10000, readRetries = 1
+  domain, token, fetchImpl = globalThis.fetch, timeoutMs = 10000, readRetries = 1,
+  maxResponseBytes = 2 * 1024 * 1024
 } = {}) {
   const store = String(domain || '').trim().toLowerCase();
   if (!DOMAIN.test(store) || !String(token || '').trim()) throw new Error('Valid Lightspeed server configuration required.');
   if (typeof fetchImpl !== 'function') throw new TypeError('fetchImpl is required.');
   if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 60000) throw new RangeError('Invalid request timeout.');
   if (!Number.isInteger(readRetries) || readRetries < 0 || readRetries > 3) throw new RangeError('Invalid read retry count.');
+  if (!Number.isInteger(maxResponseBytes) || maxResponseBytes < 1024 || maxResponseBytes > 16 * 1024 * 1024) {
+    throw new RangeError('Invalid maximum response size.');
+  }
   const origin = 'https://' + store + '.retail.lightspeed.app';
 
   async function request(path, { method = 'GET', body, correlationId } = {}) {
@@ -64,25 +68,58 @@ export function createLightspeedTransport({
 
       let raw;
       try {
-        raw = await response.text();
+        const declaredLength = response.headers?.get?.('content-length');
+        if (declaredLength !== null && declaredLength !== undefined &&
+            /^\\d+$/.test(declaredLength) && Number(declaredLength) > maxResponseBytes) {
+          throw new Error('Response size exceeds configured limit.');
+        }
+        // Enforce an actual byte limit, even if Content-Length is missing or dishonest.
+        // A failed response read on a write is always an uncertain write outcome.
+        if (typeof response.body?.getReader === 'function') {
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let received = 0;
+          raw = '';
+          try {
+            while (true) {
+              const part = await reader.read();
+              if (part.done) break;
+              received += part.value.byteLength;
+              if (received > maxResponseBytes) throw new Error('Response size limit exceeded.');
+              raw += decoder.decode(part.value, { stream: true });
+            }
+            raw += decoder.decode();
+          } catch (error) {
+            await reader.cancel().catch(() => {});
+            throw error;
+          }
+        } else {
+          raw = await response.text(); // Allows simple test-response adapters.
+          if (Buffer.byteLength(raw, 'utf8') > maxResponseBytes) {
+            throw new Error('Response size limit exceeded.');
+          }
+        }
       } catch {
-        throw new LightspeedTransportError('Lightspeed response could not be read.', {
+        throw new LightspeedTransportError('Lightspeed response could not be read safely.', {
           code: 'LIGHTSPEED_RESPONSE', mayHaveWritten: !isRead
         });
-      }
-      let data = null;
-      if (raw) {
-        try { data = JSON.parse(raw); } catch { data = raw; }
       }
       if (!response.ok) {
         const retryable = isRead && READ_RETRY_STATUSES.has(response.status);
         if (retryable && attempt < readRetries) continue;
         throw new LightspeedTransportError('Lightspeed rejected request (' + response.status + ').', {
           status: response.status, code: 'LIGHTSPEED_HTTP', retryable,
-          mayHaveWritten: false
+          // A server may commit a write before returning an error response.
+          mayHaveWritten: !isRead
         });
       }
-      return data;
+      if (!raw) return null; // Valid empty 204/205 and other body-less success.
+      try { return JSON.parse(raw); }
+      catch {
+        throw new LightspeedTransportError('Lightspeed returned an invalid JSON response.', {
+          code: 'LIGHTSPEED_RESPONSE_JSON', mayHaveWritten: !isRead
+        });
+      }
     }
   }
   return Object.freeze({ request });
