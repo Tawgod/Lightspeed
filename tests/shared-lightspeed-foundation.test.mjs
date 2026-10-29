@@ -157,3 +157,58 @@ test('unverified mutation becomes unknown and cannot be automatically retried', 
   await assert.rejects(gate.run(args), error => error.code === 'LIGHTSPEED_MUTATION_UNKNOWN');
   assert.equal(writes, 1);
 });
+
+
+test('customer read/search preserves Special Orders query shape and leading zeros', async () => {
+  const { createLightspeedCustomersRead } = await import('../services/lightspeed/customers.js');
+  const paths = [];
+  const service = createLightspeedCustomersRead({
+    transport: { async request(path) { paths.push(path); return { data: [{ id: 'C1' }] }; } }
+  });
+  assert.deepEqual(await service.search(''), []);
+  assert.equal(paths.length, 0);
+  assert.equal((await service.search('me@example.com'))[0].id, 'C1');
+  assert.match(paths.at(-1), /\/api\/2026-04\/search\?type=customers&page_size=20&email=me%40example.com/);
+  await service.search('0012345678');
+  assert.match(paths.at(-1), /phone=0012345678/);
+  await service.search('Jane Doe');
+  assert.match(paths.at(-1), /first_name=Jane&last_name=Doe/);
+  await service.get('C1');
+  assert.equal(paths.at(-1), '/api/2.0/customers/C1');
+});
+
+test('customer read fails closed on incomplete remote search envelopes', async () => {
+  const { createLightspeedCustomersRead } = await import('../services/lightspeed/customers.js');
+  const service = createLightspeedCustomersRead({ transport: { async request() { return { warning: 'no results provided' }; } } });
+  await assert.rejects(service.search('Jane'), error => error.code === 'LIGHTSPEED_INCOMPLETE_SEARCH');
+});
+
+test('catalog category paths match legacy parent hierarchy and detect cycles', async () => {
+  const { createLightspeedCatalogRead, normalizeProductCategories } = await import('../services/lightspeed/catalog.js');
+  const entries = normalizeProductCategories({ data: [
+    { id: '1', name: 'Board Games', parent_id: null },
+    { id: '2', name: 'Strategy', parent_id: '1' },
+    { id: '3', name: 'Two Player', parent_id: '2' }
+  ] });
+  assert.equal(entries.find(x => x.id === '3').path, 'Board Games › Strategy › Two Player');
+  const cyc = normalizeProductCategories({ data: [
+    { id: 'A', name: 'A', parent_id: 'B' }, { id: 'B', name: 'B', parent_id: 'A' }
+  ] });
+  assert.equal(cyc.length, 2);
+  const seen = [];
+  const service = createLightspeedCatalogRead({ transport: { async request(path) { seen.push(path); return { data: [] }; } } });
+  await service.categories(); await service.suppliers(); await service.brands(); await service.tags();
+  assert.equal(seen.length, 4);
+  assert.equal(seen[0], '/api/2026-07/product_categories?page_size=1000&include=family');
+});
+
+test('shared product matching candidate retains Special Orders scoring and code zeros', async () => {
+  const { scorePotentialMatch, matchTokens, normalizeMatchText } = await import('../services/lightspeed/productIdentity.js');
+  assert.equal(normalizeMatchText('  ABC-001  '), 'abc 001');
+  assert.deepEqual(matchTokens('The Box of Space Marines'), ['of', 'space', 'marines']);
+  const exact = scorePotentialMatch('000123', { sku: '000123', name: 'Board Game' });
+  const other = scorePotentialMatch('123', { sku: '000123', name: 'Board Game' });
+  assert.equal(exact.score, 100);
+  assert.ok(exact.reasons.includes('exact code'));
+  assert.ok(other.score < exact.score);
+});
