@@ -1,6 +1,6 @@
+import { readLightspeedCollection } from './readCollection.js';
 // Read-only remote customer contract extracted from Special Orders search conventions.
 // Local profile enrichment remains a feature-owned responsibility until consumer migration.
-const unwrap = value => Array.isArray(value) ? value : (Array.isArray(value?.data) ? value.data : []);
 export function createLightspeedCustomersRead({ transport } = {}) {
   if (typeof transport?.request !== 'function') throw new TypeError('Shared Lightspeed transport required.');
   return Object.freeze({
@@ -19,13 +19,8 @@ export function createLightspeedCustomersRead({ transport } = {}) {
         params.set('first_name', parts[0]);
         if (parts.length > 1) params.set('last_name', parts.slice(1).join(' '));
       }
-      const response = await transport.request('/api/2026-04/search?' + params);
-      if (!Array.isArray(response) && !Array.isArray(response?.data)) {
-        const error = new Error('Customer search response incomplete.');
-        error.code = 'LIGHTSPEED_INCOMPLETE_SEARCH';
-        throw error;
-      }
-      return unwrap(response);
+      // Customer duplicate checks must never silently stop after the first 20 results.
+      return readLightspeedCollection({ transport, path: '/api/2026-04/search?' + params });
     }
   });
 }
