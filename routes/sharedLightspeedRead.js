@@ -52,11 +52,11 @@ export function createSharedLightspeedReadRouter({
   router.get('/customers/search', read('customers.search', 'customers', 'search', req => query(req.query.q)));
   router.get('/products/exact', read('products.exact', 'products', 'exact', req => query(req.query.q)));
   router.get('/inventory/products/:id', read('inventory.read', 'inventory', 'byProduct', req => id(req.params.id)));
-  router.get('/purchase-orders/:id', read('purchaseOrders.read', 'purchaseOrders', 'get', req => id(req.params.id),
+  router.get('/purchase-orders/:id', read('purchase-orders.read', 'purchaseOrders', 'get', req => id(req.params.id),
     po => ({ ...po, raw: undefined, lines: po.lines?.map(({ raw, ...line }) => line) || [] })));
   router.get('/sales/:id', read('sales.read', 'sales', 'get', req => id(req.params.id)));
   router.get('/fulfillments/sales/:id', read('fulfillments.read', 'fulfillments', 'forSale', req => id(req.params.id),
     records => records.map(({ raw, ...record }) => record)));
-  router.get('/store-credit/customers/:id', read('storeCredit.read', 'storeCredit', 'get', req => id(req.params.id)));
+  router.get('/store-credit/customers/:id', read('store-credit.read', 'storeCredit', 'get', req => id(req.params.id)));
   return router;
 }
