@@ -61,6 +61,12 @@ The following changes were added **after** the initial Phase 1 CI run and requir
 
 No production route, migration, vendor credential, database or Chrome integration is changed by these fixes. Feature consumers must use audited mutation entrypoints rather than calling transport writes directly.
 
+### Read-only reconciliation support
+
+The PostgreSQL idempotency adapter now provides a **backend-only** `inspect({scope,key})` method returning only fingerprint, state and creation/update/verification times for an exact operation key. This allows an authorized operator to identify pending, verified or unknown mutations without revealing the lease, stored vendor response or customer data. **It does not reset, retry, delete, release or reconcile any key**; manual vendor-side verification and a separately approved recovery contract remain required. PostgreSQL CI checks state transitions and confirms audit records cannot be updated, deleted or truncated.
+
+The mutation tests also prove that failure to append a terminal audit event **after** a verified vendor write cannot cause the same vendor operation to execute again on an idempotent replay.
+
 ## Release gates — still required
 
 - Code review of PR #32, schema design and identity/permission mapping.
