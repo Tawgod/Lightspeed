@@ -33,7 +33,7 @@ export function createLightspeedTransport({
     const verb = String(method).toUpperCase();
     if (!METHOD.has(verb)) throw new TypeError('Unsupported Lightspeed method.');
     if (typeof path !== 'string' || !path.startsWith('/api/') ||
-        path.includes('..') || /%2f|%5c|\\|[\r\n]/i.test(path) || path.startsWith('//')) {
+        path.includes('..') || /%2f|%5c|%2e|\\|[\x00-\x1f\x7f#]/i.test(path) || path.startsWith('//')) {
       throw new TypeError('Lightspeed path must be a local /api/ path.');
     }
     const url = new URL(path, origin);
