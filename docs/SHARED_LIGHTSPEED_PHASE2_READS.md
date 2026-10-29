@@ -1,6 +1,6 @@
 # Phase 2 Shared Lightspeed Reads — Candidate Contract
 
-**Status:** In Development / Testing (not merged or deployed)
+**Status:** In Development / Testing (not merged or deployed). Final permission contract CI passed on PR run `40919331215`.
 **Work branch:** `feature/shared-lightspeed-services-phase2-reads-20261029`
 **Dependency:** Phase 1 PR #32 / `feature/shared-lightspeed-services-phase1-20261029@7c20b3d9f90382b6fafeb5dc3d9a92108f4c14e1`
 **Authoritative code:** `Tawgod/Lightspeed:integration/hobby-corner-consolidation` until explicitly merged and deployed.
@@ -17,6 +17,15 @@
 - Updated Phase 1 customer search and supplier/brand/tag read contracts to reject potentially truncated list responses.
 - `routes/sharedLightspeedRead.js`: **UNMOUNTED** authenticated read-only gateway router factory, with operation-scoped existing Timeclock-backed staff policy. Response envelopes include `readOnly:true`. Production `server.js` is unchanged.
 - `tests/shared-lightspeed-reads.test.mjs`: pagination/redirect/duplicate/leading-zero/permission/read contract tests.
+
+## Shared employee/session permission contract
+
+- `services/lightspeed/permissions.js` declares the **exact canonical operation IDs** used by the new read gateway and provides `createHobbyCornerStaffLightspeedPolicy` for verified existing Timeclock sessions. It does **not** create a second employee or PIN system.
+- New shared reads require an active, server-verified Timeclock employee and `canLookup === true`. Current Timeclock `scannerEffectivePermissions()` grants Scanner lookup and review approval to every active employee; do not assume persisted `scanner_can_* ` columns currently restrict those permissions.
+- New shared writes are **denied by default** even if `canApprove === true`. Explicit server-only operation-specific write grants, construction-time write gates, audit, idempotency and readback are mandatory before any production mutation.
+- Independently verified service principals require explicit exact-operation service grants; browser-provided role claims never authorize access.
+- Existing Core Operations employee edit/create workflows remain unchanged; introducing restrictions there requires an independent store policy and browser acceptance review.
+- Shared specification: `Tawgod/Hobby-Corner:main/SHARED_STAFF_AUTH_PERMISSIONS.md`. Regression tests: `tests/shared-lightspeed-permissions.test.mjs`.
 
 ## Important boundaries
 
