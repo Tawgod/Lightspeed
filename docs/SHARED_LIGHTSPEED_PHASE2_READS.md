@@ -7,7 +7,7 @@
 
 ## Implemented (development-only)
 
-- `services/lightspeed/readCollection.js`: strict bounded list pagination, vendor shape validation, missing/ambiguous last-page detection, continuation cycle and off-host redirect rejection.
+- `services/lightspeed/readCollection.js`: strict bounded X-Series version-cursor collection reads and offset-based search pagination, vendor shape validation, missing/ambiguous last-page detection, continuation cycle and off-host redirect rejection.
 - `services/lightspeed/products.js`: Lightspeed remote product reads and exact SKU/UPC/product-code verification. Never select the first vendor result when an exact identifier was not found; preserve SKU zeros; reject ambiguous identities.
 - `services/lightspeed/inventory.js`: outlet/inventory-by-product read, preserves vendor representation and does not synthesize quantities when data missing.
 - `services/lightspeed/sales.js`: sale get and legacy invoice/customer/state read paths; no sales writes.
@@ -23,11 +23,11 @@
 - **Do not merge Phase 2 onto the Railway-connected integration branch before Phase 1 approval and release coordination.** The Phase 2 PR is stacked onto the Phase 1 branch.
 - No extension, UI, API routing, DB migration, production Lightspeed data, Railway environment or customer/employee record is changed.
 - Shared gateway endpoints remain unavailable until mounted explicitly after acceptance testing. No new production write APIs.
-- Vendor API versions/collection pagination patterns are based on current application source (Special Orders and existing PO Companion), not independently verified against the live Lightspeed tenant.
+- Versioned route paths are derived from current application source; pagination semantics were cross-checked with current official Lightspeed X-Series documentation. Real-tenant compatibility, scopes and return shapes still require a read-only acceptance pass.
 - The current PO Companion PR #31 owns its authenticated local supplier mapping and staff workflow. Its route must later consume this PO read contract without dropping reviewed values or introducing direct production credentials.
 - Feature-level customer/profile enrichment, PO local supplier mapping and Special Orders business workflow remain feature-owned; shared module owns only vendor read semantics.
 - The remote exact product reader checks multiple currently used vendor paths; incomplete replies refuse rather than infer absence. It must **not** automatically create a product.
-- The strict pagination helper intentionally fails if a full page is returned without a verified end of results. If Lightspeed uses a different next-page representation, adapt using verified response fixtures rather than relaxing checks.
+- The strict pagination helper follows documented version.max cursor chains until empty for collection endpoints, and offset until a short/empty page for /search. It fails closed on non-advancing cursors, row/page caps or unknown full-page responses. The SKU-filter list is treated as a single-page candidate because the API ignores other query parameters when SKU is provided; independent offset-paginated search supplies the exhaustive duplicate check.
 
 ## Recommended controlled consumer sequence
 
@@ -41,3 +41,11 @@
 ## Existing exception policy
 
 Scanner isolated test-store writer and RMS bulk migration remain separate. The shared gateway must never be configured with test and production write credentials interchangeably.
+
+## Official API reference verified 2026-10-29
+
+- X-Series cursor-based pagination: https://x-series-api.lightspeedhq.com/docs/pagination
+- Search uses `offset`/`page_size`: https://x-series-api.lightspeedhq.com/v2026.04/reference/search-1
+- PO list uses version cursor: https://x-series-api.lightspeedhq.com/v2026.04/reference/listpurchaseorders
+- Product `sku` lookup ignores other list params: https://x-series-api.lightspeedhq.com/reference/listproducts
+- Inventory redesign: https://x-series-api.lightspeedhq.com/docs/2026-04-release-notes — the existing Special Orders GET /inventory/:id is retained for a compatibility read. Bulk inventory and inventory-level scans must use the documented POST read endpoints in later migration work, even though the HTTP method is POST; never confuse that read operation with a write permission grant.
