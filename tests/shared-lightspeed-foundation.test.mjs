@@ -37,7 +37,7 @@ test('transport has credential-safe headers and preserves API versioned paths', 
 test('transport retries only safe reads', async () => {
   let attempts = 0;
   const client = createLightspeedTransport({
-    domain: 'shop', token: 'token', readRetries: 1,
+    domain: 'shop', token: 'token', readRetries: 1, mutationsAllowed: true,
     fetchImpl: async () => { attempts++; return response(503, { error: 'unavailable' }); }
   });
   await assert.rejects(client.request('/api/2.0/products'), error => error instanceof LightspeedTransportError && error.retryable);
@@ -50,7 +50,7 @@ test('transport retries only safe reads', async () => {
 test('transport marks uncertain write outcomes and never retries them', async () => {
   let attempts = 0;
   const client = createLightspeedTransport({
-    domain: 'shop', token: 'token',
+    domain: 'shop', token: 'token', mutationsAllowed: true,
     fetchImpl: async () => { attempts++; throw Error('network outage with opaque details'); }
   });
   await assert.rejects(client.request('/api/2026-01/sales', { method: 'POST', body: { x: 1 } }),
@@ -226,7 +226,7 @@ test('all vendor HTTP errors on writes remain uncertain and writes are never ret
   for (const status of [400, 409, 429, 500, 503]) {
     let calls = 0;
     const client = createLightspeedTransport({
-      domain: 'shop', token: 'secret', readRetries: 3,
+      domain: 'shop', token: 'secret', readRetries: 3, mutationsAllowed: true,
       fetchImpl: async () => { calls++; return response(status, { error: 'opaque' }); }
     });
     await assert.rejects(client.request('/api/2.0/sales', { method: 'POST', body: { sku: '000012' } }),
@@ -244,7 +244,7 @@ test('transport bounds responses and rejects non-JSON success without exposing r
   await assert.rejects(tooLarge.request('/api/2.0/products'),
     error => error.code === 'LIGHTSPEED_RESPONSE');
   const invalidJson = createLightspeedTransport({
-    domain: 'shop', token: 'secret',
+    domain: 'shop', token: 'secret', mutationsAllowed: true,
     fetchImpl: async () => ({ ok: true, status: 200, text: async () => '<html>private upstream output</html>' })
   });
   await assert.rejects(invalidJson.request('/api/2.0/products'),
@@ -318,4 +318,22 @@ test('transport fails closed on invalid UTF-8 rather than altering identifier by
   });
   await assert.rejects(client.request('/api/2.0/products'),
     error => error.code === 'LIGHTSPEED_RESPONSE');
+});
+
+test('transport defaults to read-only and requires a trusted explicit mutation opt-in', async () => {
+  let sent = 0;
+  const readOnly = createLightspeedTransport({
+    domain: 'shop', token: 'secret',
+    fetchImpl: async () => { sent++; return response(200, {}); }
+  });
+  assert.throws(() => createLightspeedTransport({ domain: 'shop', token: 'x', mutationsAllowed: 'yes' }), TypeError);
+  for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+    await assert.rejects(readOnly.request('/api/2026-07/products', {
+      method, body: { sku: '0001' }
+    }), error => error.code === 'LIGHTSPEED_WRITES_DISABLED' && error.mayHaveWritten === false);
+  }
+  assert.equal(sent, 0, 'no write request reached the network');
+  const read = await readOnly.request('/api/2026-07/products');
+  assert.deepEqual(read, {});
+  assert.equal(sent, 1);
 });
