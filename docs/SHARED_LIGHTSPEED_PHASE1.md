@@ -48,6 +48,19 @@ GitHub Actions `Shared Lightspeed foundation` runs:
 
 Initial CI on early implementation commits uncovered and corrected a SQL template-literal syntax issue; final successful CI run is linked in the central handoff. No production Lightspeed tenant or Railway API write tests were performed.
 
+## Additional fail-closed hardening — 2026-10-29
+
+The following changes were added **after** the initial Phase 1 CI run and require independent CI verification before the PR is considered ready again:
+
+- **Transport write uncertainty:** A vendor HTTP error, including 4xx/409/429 and 5xx, must be treated as **potentially committed** for POST/PUT/PATCH/DELETE. A remote system might have applied a mutation before issuing an error response; the gateway must never infer write failure solely from the HTTP status. Such writes are never automatically retried.
+- **Response safety:** Default 2 MiB response limit (configurable from 1 KiB to 16 MiB), with Content-Length early check and streaming byte limits where available. Success responses must parse as JSON or be empty; HTML/text masquerading as successful API output fails closed without exposing upstream body contents.
+- **API target validation:** Reject encoded dot segments, slashes/backslashes, control characters and fragments so URL normalization cannot silently change the intended API endpoint.
+- **Deterministic payload fingerprinting:** Only finite JSON primitives, plain objects and dense arrays are permitted. Reject dates/classes, getters/accessors, `toJSON`, undefined/BigInt, cycles, sparse arrays and payloads exceeding the 1 MiB/20,000-node/64-depth guard. Distinct wire-level JSON payloads must not collapse to the same fingerprint.
+- **Payload mutation races:** Compute a detached approved JSON snapshot for the vendor execution callback; fail before execution if caller-owned payload changed during atomic claim, and mark the outcome unknown after any attempted external write if it changes while executing. Future writers **must use the provided approved snapshot**, not recapture mutable request state.
+- **Operational guard:** A persisted pending/unknown key cannot be automatically retried; it needs authorized manual reconciliation. Even pre-execution payload mutation can leave a reserved key pending, intentionally blocking unsafe reuse.
+
+No production route, migration, vendor credential, database or Chrome integration is changed by these fixes. Feature consumers must use audited mutation entrypoints rather than calling transport writes directly.
+
 ## Release gates — still required
 
 - Code review of PR #32, schema design and identity/permission mapping.
