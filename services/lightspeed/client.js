@@ -17,7 +17,7 @@ export class LightspeedTransportError extends Error {
 
 export function createLightspeedTransport({
   domain, token, fetchImpl = globalThis.fetch, timeoutMs = 10000, readRetries = 1,
-  maxResponseBytes = 2 * 1024 * 1024
+  maxResponseBytes = 2 * 1024 * 1024, mutationsAllowed = false
 } = {}) {
   const store = String(domain || '').trim().toLowerCase();
   if (!DOMAIN.test(store) || !String(token || '').trim()) throw new Error('Valid Lightspeed server configuration required.');
@@ -27,6 +27,7 @@ export function createLightspeedTransport({
   if (!Number.isInteger(maxResponseBytes) || maxResponseBytes < 1024 || maxResponseBytes > 16 * 1024 * 1024) {
     throw new RangeError('Invalid maximum response size.');
   }
+  if (typeof mutationsAllowed !== 'boolean') throw new TypeError('Invalid mutation opt-in.');
   const origin = 'https://' + store + '.retail.lightspeed.app';
 
   async function request(path, { method = 'GET', body, correlationId } = {}) {
@@ -43,6 +44,13 @@ export function createLightspeedTransport({
       throw new TypeError('Invalid correlation ID.');
     }
     const isRead = verb === 'GET' || verb === 'HEAD';
+    // Any non-GET/HEAD call can change upstream state. The default transport
+    // cannot write even if a future consumer accidentally calls a write verb.
+    if (!isRead && !mutationsAllowed) {
+      throw new LightspeedTransportError('Lightspeed mutations are disabled for this transport.', {
+        status: 403, code: 'LIGHTSPEED_WRITES_DISABLED'
+      });
+    }
     const headers = {
       Authorization: 'Bearer ' + token,
       Accept: 'application/json',
