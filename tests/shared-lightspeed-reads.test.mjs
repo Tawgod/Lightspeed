@@ -144,3 +144,35 @@ test('shared read gateway denies unauthenticated and unauthorized reads before v
     assert.equal(r.status,400);assert.equal(called,1);
   } finally {await new Promise(resolve=>server.close(resolve));}
 });
+
+
+test('X-Series version-based purchase-order pagination continues until empty page', async () => {
+  const t=fake({
+    '/api/2026-04/purchase_orders?page_size=2': { data:[{id:'PO1'},{id:'PO2'}], version:{min:3,max:7} },
+    '/api/2026-04/purchase_orders?page_size=2&after=7': { data:[{id:'PO3'}], version:{min:9,max:9} },
+    '/api/2026-04/purchase_orders?page_size=2&after=9': { data:[], version:{min:null,max:null} }
+  });
+  const rows=await readLightspeedCollection({transport:t,path:'/api/2026-04/purchase_orders?page_size=2'});
+  assert.deepEqual(rows.map(x=>x.id),['PO1','PO2','PO3']);
+  assert.equal(t.paths.length,3);
+});
+test('X-Series search pagination uses offset, never version cursor', async () => {
+  const t=fake({
+    '/api/2026-04/search?type=customers&page_size=2': { data:[{id:'C1'},{id:'C2'}] },
+    '/api/2026-04/search?type=customers&page_size=2&offset=2': { data:[{id:'C3'}] }
+  });
+  const rows=await readLightspeedCollection({transport:t,path:'/api/2026-04/search?type=customers&page_size=2'});
+  assert.equal(rows.length,3);
+  assert.equal(t.paths.length,2);
+});
+test('vendor version cursor must advance and fit safely within JS precision', async () => {
+  const t=fake({
+    '/api/2026-04/purchase_orders?page_size=2': {data:[{id:'1'}],version:{max:'123'}},
+    '/api/2026-04/purchase_orders?page_size=2&after=123': {data:[{id:'1'}],version:{max:'123'}}
+  });
+  await assert.rejects(readLightspeedCollection({transport:t,path:'/api/2026-04/purchase_orders?page_size=2'}),
+    e=>e.code==='LIGHTSPEED_INCOMPLETE_READ');
+  const unsafe=fake({'/api/2026-04/items?page_size=2':{data:[{id:1}],version:{max:9007199254740992}}});
+  await assert.rejects(readLightspeedCollection({transport:unsafe,path:'/api/2026-04/items?page_size=2'}),
+    e=>e.code==='LIGHTSPEED_INCOMPLETE_READ');
+});
