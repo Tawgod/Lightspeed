@@ -118,7 +118,7 @@ test('shared read gateway denies unauthenticated and unauthorized reads before v
       if(req.get('authorization')!=='Bearer verified')throw Error('invalid session');
       return {id:'E1',active:true};
     },
-    checkPermission:async ({operation})=>operation==='purchaseOrders.read'
+    checkPermission:async ({operation})=>operation==='purchase-orders.read'
   });
   const router=createSharedLightspeedReadRouter({
     policy,
