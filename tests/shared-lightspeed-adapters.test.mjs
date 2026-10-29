@@ -130,3 +130,50 @@ test('audit must commit before mutation is attempted', async () => {
   }),e=>e.code==='LIGHTSPEED_AUDIT_UNAVAILABLE');
   assert.equal(calls,0);
 });
+
+test('a missing post-write audit receipt cannot cause a second vendor mutation on retry', async () => {
+  const persisted = new Map();
+  let writes = 0;
+  let failedOnce = false;
+  const audit = createLightspeedAudit({ append: async event => {
+    if (event.stage === 'verified' && !failedOnce) {
+      failedOnce = true;
+      throw Error('audit database momentarily unavailable');
+    }
+    return { id: 'audit-' + event.stage };
+  } });
+  const idempotency = createLightspeedIdempotency({ store: {
+    async claim({ scope, key, fingerprint }) {
+      const id = scope + '/' + key;
+      const current = persisted.get(id);
+      if (!current) { persisted.set(id, { fingerprint, state: 'pending' }); return { state: 'claimed', lease: 'lease' }; }
+      if (current.fingerprint !== fingerprint) return { state: 'conflict' };
+      return current.state === 'verified'
+        ? { state: 'replay', verified: true, fingerprint, result: current.result }
+        : { state: 'unknown' };
+    },
+    async complete({ scope, key, fingerprint, result }) {
+      persisted.set(scope + '/' + key, { fingerprint, state: 'verified', result });
+    },
+    async markUnknown() { throw Error('Should not mark verified record unknown.'); }
+  } });
+  const pipeline = createAuditedLightspeedMutation({
+    tenant: 'shop', environment: 'test', audit, idempotency,
+    policy: createLightspeedPolicy({
+      verifyService: async () => ({ id: 'svc', active: true }),
+      checkPermission: async () => true, writesAllowed: true
+    })
+  });
+  const job = {
+    principal: { type: 'service' }, operation: 'products.create',
+    correlationId: 'post-write-audit-001', key: 'post-write-audit-001',
+    entityType: 'product', payload: { sku: '000123' },
+    execute: async approved => { writes++; assert.equal(approved.sku, '000123'); return { id: 'P1' }; },
+    verifyReadback: async result => result.id === 'P1'
+  };
+  await assert.rejects(pipeline.run(job), error => error.code === 'LIGHTSPEED_AUDIT_UNAVAILABLE');
+  assert.equal(writes, 1);
+  const replay = await pipeline.run(job);
+  assert.equal(replay.replayed, true);
+  assert.equal(writes, 1, 'verified persistent key blocks duplicate vendor write');
+});
