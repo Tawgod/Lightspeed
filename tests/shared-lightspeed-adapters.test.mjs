@@ -84,11 +84,11 @@ test('mutation pipeline refuses writes when policy rejects; records verified suc
     policy: createLightspeedPolicy({
       verifyEmployee: async () => ({id:'E1',active:true}),
       checkPermission: async () => true
-    }),audit,idempotency
+    }),audit,idempotency,tenant:'isolated-test',environment:'test'
   });
   const input = {
     principal: {type:'employee'}, operation:'products.create', tenant:'isolated-test',
-    environment:'test', correlationId:'trace-001',key:'inventory-test-001',
+    correlationId:'trace-001',key:'inventory-test-001',
     entityType:'product', payload:{sku:'000101'},
     execute:async () => {writes++;return{id:'P1'};},
     verifyReadback:async result => result.id === 'P1'
@@ -101,7 +101,7 @@ test('mutation pipeline refuses writes when policy rejects; records verified suc
       verifyEmployee: async () => ({id:'E1',active:true}),
       checkPermission: async () => true,
       writesAllowed:true
-    }),audit,idempotency
+    }),audit,idempotency,tenant:'isolated-test',environment:'test'
   });
   await enabled.run(input);
   const replay = await enabled.run(input);
@@ -117,13 +117,14 @@ test('audit must commit before mutation is attempted', async () => {
     policy:createLightspeedPolicy({verifyService:async () => ({id:'svc',active:true}),
       checkPermission:async () => true,writesAllowed:true}),
     audit:createLightspeedAudit({append:async () => {throw Error('offline');}}),
+    tenant:'testshop', environment:'test',
     idempotency:createLightspeedIdempotency({store:{
       async claim(){calls++;return{state:'claimed',lease:'test'};},
       async complete(){},async markUnknown(){}
     }})
   });
   await assert.rejects(pipeline.run({
-    principal:{type:'service'},operation:'products.create',environment:'test',tenant:'testshop',
+    principal:{type:'service'},operation:'products.create',
     correlationId:'trace',key:'example-test-01',entityType:'product',payload:{sku:'0001'},
     execute:async () => {calls++;return{id:'P1'};},verifyReadback:async () => true
   }),e=>e.code==='LIGHTSPEED_AUDIT_UNAVAILABLE');
