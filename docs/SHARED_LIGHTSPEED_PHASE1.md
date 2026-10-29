@@ -10,6 +10,9 @@
 - services/lightspeed/policy.js — delegates authentication to existing Timeclock/staff gateway or a separately verified service identity; defaults to deny and blocks all writes without explicit server-side gates.
 - services/lightspeed/audit.js — append-only audit event contract requiring a durable persistence adapter, metadata-only records and confirmed append receipts.
 - services/lightspeed/idempotency.js — deterministic payload fingerprint, atomic claim/lease contract, verified-only replay, unknown-write isolation; requires persistent store adapter.
+- services/lightspeed/customers.js — remote read-only customer get/search; preserves Special Orders search query classification while local profile enrichment remains feature-owned.
+- services/lightspeed/catalog.js — read-only category, supplier, brand and tag lookups; category hierarchy parser extracted from existing Special Orders behavior. Supplier/brand/tag endpoints remain unverified against a live tenant.
+- services/lightspeed/productIdentity.js — extracted, unchanged Special Orders scoring helpers; legacy code is retained for later parity-based consumer migration.
 - scripts/audit-lightspeed-consumers.mjs — current raw-access inventory; on PRs, rejects new vendor credential/URL access outside canonical transport and explicit isolated exceptions.
 
 ## Safety and readiness
@@ -23,6 +26,12 @@
 **Retries:** automatic retries are only for GET/HEAD; POST/PUT/PATCH/DELETE network failures are potentially completed writes and must be reconciled by read-back rather than repeated.
 
 **Exceptions:** Scanner test-tenant writer and RMS migration flows are not redirected through production. The audit scanner's path exception is detection-only, not a permission grant. Every exception needs manual review before merge.
+
+## Verification of read contracts
+
+- Node contract tests cover customer query shapes, incomplete searches, category paths/cycles, and product scoring/leading zeros in addition to transport, policy, audit and idempotency.
+- The extracted matching helpers have not replaced the existing Special Orders implementation; runtime parity and consumer integration are still pending.
+- No live Lightspeed calls were performed. Confirm read endpoint versions and pagination against the test tenant before enabling feature consumers.
 
 ## Next gates
 
