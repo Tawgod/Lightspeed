@@ -309,3 +309,13 @@ test('mutation marks uncertain if caller changes payload after vendor execution 
   assert.equal(unknown, true);
   assert.equal(persisted, false);
 });
+
+test('transport fails closed on invalid UTF-8 rather than altering identifier bytes', async () => {
+  const bytes = new Uint8Array([123, 34, 105, 100, 34, 58, 34, 255, 34, 125]);
+  const client = createLightspeedTransport({
+    domain: 'shop', token: 'secret',
+    fetchImpl: async () => new Response(bytes, { status: 200 })
+  });
+  await assert.rejects(client.request('/api/2.0/products'),
+    error => error.code === 'LIGHTSPEED_RESPONSE');
+});
