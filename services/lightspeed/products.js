@@ -30,7 +30,10 @@ export function createLightspeedProductsRead({ transport } = {}) {
         '/api/2026-07/products?sku=' + encodeURIComponent(q.toLowerCase()) + '&page_size=1000',
         '/api/2026-07/search?type=products&sku=' + encodeURIComponent(q.toLowerCase()) + '&page_size=20'
       ];
-      const [primary, secondary] = await Promise.all(paths.map(path => readLightspeedCollection({transport,path})));
+      const [primary, secondary] = await Promise.all(paths.map((path, index) =>
+        readLightspeedCollection({ transport, path, pagination: index === 0 ? 'single' : 'offset' })));
+      // The SKU filter ignores other list parameters per Lightspeed documentation;
+      // exhaustive duplicate checks rely on the independent offset-paginated search.
       const found = new Map();
       for (const p of findExactLightspeedProducts(q, [...primary, ...secondary])) {
         if (!p?.id) throw new LightspeedIncompleteReadError('Matched product missing remote ID.');
