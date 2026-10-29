@@ -68,7 +68,9 @@ export async function readLightspeedCollection({
     if (body?.pagination?.has_next === true || body?.pagination?.hasNext === true) {
       invalid('Next page advertised without usable continuation.');
     }
-    if (!rows.length || mode === 'single') { current = null; continue; }
+    const explicitEnd = (body?.links && Object.hasOwn(body.links, 'next') && body.links.next === null) ||
+      (body?.pagination && Object.hasOwn(body.pagination, 'next') && body.pagination.next === null);
+    if (explicitEnd || !rows.length || mode === 'single') { current = null; continue; }
     if (mode === 'offset') {
       // X-Series search uses offset+page_size, not version cursor.
       // A full page is ambiguous: request another offset until short or empty.
