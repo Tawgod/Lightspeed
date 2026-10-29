@@ -212,3 +212,100 @@ test('shared product matching candidate retains Special Orders scoring and code 
   assert.ok(exact.reasons.includes('exact code'));
   assert.ok(other.score < exact.score);
 });
+
+test('transport rejects encoded traversal, fragments, and invalid size limits', async () => {
+  assert.throws(() => createLightspeedTransport({ domain: 'shop', token: 'x', maxResponseBytes: 0 }), RangeError);
+  const client = createLightspeedTransport({ domain: 'shop', token: 'x', fetchImpl: async () => response(200, {}) });
+  await assert.rejects(client.request('/api/%2e%2e/anything'), TypeError);
+  await assert.rejects(client.request('/api/2.0/%2Eadmin'), TypeError);
+  await assert.rejects(client.request('/api/2.0/sales#unexpected-fragment'), TypeError);
+  await assert.rejects(client.request('/api/2.0/sales\tbad'), TypeError);
+});
+
+test('all vendor HTTP errors on writes remain uncertain and writes are never retried', async () => {
+  for (const status of [400, 409, 429, 500, 503]) {
+    let calls = 0;
+    const client = createLightspeedTransport({
+      domain: 'shop', token: 'secret', readRetries: 3,
+      fetchImpl: async () => { calls++; return response(status, { error: 'opaque' }); }
+    });
+    await assert.rejects(client.request('/api/2.0/sales', { method: 'POST', body: { sku: '000012' } }),
+      error => error instanceof LightspeedTransportError &&
+        error.status === status && error.mayHaveWritten === true && error.retryable === false);
+    assert.equal(calls, 1, 'never automatically repeat a write');
+  }
+});
+
+test('transport bounds responses and rejects non-JSON success without exposing raw contents', async () => {
+  const tooLarge = createLightspeedTransport({
+    domain: 'shop', token: 'secret', maxResponseBytes: 1024,
+    fetchImpl: async () => new Response('x'.repeat(2048), { status: 200 })
+  });
+  await assert.rejects(tooLarge.request('/api/2.0/products'),
+    error => error.code === 'LIGHTSPEED_RESPONSE');
+  const invalidJson = createLightspeedTransport({
+    domain: 'shop', token: 'secret',
+    fetchImpl: async () => ({ ok: true, status: 200, text: async () => '<html>private upstream output</html>' })
+  });
+  await assert.rejects(invalidJson.request('/api/2.0/products'),
+    error => error.code === 'LIGHTSPEED_RESPONSE_JSON' && !error.message.includes('private upstream'));
+  await assert.rejects(invalidJson.request('/api/2.0/products', { method: 'POST', body: {} }),
+    error => error.code === 'LIGHTSPEED_RESPONSE_JSON' && error.mayHaveWritten === true);
+});
+
+test('mutation fingerprints reject non-JSON and potentially ambiguous serialization', () => {
+  const cycle = {}; cycle.self = cycle;
+  const getter = {}; Object.defineProperty(getter, 'sku', { enumerable: true, get() { return '0001'; } });
+  for (const item of [undefined, { sku: undefined }, { quantity: Infinity }, cycle,
+    { when: new Date('2026-10-29') }, { access: getter }, [,'a'], { id: 1n }]) {
+    assert.throws(() => fingerprintLightspeedPayload(item), TypeError);
+  }
+  assert.equal(fingerprintLightspeedPayload({ sku: '0001', cost: 2.5 }),
+    fingerprintLightspeedPayload({ cost: 2.5, sku: '0001' }));
+  assert.notEqual(fingerprintLightspeedPayload({ sku: '0001' }),
+    fingerprintLightspeedPayload({ sku: '1' }));
+});
+
+test('mutation uses detached JSON snapshot and refuses a caller payload changed before execution', async () => {
+  const payload = { sku: '0001' };
+  let executions = 0, state = 'new';
+  const store = {
+    async claim() {
+      if (state !== 'new') return { state: 'unknown' };
+      state = 'pending';
+      payload.sku = '0002'; // Simulate concurrent request mutation while awaiting the store.
+      return { state: 'claimed', lease: 'lease' };
+    },
+    async complete() { throw Error('No write should have happened'); },
+    async markUnknown() { state = 'unknown'; }
+  };
+  const gate = createLightspeedIdempotency({ store });
+  await assert.rejects(gate.run({
+    key: 'mutated-payload-001', scope: 'products.create', payload,
+    execute: async () => { executions++; return { id: 'P1' }; },
+    verifyReadback: async () => true
+  }), error => error.code === 'LIGHTSPEED_MUTATION_UNKNOWN' && error.mayHaveWritten === false);
+  assert.equal(executions, 0);
+});
+
+test('mutation marks uncertain if caller changes payload after vendor execution begins', async () => {
+  const payload = { sku: '0001' };
+  let unknown = false, persisted = false;
+  const gate = createLightspeedIdempotency({ store: {
+    async claim() { return { state: 'claimed', lease: 'lease' }; },
+    async complete() { persisted = true; },
+    async markUnknown() { unknown = true; }
+  } });
+  await assert.rejects(gate.run({
+    key: 'mutation-race-001', scope: 'products.create', payload,
+    execute: async approved => {
+      assert.deepEqual(approved, { sku: '0001' });
+      assert.notEqual(approved, payload);
+      payload.sku = '0002';
+      return { id: 'P1' };
+    },
+    verifyReadback: async () => true
+  }), error => error.code === 'LIGHTSPEED_MUTATION_UNKNOWN' && error.mayHaveWritten === true);
+  assert.equal(unknown, true);
+  assert.equal(persisted, false);
+});
