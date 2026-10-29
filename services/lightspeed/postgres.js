@@ -31,6 +31,28 @@ export function createPostgresLightspeedAuditAppend({ pool } = {}) {
 export function createPostgresLightspeedIdempotencyStore({ pool } = {}) {
   requirePool(pool);
   return Object.freeze({
+    // Read-only operator reconciliation metadata. No lease, raw request, or stored
+    // vendor response is returned; never mount this method as a public endpoint.
+    async inspect({ scope, key }) {
+      if (typeof scope !== 'string' || !/^[a-z][a-z0-9_.:-]{2,190}$/.test(scope) ||
+          typeof key !== 'string' || !/^[A-Za-z0-9_.:-]{8,150}$/.test(key)) {
+        throw new TypeError('Valid idempotency scope and key required.');
+      }
+      const found = await pool.query(
+        `SELECT fingerprint,state,created_at,updated_at,verified_at
+         FROM hc_lightspeed_idempotency WHERE scope=$1 AND operation_key=$2`,
+        [scope, key]
+      );
+      if (found?.rowCount === 0) return null;
+      const row = checkedRow(found, 'Mutation inspection');
+      return Object.freeze({
+        fingerprint: row.fingerprint,
+        state: row.state,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        verifiedAt: row.verified_at
+      });
+    },
     async claim({ scope, key, fingerprint }) {
       const lease = randomUUID();
       const claimed = await pool.query(
