@@ -6,19 +6,19 @@ const DENIED = () => Object.assign(new Error('Lightspeed operation not authorize
 });
 
 export function createLightspeedPolicy({
-  verifyEmployee, verifyService, checkPermission
+  verifyEmployee, verifyService, checkPermission,
+  writesAllowed = false, productionWritesAllowed = false
 } = {}) {
   if (typeof checkPermission !== 'function') throw new TypeError('An explicit permission adapter is required.');
 
   async function authorize({
-    principal, operation, mode, environment = 'production',
-    writeEnabled = false, productionWriteApproved = false
+    principal, operation, mode, environment = 'production'
   } = {}) {
     if (!VALID_OPERATION.test(String(operation || '')) ||
         !['read', 'write'].includes(mode) ||
         !['production', 'test'].includes(environment) ||
         !['employee', 'service'].includes(principal?.type)) throw DENIED();
-    if (mode === 'write' && (!writeEnabled || (environment === 'production' && !productionWriteApproved))) {
+    if (mode === 'write' && (!writesAllowed || (environment === 'production' && !productionWritesAllowed))) {
       throw DENIED();
     }
     const verifier = principal.type === 'employee' ? verifyEmployee : verifyService;
