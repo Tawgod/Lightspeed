@@ -65,3 +65,5 @@ The stacked Phase 2 branch now contains the same reviewed Phase 1 safeguards: co
 
 
 - Additional transport integrity guard (2026-10-29): streaming JSON decoding uses fatal UTF-8 validation, rejecting malformed byte sequences instead of silently replacing characters in product identifiers. Covered by regression test; not mounted in production.
+
+**Defense in depth (transport opt-in):** `createLightspeedTransport` now defaults to `mutationsAllowed:false`. POST/PUT/PATCH/DELETE are refused *before network activity* unless a trusted backend constructor explicitly opts in. This option does **not** replace the independent verified identity, permission, durable audit/idempotency and readback gates; downstream write consumers must use all gates. Any future vendor read endpoint requiring POST must have an explicitly reviewed dedicated read-only handling contract rather than silently enabling arbitrary mutations. The default remains safe for existing GET/HEAD read consumers.
