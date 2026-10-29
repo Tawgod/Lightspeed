@@ -69,6 +69,8 @@ test('real PostgreSQL: concurrency, verified replay, unknown write, immutable au
       [receipt.eventId]
     ), /append-only/);
 
+    await assert.rejects(pool.query('TRUNCATE hc_lightspeed_audit'), /append-only/);
+
     const actual = createLightspeedIdempotency({ store: storeA });
     let attempted = 0;
     const input = { key: 'integration-gated-003', scope, payload: { sku: '000100' },
