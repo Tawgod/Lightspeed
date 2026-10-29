@@ -63,3 +63,5 @@ Scanner isolated test-store writer and RMS bulk migration remain separate. The s
 
 The stacked Phase 2 branch now contains the same reviewed Phase 1 safeguards: conservative uncertain-write HTTP results; strict/local API paths; streamed response byte limits and strict JSON success; deterministic plain-JSON payload fingerprinting with mutation-race protection; read-only PostgreSQL pending/unknown-key inspection; audited replay safety and audit TRUNCATE coverage. There are **no new production routes or production vendor write permissions**. These changes must be inherited from PR #32 when the stacked branch is finally rebased/retargeted, without accidentally dropping the Phase 2 read/permissions test expectations.
 
+
+- Additional transport integrity guard (2026-10-29): streaming JSON decoding uses fatal UTF-8 validation, rejecting malformed byte sequences instead of silently replacing characters in product identifiers. Covered by regression test; not mounted in production.
