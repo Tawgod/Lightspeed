@@ -1,0 +1,43 @@
+# Phase 2 Shared Lightspeed Reads — Candidate Contract
+
+**Status:** In Development / Testing (not merged or deployed)
+**Work branch:** `feature/shared-lightspeed-services-phase2-reads-20261029`
+**Dependency:** Phase 1 PR #32 / `feature/shared-lightspeed-services-phase1-20261029@7c20b3d9f90382b6fafeb5dc3d9a92108f4c14e1`
+**Authoritative code:** `Tawgod/Lightspeed:integration/hobby-corner-consolidation` until explicitly merged and deployed.
+
+## Implemented (development-only)
+
+- `services/lightspeed/readCollection.js`: strict bounded list pagination, vendor shape validation, missing/ambiguous last-page detection, continuation cycle and off-host redirect rejection.
+- `services/lightspeed/products.js`: Lightspeed remote product reads and exact SKU/UPC/product-code verification. Never select the first vendor result when an exact identifier was not found; preserve SKU zeros; reject ambiguous identities.
+- `services/lightspeed/inventory.js`: outlet/inventory-by-product read, preserves vendor representation and does not synthesize quantities when data missing.
+- `services/lightspeed/sales.js`: sale get and legacy invoice/customer/state read paths; no sales writes.
+- `services/lightspeed/fulfillments.js`: sale fulfillment list read and normalized status with raw internal payload retained.
+- `services/lightspeed/purchaseOrders.js`: PO list and lines via the same `2026-04` endpoints used in current Ordering and PO Companion candidate. Requires complete lists and unique PO identity. Supplier SKU, UPC and SKU remain strings, including leading zeros; absent quantity remains null rather than silently zero.
+- `services/lightspeed/storeCredit.js`: read-only store credit; no credit transaction capability.
+- Updated Phase 1 customer search and supplier/brand/tag read contracts to reject potentially truncated list responses.
+- `routes/sharedLightspeedRead.js`: **UNMOUNTED** authenticated read-only gateway router factory, with operation-scoped existing Timeclock-backed staff policy. Response envelopes include `readOnly:true`. Production `server.js` is unchanged.
+- `tests/shared-lightspeed-reads.test.mjs`: pagination/redirect/duplicate/leading-zero/permission/read contract tests.
+
+## Important boundaries
+
+- **Do not merge Phase 2 onto the Railway-connected integration branch before Phase 1 approval and release coordination.** The Phase 2 PR is stacked onto the Phase 1 branch.
+- No extension, UI, API routing, DB migration, production Lightspeed data, Railway environment or customer/employee record is changed.
+- Shared gateway endpoints remain unavailable until mounted explicitly after acceptance testing. No new production write APIs.
+- Vendor API versions/collection pagination patterns are based on current application source (Special Orders and existing PO Companion), not independently verified against the live Lightspeed tenant.
+- The current PO Companion PR #31 owns its authenticated local supplier mapping and staff workflow. Its route must later consume this PO read contract without dropping reviewed values or introducing direct production credentials.
+- Feature-level customer/profile enrichment, PO local supplier mapping and Special Orders business workflow remain feature-owned; shared module owns only vendor read semantics.
+- The remote exact product reader checks multiple currently used vendor paths; incomplete replies refuse rather than infer absence. It must **not** automatically create a product.
+- The strict pagination helper intentionally fails if a full page is returned without a verified end of results. If Lightspeed uses a different next-page representation, adapt using verified response fixtures rather than relaxing checks.
+
+## Recommended controlled consumer sequence
+
+1. Run CI and code review for this stacked PR. Verify API versions and pagination with real read-only test tenant credentials before mounting the gateway.
+2. Introduce an internal, controlled switch for one existing read consumer, with byte/shape parity fixtures.
+3. Switch PO Companion and Ordering read-only PO lookup to `purchaseOrders.js`, preserving local supplier SKU mappings, draft state and authorization.
+4. Switch customer and product lookup without altering Special Orders/Scanner match-or-create semantics.
+5. Migrate inventory, sales/fulfillments and store-credit reads using feature-specific regression checks.
+6. Only after all read consumers pass, plan Phase 3 controlled production-write conversion.
+
+## Existing exception policy
+
+Scanner isolated test-store writer and RMS bulk migration remain separate. The shared gateway must never be configured with test and production write credentials interchangeably.
