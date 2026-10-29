@@ -9,10 +9,11 @@ const normalized = v => String(v).trim().toLowerCase();
 export function findExactLightspeedProducts(query, products) {
   const q = normalized(query);
   if (!q || !Array.isArray(products)) return [];
-  const digits = String(query).replace(/\D/g, '');
+  const numericCode = /^[0-9\s()-]+$/.test(String(query));
+  const digits = numericCode ? String(query).replace(/\D/g, '') : '';
   return products.filter(product =>
     codes(product).some(value => normalized(value) === q ||
-      (digits.length >= 6 && /^\D*\d[\d\s()-]*$/.test(String(value)) &&
+      (digits.length >= 6 && /^[0-9\s()-]+$/.test(String(value)) &&
        String(value).replace(/\D/g,'') === digits)));
 }
 export function createLightspeedProductsRead({ transport } = {}) {
