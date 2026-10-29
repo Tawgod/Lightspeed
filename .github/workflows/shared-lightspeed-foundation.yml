@@ -23,6 +23,13 @@ jobs:
           node-version: '22'
       - name: Contract tests
         run: node --test tests/shared-lightspeed-foundation.test.mjs
+      - name: Existing backend parse check
+        run: node --check server.js
+      - name: Scanner and Core Operations regressions
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          node --test tests/scanner*.test.js
+          node --test tests/core-ops-navigation.test.mjs tests/core-ops-auth-session.test.mjs
       - name: Source inventory
         run: node scripts/audit-lightspeed-consumers.mjs
       - name: Reject newly introduced direct production Lightspeed clients
