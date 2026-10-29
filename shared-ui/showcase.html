@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hobby Corner — Shared UI beta preview</title>
+<link rel="stylesheet" href="./hc.css">
+</head>
+<body class="hc-ui">
+<div class="hc-shell">
+  <nav class="hc-sidebar" aria-label="Preview navigation">
+    <div class="hc-brand"><img src="./assets/hc-icon.webp" width="54" height="54" alt="" class="hc-brand-icon"><div><strong>HOBBY CORNER</strong><div class="hc-small" style="opacity:.8">UI kit · beta preview</div></div></div>
+    <a href="#dashboard" aria-current="page">Dashboard</a>
+    <a href="#special-orders">Special Orders</a>
+    <a href="#product-review">Product Scanner</a>
+    <a href="#components">UI Components</a>
+    <a href="#copy-example">Copy &amp; paste</a>
+    <p class="hc-small" style="padding:12px;color:#dbe9fa">Examples only. No live data or business operations.</p>
+  </nav>
+  <div class="hc-workspace">
+    <header class="hc-topbar"><img src="./assets/hc-wordmark.webp" width="126" height="53" class="hc-wordmark" alt="The Hobby Corner logo"><span class="hc-title">Employee Workspace</span><span class="hc-spacer"></span>
+      <span class="hc-badge hc-badge--warning">Beta preview</span>
+    </header>
+    <main id="dashboard" class="hc-page">
+      <div class="hc-page-heading"><div><h1>Shared Addon UI · beta foundation</h1>
+        <p>Reusable layout and controls for Special Orders, Ordering, Preorders, Timeclock, Product Scanner and more.</p></div>
+        <button type="button" class="hc-button" id="open-confirmation">Preview confirmation</button>
+      </div>
+      <div class="hc-alert" role="note" style="margin-bottom:16px">
+        <strong>Demonstration only.</strong> All numbers, names and states below are example content. No live Lightspeed connection or writes.
+      </div>
+      <div class="hc-grid">
+        <section class="hc-panel hc-span-8" aria-labelledby="actions-title">
+          <div class="hc-panel-header"><h2 id="actions-title">Quick actions</h2><span class="hc-small hc-muted">Clear primary task</span></div>
+          <div class="hc-panel-body">
+            <div class="hc-row">
+              <button class="hc-button" type="button" id="show-loading">Simulate loading</button>
+              <button class="hc-button hc-button--secondary" type="button" id="show-empty">Show empty state</button>
+              <button class="hc-button hc-button--quiet" type="button" id="show-success">Show feedback</button>
+            </div>
+            <div id="feedback" class="hc-inset" role="status" aria-live="polite" style="margin-top:14px">Choose an action to preview clear feedback.</div>
+          </div>
+        </section>
+        <section class="hc-panel hc-span-4" aria-labelledby="states-title">
+          <div class="hc-panel-header"><h2 id="states-title">Status examples</h2></div>
+          <div class="hc-panel-body hc-stack"><div class="hc-row"><span class="hc-badge hc-badge--success">Completed</span><span class="hc-badge hc-badge--info">In progress</span></div>
+            <div class="hc-row"><span class="hc-badge hc-badge--warning">Needs review</span><span class="hc-badge hc-badge--danger">Error</span></div>
+            <div class="hc-row"><span class="hc-badge hc-badge--neutral">Pending</span></div>
+          </div>
+        </section>
+        <section class="hc-panel hc-span-8" id="special-orders" aria-labelledby="orders-title">
+          <div class="hc-panel-header"><h2 id="orders-title">Sample Special Orders</h2><button class="hc-button hc-button--secondary" id="sample-refresh" type="button">Refresh sample</button></div>
+          <div class="hc-panel-body">
+            <div class="hc-row" style="margin-bottom:13px"><div class="hc-field hc-grow"><label for="sample-search">Search sample records</label>
+              <input class="hc-input" id="sample-search" placeholder="Order number, product, or status"></div></div>
+            <div class="hc-table-scroll">
+              <table class="hc-table"><thead><tr><th scope="col">Order</th><th scope="col">Product</th><th scope="col">Status</th><th scope="col">Action</th></tr></thead>
+              <tbody id="sample-rows">
+                <tr><td class="hc-mono">SO-EXAMPLE-01</td><td>Sample model kit</td><td><span class="hc-badge hc-badge--info">In progress</span></td><td><button type="button" class="hc-button hc-button--quiet" data-preview="SO-EXAMPLE-01">View</button></td></tr>
+                <tr><td class="hc-mono">SO-EXAMPLE-02</td><td>Sample train set</td><td><span class="hc-badge hc-badge--warning">Needs review</span></td><td><button type="button" class="hc-button hc-button--quiet" data-preview="SO-EXAMPLE-02">View</button></td></tr>
+                <tr><td class="hc-mono">SO-EXAMPLE-03</td><td>Sample card game</td><td><span class="hc-badge hc-badge--success">Completed</span></td><td><button type="button" class="hc-button hc-button--quiet" data-preview="SO-EXAMPLE-03">View</button></td></tr>
+              </tbody></table></div>
+            <div id="no-results" class="hc-empty" hidden><strong>No matching sample records.</strong><p>Try a different search.</p></div>
+          </div>
+        </section>
+        <section class="hc-panel hc-panel--drawer hc-span-4" id="product-review" aria-labelledby="drawer-title">
+          <div class="hc-panel-header"><h2 id="drawer-title">Product review drawer</h2><span class="hc-badge hc-badge--neutral">Preview</span></div>
+          <div class="hc-panel-body hc-stack">
+            <div class="hc-field"><label for="example-sku">SKU (preserve leading zeros)</label>
+              <input class="hc-input hc-mono" id="example-sku" value="0000123405"></div>
+            <div class="hc-field"><label for="example-quantity">Quantity</label><input class="hc-input" id="example-quantity" type="number" min="1" value="1"></div>
+            <div class="hc-field"><label for="example-note">Notes</label><textarea class="hc-textarea" id="example-note">Keep exact whitespace
+and line breaks.</textarea>
+              <p class="hc-field-note">Draft inputs do not save or change any records.</p></div>
+            <div class="hc-row"><button class="hc-button" type="button" id="review-demo">Preview review</button><button class="hc-button hc-button--secondary" type="button" id="reset-demo">Reset</button></div>
+          </div>
+        </section>
+        <section class="hc-panel hc-span-6" id="components" aria-labelledby="buttons-title">
+          <div class="hc-panel-header"><h2 id="buttons-title">Action hierarchy</h2></div>
+          <div class="hc-panel-body hc-stack"><div class="hc-row">
+            <button class="hc-button" type="button" id="primary-sample">Primary</button>
+            <button class="hc-button hc-button--secondary" type="button" id="secondary-sample">Secondary</button>
+            <button class="hc-button hc-button--quiet" type="button" id="quiet-sample">Quiet</button>
+            <button class="hc-button hc-button--danger" type="button" id="danger-sample">Destructive example</button>
+            <button class="hc-button" disabled type="button">Disabled</button>
+          </div><div class="hc-alert hc-alert--warning" role="note">A staged request is <strong>not</strong> an approved change.</div>
+            <div class="hc-alert hc-alert--danger" role="note">Permission unverified: keep write controls unavailable.</div>
+          </div>
+        </section>
+        <section class="hc-panel hc-span-6" id="copy-example" aria-labelledby="copy-title">
+          <div class="hc-panel-header"><h2 id="copy-title">Copy &amp; paste fidelity</h2></div>
+          <div class="hc-panel-body hc-stack">
+            <div class="hc-field"><label for="copy-content">Source text (copy exactly)</label>
+              <textarea id="copy-content" class="hc-textarea hc-mono" rows="4">SKU: 0000123405
+Product: Example R/C Kit
+Note:  multiple  spaces
+Units: 2 × 10 cm</textarea></div>
+            <div class="hc-row"><button type="button" class="hc-button" id="copy-plain">Copy exact text</button>
+              <span class="hc-small hc-muted">Original newlines and leading zeros retained</span></div>
+            <div id="copy-status" role="status" aria-live="polite" class="hc-field-note">Ready to copy.</div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+</div>
+<dialog class="hc-modal" id="example-dialog" aria-labelledby="dialog-title">
+  <div class="hc-panel-header"><h2 id="dialog-title">Review before continuing</h2></div>
+  <div class="hc-panel-body hc-stack">
+    <p>This example shows the confirmation pattern. It performs no write or approval.</p>
+    <div class="hc-inset">Operation: Demonstration only · Selected records: 0</div>
+    <div class="hc-row" style="justify-content:flex-end">
+      <button type="button" class="hc-button hc-button--secondary" id="cancel-dialog">Cancel</button>
+      <button type="button" class="hc-button" id="confirm-dialog">Close preview</button>
+    </div>
+  </div>
+</dialog>
+<script type="module" src="./showcase.mjs"></script>
+</body></html>
