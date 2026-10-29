@@ -1,3 +1,4 @@
+import { createStaffLightspeedPolicy } from './staffAdapter.js';
 // Hobby Corner shared Lightspeed operation authorization.
 // READ permissions match current Timeclock-backed Scanner lookup (active + canLookup).
 // WRITES stay disabled unless a trusted backend grant function authorizes the exact
@@ -58,4 +59,20 @@ export function createLightspeedPermissionChecker({
     return typeof employeeWriteGrant === 'function' &&
       await employeeWriteGrant({ identity, operation, environment }) === true;
   };
+}
+
+/**
+ * Recommended integration factory for new Hobby Corner shared Lightspeed readers.
+ * Current Timeclock authorization is re-checked via verifyEmployeeRequest(req).
+ * Old feature routes retain their existing authorization until individually migrated.
+ */
+export function createHobbyCornerStaffLightspeedPolicy({
+  verifyEmployeeRequest, verifyService, employeeWriteGrant, serviceGrant,
+  writesAllowed = false, productionWritesAllowed = false
+} = {}) {
+  const checkPermission = createLightspeedPermissionChecker({ employeeWriteGrant, serviceGrant });
+  return createStaffLightspeedPolicy({
+    verifyEmployeeRequest, verifyService, checkPermission,
+    writesAllowed, productionWritesAllowed
+  });
 }
