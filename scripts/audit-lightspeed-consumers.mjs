@@ -9,7 +9,7 @@ const IGNORED = new Set(['.git', 'node_modules', 'tests', '.github', 'extension'
 const allowedDirectWriters = [
   /^services\/lightspeed\/client\.js$/,
   /^services\/scannerIsolatedTestWriter\.js$/,
-  /^.*(?:rms|migration|importer).*$/i
+  /^scripts\/rms-migration\//i
 ];
 const sourceFile = p => /\.(?:m?js|cjs|ts|py)$/.test(p);
 
@@ -47,7 +47,7 @@ if (process.argv.includes('--check-new')) {
   for (const line of diff.split('\n')) {
     if (line.startsWith('+++ b/')) { currentFile = line.slice(6); continue; }
     if (!line.startsWith('+') || line.startsWith('+++') || !currentFile) continue;
-    if (allowedDirectWriters.some(pattern => pattern.test(currentFile))) continue;
+    if (currentFile.startsWith('tests/') || allowedDirectWriters.some(pattern => pattern.test(currentFile))) continue;
     if (hostPattern.test(line) || /fetch\s*\([^)]*\/api\/(?:2\.0|20\d\d-\d\d)/i.test(line)) {
       failures.push({ file: currentFile, addedLine: line.slice(1, 160) });
     }
