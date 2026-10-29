@@ -20,15 +20,23 @@ test('real PostgreSQL: concurrency, verified replay, unknown write, immutable au
     const key = 'integration-concurrent-001';
     const scope = 'test:shop:products.create';
     const fingerprint = 'a'.repeat(64);
+    assert.equal(await storeA.inspect({ scope, key }), null);
+    await assert.rejects(storeA.inspect({ scope: '../untrusted', key }), TypeError);
     const attempts = await Promise.all([
       storeA.claim({ scope, key, fingerprint }),
       storeB.claim({ scope, key, fingerprint })
     ]);
     assert.equal(attempts.filter(x => x.state === 'claimed').length, 1);
     assert.equal(attempts.filter(x => x.state === 'unknown').length, 1);
+    const pendingInspection = await storeA.inspect({ scope, key });
+    assert.equal(pendingInspection.state, 'pending');
+    assert.equal(pendingInspection.fingerprint, fingerprint);
+    assert.equal(Object.hasOwn(pendingInspection, 'result'), false);
+    assert.equal(Object.hasOwn(pendingInspection, 'lease'), false);
     const lease = attempts.find(x => x.state === 'claimed').lease;
     const result = { id: 'P001', status: 'verified' };
     await storeA.complete({ scope, key, fingerprint, lease, result, verified: true });
+    assert.equal((await storeB.inspect({ scope, key })).state, 'verified');
     assert.deepEqual(await storeB.claim({ scope, key, fingerprint }),
       { state: 'replay', verified: true, fingerprint, result });
     assert.deepEqual(await storeA.claim({ scope, key, fingerprint: 'b'.repeat(64) }),
@@ -44,6 +52,7 @@ test('real PostgreSQL: concurrency, verified replay, unknown write, immutable au
     assert.equal(claimed.state, 'claimed');
     await storeB.markUnknown({ scope, key: failedKey, fingerprint, lease: claimed.lease });
     assert.equal((await storeA.claim({ scope, key: failedKey, fingerprint })).state, 'unknown');
+    assert.equal((await storeB.inspect({ scope, key: failedKey })).state, 'unknown');
 
     const audit = createLightspeedAudit({ append: createPostgresLightspeedAuditAppend({ pool }) });
     const meta = { stage: 'requested', correlationId: 'test-integration-001',
