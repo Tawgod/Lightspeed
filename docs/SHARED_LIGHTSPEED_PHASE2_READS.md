@@ -58,3 +58,8 @@ Scanner isolated test-store writer and RMS bulk migration remain separate. The s
 - PO list uses version cursor: https://x-series-api.lightspeedhq.com/v2026.04/reference/listpurchaseorders
 - Product `sku` lookup ignores other list params: https://x-series-api.lightspeedhq.com/reference/listproducts
 - Inventory redesign: https://x-series-api.lightspeedhq.com/docs/2026-04-release-notes — the existing Special Orders GET /inventory/:id is retained for a compatibility read. Bulk inventory and inventory-level scans must use the documented POST read endpoints in later migration work, even though the HTTP method is POST; never confuse that read operation with a write permission grant.
+
+## Phase 1 safety hardening synchronized on this stacked branch — 2026-10-29
+
+The stacked Phase 2 branch now contains the same reviewed Phase 1 safeguards: conservative uncertain-write HTTP results; strict/local API paths; streamed response byte limits and strict JSON success; deterministic plain-JSON payload fingerprinting with mutation-race protection; read-only PostgreSQL pending/unknown-key inspection; audited replay safety and audit TRUNCATE coverage. There are **no new production routes or production vendor write permissions**. These changes must be inherited from PR #32 when the stacked branch is finally rebased/retargeted, without accidentally dropping the Phase 2 read/permissions test expectations.
+
