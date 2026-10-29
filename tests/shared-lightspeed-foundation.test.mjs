@@ -76,8 +76,14 @@ test('production writes require explicit authorization and both gates', async ()
   });
   const input = { principal: { type: 'employee' }, operation: 'products.create', mode: 'write' };
   await assert.rejects(policy.authorize(input));
-  await assert.rejects(policy.authorize({ ...input, writeEnabled: true }));
-  const authorized = await policy.authorize({ ...input, writeEnabled: true, productionWriteApproved: true });
+  await assert.rejects(policy.authorize({ ...input, writeEnabled: true, productionWriteApproved: true }));
+  const enabledPolicy = createLightspeedPolicy({
+    verifyEmployee: async () => ({ id: 'EMP1', active: true }),
+    checkPermission: async () => true,
+    writesAllowed: true,
+    productionWritesAllowed: true
+  });
+  const authorized = await enabledPolicy.authorize(input);
   assert.equal(authorized.identityId, 'EMP1');
   assert.equal(authorized.identityType, 'employee');
 });
