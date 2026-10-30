@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import { createHmac, randomBytes } from 'node:crypto';
 import pg from 'pg';
 import { createPostgresStaffTotp } from '../services/security/staffTotpPostgres.js';
+import { createStaffFactorRecovery } from '../services/security/staffFactorRecovery.js';
 
 const uri = process.env.HC_TEST_DATABASE_URL;
 const guarded = { skip: !uri ? 'Disposable hc_test database required.' : false };
@@ -120,4 +121,67 @@ test('production TOTP adapters require encryption, enrollment authorization and 
     pool:{connect(){}},verifyEmployeeSession() {},authorizeEnrollment() {},
     loginThrottle:{reserve() {}},encryptionKey:Buffer.alloc(10)
   }), TypeError);
+});
+
+test('verified manager recovery revokes factor, wipes seed, invalidates MFA version and audits immutably', guarded, async () => {
+  if(!/hc_test/.test(uri)) throw Error('Refusing non-test database.');
+  const pool=new pg.Pool({connectionString:uri});
+  let clock=Date.parse('2026-10-30T22:30:00Z');
+  const staff={session:'bound'};
+  let approvedManager=false;
+  const factor=createPostgresStaffTotp({
+    pool,encryptionKey:randomBytes(32),now:()=>clock,
+    verifyEmployeeSession:async ctx=>ctx?.session==='bound'?{id:28,active:true}:null,
+    authorizeEnrollment:async()=>true,
+    loginThrottle:{reserve:async()=>true}
+  });
+  const recovery=createStaffFactorRecovery({
+    pool,now:()=>clock,
+    verifyStrongManager:async()=>({
+      id:8,active:true,method:approvedManager?'passkey':'totp',
+      authenticatedAtMs:clock-1000
+    }),
+    canRecover:async ({employeeId,operation,reason})=>
+      employeeId==='28'&&operation==='staff.authenticator.recover'&&reason==='lost_device'
+  });
+  try{
+    await pool.query(await fs.readFile(new URL('../db/hc_staff_totp.sql',import.meta.url),'utf8'));
+    const enrolled=await factor.beginEnrollment({context:staff});
+    const oldSecret=new URL(enrolled.provisioningUri).searchParams.get('secret');
+    assert.deepEqual(await factor.confirmEnrollment({context:staff,code:token(oldSecret,clock)}),{confirmed:true});
+    const oldGeneration=await factor.getActiveGeneration({context:staff});
+    assert.match(oldGeneration,/^[a-f0-9-]{36}$/);
+    await assert.rejects(recovery.revoke({context:{},employeeId:'28',reason:'lost_device'}),
+      e=>e.code==='HC_FACTOR_RECOVERY_DENIED');
+    assert.equal(await factor.getActiveGeneration({context:staff}),oldGeneration);
+    approvedManager=true;
+    const result=await recovery.revoke({context:{},employeeId:'28',reason:'lost_device'});
+    assert.equal(result.revoked,true);
+    assert.deepEqual(await factor.status({context:staff}),{state:'not_enrolled'});
+    assert.equal(await factor.getActiveGeneration({context:staff}),null);
+    const revoked=await pool.query(
+      'SELECT status,secret_ciphertext,factor_generation FROM hc_staff_totp WHERE employee_id=28');
+    assert.equal(revoked.rows[0].status,'revoked');
+    assert.equal(revoked.rows[0].secret_ciphertext.length,0);
+    assert.notEqual(revoked.rows[0].factor_generation,oldGeneration);
+    await assert.rejects(factor.verifyCode({
+      context:staff,code:token(oldSecret,clock+30000),sourceIp:'203.0.113.11'
+    }),e=>e.code==='HC_TOTP_INVALID');
+    const history=await pool.query(
+      'SELECT employee_id,approver_id,reason FROM hc_staff_factor_recovery_events WHERE event_id=$1',
+      [result.eventId]);
+    assert.equal(history.rows[0].approver_id,'8');
+    assert.equal(history.rows[0].reason,'lost_device');
+    await assert.rejects(pool.query(
+      "DELETE FROM hc_staff_factor_recovery_events WHERE event_id=$1",[result.eventId]),
+      /append-only/);
+    await assert.rejects(pool.query('TRUNCATE hc_staff_factor_recovery_events'),/append-only/);
+    // A new manager-approved enrollment gets a new credential generation.
+    clock+=30000;
+    const fresh=await factor.beginEnrollment({context:staff});
+    assert.notEqual(new URL(fresh.provisioningUri).searchParams.get('secret'),oldSecret);
+    assert.deepEqual(await factor.confirmEnrollment({context:staff,
+      code:token(new URL(fresh.provisioningUri).searchParams.get('secret'),clock)}),{confirmed:true});
+    assert.notEqual(await factor.getActiveGeneration({context:staff}),oldGeneration);
+  }finally{await pool.end()}
 });
