@@ -53,9 +53,15 @@ test('encrypted TOTP enrollment, one-time verification and failure handling acro
     const first = createPostgresStaffTotp(auth);
     const second = createPostgresStaffTotp(auth);
 
+    assert.deepEqual(await first.status({context:session}), {state:'not_enrolled'});
+    await assert.rejects(first.status({context:{session:'invalid'}}), e => e.code === 'HC_TOTP_ENROLLMENT_DENIED');
     await assert.rejects(first.beginEnrollment({context:session}),
       e => e.code === 'HC_TOTP_ENROLLMENT_DENIED');
     const enrollment = await first.beginEnrollment({context:approved});
+    const status = await first.status({context:session});
+    assert.equal(status.state,'pending');
+    assert.equal(status.expiresAtMs, clock + 600000);
+    assert.equal(Object.hasOwn(status,'secret'),false);
     const parsed = new URL(enrollment.provisioningUri);
     const secret = parsed.searchParams.get('secret');
     assert.match(secret, /^[A-Z2-7]{32}$/);
@@ -72,6 +78,7 @@ test('encrypted TOTP enrollment, one-time verification and failure handling acro
     assert.equal(Number(failures.rows[0].enrollment_failures), 1);
     assert.deepEqual(await second.confirmEnrollment({context:approved,code:token(secret,clock)}),
       {confirmed:true});
+    assert.deepEqual(await first.status({context:session}), {state:'active'});
     await assert.rejects(first.beginEnrollment({context:approved}),
       e => e.code === 'HC_TOTP_ENROLLMENT_DENIED');
 
