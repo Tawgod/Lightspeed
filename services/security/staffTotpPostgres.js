@@ -77,6 +77,26 @@ export function createPostgresStaffTotp({
     } finally { client?.release(); }
   }
 
+  // Safe method metadata only. Never expose the seed, encrypted bytes,
+  // last used code step, or enrollment failure count to the client.
+  async function status({ context } = {}) {
+    const employeeId = await employeeFromContext(context);
+    return inTransaction(async client => {
+      const result = await client.query(
+        `SELECT status,pending_expires_at FROM hc_staff_totp
+         WHERE employee_id=$1`, [employeeId]);
+      const row = result.rows?.[0];
+      if (!row) return Object.freeze({ state: 'not_enrolled' });
+      if (row.status === 'active') return Object.freeze({ state: 'active' });
+      if (row.status === 'pending' &&
+          new Date(row.pending_expires_at).getTime() > now()) {
+        return Object.freeze({ state: 'pending', expiresAtMs:
+          new Date(row.pending_expires_at).getTime() });
+      }
+      return Object.freeze({ state: 'not_enrolled' });
+    });
+  }
+
   async function beginEnrollment({ context } = {}) {
     const employeeId = await employeeFromContext(context);
     await permittedEnrollment(context, employeeId);
@@ -169,5 +189,5 @@ export function createPostgresStaffTotp({
       });
     });
   }
-  return Object.freeze({ beginEnrollment, confirmEnrollment, verifyCode });
+  return Object.freeze({ status, beginEnrollment, confirmEnrollment, verifyCode });
 }
