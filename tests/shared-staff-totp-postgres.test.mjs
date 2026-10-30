@@ -65,7 +65,8 @@ test('encrypted TOTP enrollment, one-time verification and failure handling acro
     assert.equal(row.rows[0].secret_ciphertext.includes(Buffer.from(secret)), false);
     await assert.rejects(second.confirmEnrollment({context:approved,code:'not-code'}),
       e => e.code === 'HC_TOTP_INVALID');
-    await assert.rejects(second.confirmEnrollment({context:approved,code:'000000'}),
+    const invalidCode = token(secret,clock) === '000000' ? '999999' : '000000';
+    await assert.rejects(second.confirmEnrollment({context:approved,code:invalidCode}),
       e => e.code === 'HC_TOTP_INVALID');
     const failures = await pool.query('SELECT enrollment_failures FROM hc_staff_totp WHERE employee_id=17');
     assert.equal(Number(failures.rows[0].enrollment_failures), 1);
