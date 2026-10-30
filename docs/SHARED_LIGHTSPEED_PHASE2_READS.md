@@ -86,3 +86,14 @@ The stacked Phase 2 branch now contains the same reviewed Phase 1 safeguards: co
 - Call before each PIN verification in any future public credential route; use a non-secret explicit employee selector. Backend must derive a trustworthy source IP from validated proxy configuration; browser `X-Forwarded-For` is never identity/authorization.
 - This is a **candidate for future migration**, not an automatic replacement for the existing live `scannerLoginLimiter`. Runtime auth paths, endpoint names and employee PIN behavior are unchanged until approved/accepted.
 - Tests use the disposable PostgreSQL CI instance to verify cross-replica concurrency, independent account/source ceilings, unavailable storage failure, hashed stored keys, cooldown recovery and non-extending block windows. Include in the final PR CI workflow before considering acceptance.
+
+## Optional Google Authenticator TOTP candidate — 2026-10-30
+
+- Implemented **unmounted**, RFC 6238 / standard Google Authenticator-compatible 6-digit TOTP in `services/security/staffTotp.js`, with unique random 160-bit secrets, SHA-1/30-second setup URI, and ±1 time-step handling.
+- `services/security/staffTotpPostgres.js` performs server-approved employee enrollment and confirmation, 10-minute pending expiry, five failed confirmation attempts, and authenticated verification. Server-only AES-256-GCM key protects enrolled secrets at rest, with unique nonce and employee-bound associated data; `db/hc_staff_totp.sql` is a **separate unapplied** candidate.
+- TOTP code checks require a verified Timeclock session and durable independent employee/source login throttle; each successful time step is atomically consumed using PostgreSQL row locking. Verified claims MUST be bound to a fresh server-signed employee session by a separate integration adapter; returning a JSON proof is not client authorization.
+- `staffAccessBaseline.js` recognizes backend-verified `totp` for normal remote read/staging without workstation/extension, but denies TOTP-only sensitive product/PO/inventory/sales/credit/permissions writes. Passkey/security key or trusted IdP MFA stays the current privileged-operation path.
+- Tests in `tests/shared-staff-totp*.test.mjs` cover RFC vectors, enrollment URI, encryption, approval, limits, simultaneous replay, revoked session and write downgrades. Final source CI: [41116244954](https://github.com/Tawgod/Lightspeed/actions/runs/41116244954) **PASS**.
+- **Not deployed / not wired:** No QR/setup screen, mobile auth endpoint, password/PIN changes, TOTP factor reset/recovery, signed MFA session issuance, key provisioning or live Railway migration. Legacy Timeclock clock/status route bypass still requires its coordinated Chrome/backend remediation.
+- Canonical design: `Tawgod/Hobby-Corner:main/STAFF_SECURITY_BASELINE.md`; default off until explicit security, migration, recovery and employee acceptance approval.
+
