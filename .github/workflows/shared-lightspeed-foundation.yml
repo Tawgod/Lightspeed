@@ -6,6 +6,10 @@ on:
       - 'services/lightspeed/**'
       - 'services/security/**'
       - 'routes/staffSecuritySettings.js'
+      - 'tests/shared-staff-approval-postgres.test.mjs'
+      - 'tests/shared-staff-mfa.test.mjs'
+      - 'db/hc_staff_factor_approvals.sql'
+      - 'routes/staffMfaSession.js'
       - 'staff-security.html'
       - 'staff-security-client.js'
       - 'staff-security.css'
@@ -53,7 +57,7 @@ jobs:
       - name: Install regression dependencies
         run: npm install --ignore-scripts --no-audit --no-fund
       - name: Foundation, adapter and disposable Postgres integration tests
-        run: node --test tests/shared-lightspeed-foundation.test.mjs tests/shared-lightspeed-adapters.test.mjs tests/shared-lightspeed-postgres.test.mjs tests/shared-staff-security.test.mjs tests/shared-staff-throttle-postgres.test.mjs tests/shared-staff-totp.test.mjs tests/shared-staff-totp-postgres.test.mjs tests/shared-staff-settings.test.mjs
+        run: node --test tests/shared-lightspeed-foundation.test.mjs tests/shared-lightspeed-adapters.test.mjs tests/shared-lightspeed-postgres.test.mjs tests/shared-staff-security.test.mjs tests/shared-staff-throttle-postgres.test.mjs tests/shared-staff-totp.test.mjs tests/shared-staff-totp-postgres.test.mjs tests/shared-staff-settings.test.mjs tests/shared-staff-mfa.test.mjs tests/shared-staff-approval-postgres.test.mjs
       - name: Existing backend parse check
         run: node --check server.js
       - name: Staff settings browser script parse check
