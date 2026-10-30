@@ -26,6 +26,16 @@
       </form>
       <div id="signedInRow" class="signed-in" hidden><span id="employeeName"></span><button type="button" id="signOut" class="quiet">Sign out</button></div>
     </section>
+    <section class="panel" aria-labelledby="approvalTitle">
+      <div class="section-top"><div><h2 id="approvalTitle">Enrollment approval</h2><p>Request approval from an authorized manager before adding an authenticator. Your manager must verify their own stronger sign-in, not another four-digit PIN.</p></div><span class="status" id="approvalState">Not requested</span></div>
+      <div class="actions"><button id="requestApproval" type="button" disabled>Request approval</button><button id="checkApproval" type="button" class="quiet" disabled>Check approval</button></div>
+      <div id="approvalCodeBox" class="enroll" hidden>
+        <label for="approvalRequestId">Setup request ID to show your manager</label>
+        <input id="approvalRequestId" class="request-id" type="text" readonly autocomplete="off">
+        <p id="approvalExpiration" class="hint"></p>
+        <p class="hint">The manager approval screen is not connected yet. This request cannot be approved until a secure manager sign-in is deployed.</p>
+      </div>
+    </section>
     <section class="panel" aria-labelledby="authTitle">
       <div class="section-top"><div><h2 id="authTitle">Authenticator app</h2><p>Use Google Authenticator or another app that generates six-digit verification codes.</p></div><span class="status" id="authState">Not checked</span></div>
       <div class="steps">
@@ -47,6 +57,14 @@
         <div class="formrow"><input id="otpCode" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" minlength="6" maxlength="6" required placeholder="000000"><button type="submit" id="confirmButton">Confirm</button></div>
       </form>
       <p id="authHelp" class="hint">Sign in to check whether an authenticator is enrolled.</p>
+    </section>
+    <section class="panel" aria-labelledby="mobileTitle">
+      <div class="section-top"><div><h2 id="mobileTitle">Secure convention access</h2><p>Once your authenticator is enrolled, enter its code to verify this specific phone or tablet session. The extra verification lasts for a short period and does not unlock sensitive business changes automatically.</p></div><span class="status" id="mfaState">Not verified</span></div>
+      <form id="mfaForm" class="horizontal-form">
+        <label for="mfaCode">Six-digit authenticator code</label>
+        <div class="formrow"><input id="mfaCode" type="text" inputmode="numeric" autocomplete="one-time-code" minlength="6" maxlength="6" pattern="[0-9]{6}" required placeholder="000000"><button type="submit" id="mfaButton" disabled>Verify this session</button></div>
+      </form>
+      <p id="mfaHelp" class="hint">Authenticator setup and employee sign-in are required before mobile verification.</p>
     </section>
     <section class="panel two-col" aria-label="Other account security options">
       <div><h2>Passkeys</h2><p>Sign in on compatible phones and tablets with Face ID, Touch ID, or your device's screen lock.</p><span class="status">Planned</span></div>
