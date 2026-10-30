@@ -1,0 +1,74 @@
+name: Shared Lightspeed foundation
+on:
+  pull_request:
+    branches: [integration/hobby-corner-consolidation]
+    paths:
+      - 'services/lightspeed/**'
+      - 'services/security/**'
+      - 'routes/staffSecuritySettings.js'
+      - 'tests/shared-staff-approval-postgres.test.mjs'
+      - 'tests/shared-staff-mfa.test.mjs'
+      - 'db/hc_staff_factor_approvals.sql'
+      - 'routes/staffMfaSession.js'
+      - 'staff-security.html'
+      - 'staff-security-client.js'
+      - 'staff-security.css'
+      - 'tests/shared-lightspeed-*.test.mjs'
+      - 'tests/shared-staff-security.test.mjs'
+      - 'tests/shared-staff-throttle-postgres.test.mjs'
+      - 'tests/shared-staff-totp.test.mjs'
+      - 'tests/shared-staff-totp-postgres.test.mjs'
+      - 'tests/shared-staff-settings.test.mjs'
+      - 'tests/shared-staff-binding.test.mjs'
+      - 'tests/shared-staff-subsystem-postgres.test.mjs'
+      - 'db/hc_staff_auth_throttle.sql'
+      - 'db/hc_staff_totp.sql'
+      - 'db/lightspeed_shared_foundation.sql'
+      - 'scripts/audit-lightspeed-consumers.mjs'
+      - '.github/workflows/shared-lightspeed-foundation.yml'
+  push:
+    branches: [feature/shared-lightspeed-services-phase1-20261029]
+permissions:
+  contents: read
+jobs:
+  foundation:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: hc_test
+          POSTGRES_PASSWORD: hc_test
+          POSTGRES_DB: hc_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hc_test -d hc_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      HC_TEST_DATABASE_URL: postgres://hc_test:hc_test@127.0.0.1:5432/hc_test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install regression dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Foundation, adapter and disposable Postgres integration tests
+        run: node --test tests/shared-lightspeed-foundation.test.mjs tests/shared-lightspeed-adapters.test.mjs tests/shared-lightspeed-postgres.test.mjs tests/shared-staff-security.test.mjs tests/shared-staff-throttle-postgres.test.mjs tests/shared-staff-totp.test.mjs tests/shared-staff-totp-postgres.test.mjs tests/shared-staff-settings.test.mjs tests/shared-staff-mfa.test.mjs tests/shared-staff-approval-postgres.test.mjs tests/shared-staff-binding.test.mjs tests/shared-staff-subsystem-postgres.test.mjs
+      - name: Existing backend parse check
+        run: node --check server.js
+      - name: Staff settings browser script parse check
+        run: node --check staff-security-client.js
+      - name: Scanner and Core Operations regressions
+        run: |
+          node --test tests/scanner*.test.js
+          node --test tests/core-ops-navigation.test.mjs tests/core-ops-auth-session.test.mjs
+      - name: Source inventory
+        run: node scripts/audit-lightspeed-consumers.mjs
+      - name: Reject newly introduced direct production Lightspeed clients
+        run: node scripts/audit-lightspeed-consumers.mjs --check-new
