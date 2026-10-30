@@ -4,7 +4,9 @@ on:
     branches: [integration/hobby-corner-consolidation]
     paths:
       - 'services/lightspeed/**'
+      - 'services/security/**'
       - 'tests/shared-lightspeed-*.test.mjs'
+      - 'tests/shared-staff-security.test.mjs'
       - 'db/lightspeed_shared_foundation.sql'
       - 'scripts/audit-lightspeed-consumers.mjs'
       - '.github/workflows/shared-lightspeed-foundation.yml'
@@ -41,7 +43,7 @@ jobs:
       - name: Install regression dependencies
         run: npm install --ignore-scripts --no-audit --no-fund
       - name: Foundation, adapter and disposable Postgres integration tests
-        run: node --test tests/shared-lightspeed-foundation.test.mjs tests/shared-lightspeed-adapters.test.mjs tests/shared-lightspeed-postgres.test.mjs
+        run: node --test tests/shared-lightspeed-foundation.test.mjs tests/shared-lightspeed-adapters.test.mjs tests/shared-lightspeed-postgres.test.mjs tests/shared-staff-security.test.mjs
       - name: Existing backend parse check
         run: node --check server.js
       - name: Scanner and Core Operations regressions
