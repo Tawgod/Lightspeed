@@ -30,6 +30,7 @@ function setup() {
     session,
     base: {valid:true,employee:17,binding:'signed-base-token-jti-17'},
     clock: delta => { clock += delta; },
+    nowValue: () => clock,
     rotate: () => { factor = gen2; },
     get calls() { return verifications; }
   };
@@ -147,6 +148,7 @@ test('signed TOTP proof integrates with exact-operation gate but never enables p
   const f=setup();
   const step=await f.session.authenticate({context:f.base,code:'123456'});
   const gate=createStaffAccessBaseline({
+    now:f.nowValue,
     verifyEmployeeSession:async()=>({id:17,active:true}),
     verifyStepUp:async request=>f.session.verify({context:request,token:step.token}),
     checkPermission:async ({operation})=>['tools.read','tools.stage'].includes(operation)
