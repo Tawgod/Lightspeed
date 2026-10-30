@@ -20,7 +20,10 @@ const DENY = () => Object.assign(new Error('Staff access denied.'), {
 });
 const MAX_STATION_PROOF_MS = 12 * 60 * 60 * 1000;
 const MAX_STEP_UP_AGE_MS = 5 * 60 * 1000;
-const VALID_METHODS = new Set(['passkey', 'security-key', 'oidc-mfa']);
+const VALID_METHODS = new Set(['passkey', 'security-key', 'oidc-mfa', 'totp']);
+// Time-based codes are useful for remote login, but are not phishing-resistant.
+// Keep the privileged-write gate on the pre-existing stronger methods.
+const PRIVILEGED_METHODS = new Set(['passkey', 'security-key', 'oidc-mfa']);
 
 /**
  * Only backend-owned verifiers may confirm a station or a second factor.
@@ -82,6 +85,7 @@ export function createStaffAccessBaseline({
     }
 
     let stepUpValid = false;
+    let stepUpMethod = null;
     if (typeof verifyStepUp === 'function') {
       try {
         const proof = await verifyStepUp(request, identity);
@@ -91,23 +95,27 @@ export function createStaffAccessBaseline({
           Number.isSafeInteger(proof.authenticatedAtMs) &&
           proof.authenticatedAtMs <= instant &&
           proof.authenticatedAtMs > instant - MAX_STEP_UP_AGE_MS;
+        if (stepUpValid) stepUpMethod = proof.method;
       } catch { /* fail closed */ }
     }
 
     if (definition.assurance === 'step-up'
-      ? !stepUpValid : !(workstationValid || stepUpValid)) throw DENY();
+      ? (!stepUpValid || !PRIVILEGED_METHODS.has(stepUpMethod))
+      : !(workstationValid || stepUpValid)) throw DENY();
 
     let granted = false;
     try { granted = await checkPermission({
       identity, operation: definition.permission, action,
-      assurance: stepUpValid ? 'step-up' : 'workstation'
+      assurance: stepUpValid ? 'step-up' : 'workstation',
+      factorMethod: stepUpMethod
     }) === true; }
     catch { throw DENY(); }
     if (!granted) throw DENY();
     return Object.freeze({
       employeeId: identity.id,
       operation: definition.permission,
-      assurance: stepUpValid ? 'step-up' : 'workstation'
+      assurance: stepUpValid ? 'step-up' : 'workstation',
+      factorMethod: stepUpMethod
     });
   }
   return Object.freeze({ authorize });
