@@ -58,6 +58,14 @@
       </form>
       <p id="authHelp" class="hint">Sign in to check whether an authenticator is enrolled.</p>
     </section>
+    <section class="panel" aria-labelledby="mobileTitle">
+      <div class="section-top"><div><h2 id="mobileTitle">Secure convention access</h2><p>Once your authenticator is enrolled, enter its code to verify this specific phone or tablet session. The extra verification lasts for a short period and does not unlock sensitive business changes automatically.</p></div><span class="status" id="mfaState">Not verified</span></div>
+      <form id="mfaForm" class="horizontal-form">
+        <label for="mfaCode">Six-digit authenticator code</label>
+        <div class="formrow"><input id="mfaCode" type="text" inputmode="numeric" autocomplete="one-time-code" minlength="6" maxlength="6" pattern="[0-9]{6}" required placeholder="000000"><button type="submit" id="mfaButton" disabled>Verify this session</button></div>
+      </form>
+      <p id="mfaHelp" class="hint">Authenticator setup and employee sign-in are required before mobile verification.</p>
+    </section>
     <section class="panel two-col" aria-label="Other account security options">
       <div><h2>Passkeys</h2><p>Sign in on compatible phones and tablets with Face ID, Touch ID, or your device's screen lock.</p><span class="status">Planned</span></div>
       <div><h2>Lost phone or access?</h2><p>Contact a manager for verified account recovery. Your four-digit PIN alone cannot reset an authenticator.</p><span class="status">Manager assistance</span></div>
