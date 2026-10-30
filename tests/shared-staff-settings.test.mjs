@@ -123,10 +123,8 @@ test('approved employee may see factor status and enrollment QR without revealin
     assert.equal(e.headers.get('referrer-policy'), 'no-referrer');
     const data = await e.json();
     assert.equal(data.manualKey, secret);
-    if (data.qrDataUrl !== null) {
-      assert.match(data.qrDataUrl, /^data:image\/png;base64,/);
-      assert.equal(Buffer.from(data.qrDataUrl.split(',')[1], 'base64').subarray(0, 4).toString('hex'), '89504e47');
-    }
+    assert.match(data.qrDataUrl, /^data:image\\/png;base64,/);
+    assert.equal(Buffer.from(data.qrDataUrl.split(',')[1], 'base64').subarray(0, 4).toString('hex'), '89504e47');
     assert.equal(data.provisioningUri, undefined);
     assert.ok(Number.isSafeInteger(data.expiresAtMs));
   } finally { await h.close(); }
