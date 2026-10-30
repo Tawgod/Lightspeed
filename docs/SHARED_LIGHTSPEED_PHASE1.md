@@ -93,3 +93,12 @@ The mutation tests also prove that failure to append a terminal audit event **af
 - Cross-tool design/migration specification: `Tawgod/Hobby-Corner:main/STAFF_SECURITY_BASELINE.md`. Existing public-facing Timeclock clock/status identity handling must be coordinated with Chrome content-script migration before it can meet this baseline; it must not be switched off blindly during store hours.
 - No password/PIN, production credential, Timeclock data, Railway routing or extension deployment was changed.
 
+
+### Durable employee/source login throttling — candidate only
+
+- New `services/security/staffLoginThrottle.js` uses PostgreSQL token buckets with **two independent budgets**: per selected employee ID and per server-observed source IP (not an IP+employee pair, and not a store-wide hard lock). All keys are HMAC-hashed with a dedicated secret. The account selector is never considered authentication.
+- `db/hc_staff_auth_throttle.sql` is a **separate unapplied additive migration**; it stores only HMAC key hashes, token balances, and timestamps (no PIN, employee names, source IPs, raw headers, or access tokens). DB transaction row locking serializes concurrent attempts across replicas.
+- Blocked bucket timestamps do not advance, so repeated attack traffic cannot create an indefinitely extended timeout. Database failure denies sign-in instead of bypassing throttling.
+- Call before each PIN verification in any future public credential route; use a non-secret explicit employee selector. Backend must derive a trustworthy source IP from validated proxy configuration; browser `X-Forwarded-For` is never identity/authorization.
+- This is a **candidate for future migration**, not an automatic replacement for the existing live `scannerLoginLimiter`. Runtime auth paths, endpoint names and employee PIN behavior are unchanged until approved/accepted.
+- Tests use the disposable PostgreSQL CI instance to verify cross-replica concurrency, independent account/source ceilings, unavailable storage failure, hashed stored keys, cooldown recovery and non-extending block windows. Include in the final PR CI workflow before considering acceptance.
