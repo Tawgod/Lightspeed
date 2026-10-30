@@ -38,8 +38,28 @@ async function fixture({ allow = false, factorState = 'not_enrolled' } = {}) {
     assert.equal(employee.id, '17');
     return request.app.locals.approved === true;
   };
+  const approvals = {
+    status: async ({context}) => {
+      calls.push('approval-status');
+      return context.get('authorization') === 'Bearer signed-test-session'
+        ? {state: 'requested', requestId: '11111111-1111-4111-8111-111111111111', expiresAtMs: Date.now()+300000}
+        : {state:'none'};
+    },
+    request: async ({context}) => {
+      calls.push('approval-request');
+      if (context.get('authorization') !== 'Bearer signed-test-session')
+        throw Object.assign(new Error('Denied'), {status:403});
+      return {state:'requested',requestId:'11111111-1111-4111-8111-111111111111',expiresAtMs:Date.now()+300000};
+    },
+    approve: async ({context}) => {
+      calls.push('approval-approve');
+      if (context.get('authorization') !== 'Bearer independent-passkey-manager')
+        throw Object.assign(new Error('Denied'),{status:403});
+      return {approved:true};
+    }
+  };
   app.use('/staff-security', createStaffSecuritySettingsRouter({
-    verifyEmployee, authorizeSettings, totp
+    verifyEmployee, authorizeSettings, totp, approvals
   }));
   const server = await new Promise(resolve => {
     const s = app.listen(0, '127.0.0.1', () => resolve(s));
@@ -167,4 +187,39 @@ test('already-active authenticator status never returns the seed or a recovery b
     });
     assert.equal(reset.status, 404);
   } finally { await h.close(); }
+});
+
+test('enrollment requests need a signed staff session and manager approval rejects forged role headers',async()=>{
+  const h=await fixture();
+  try{
+    const unsigned=await fetch(h.url+'/api/enrollment-request',{
+      method:'POST',headers:{'Content-Type':'application/json','X-Employee-Role':'admin'},
+      body:'{}'
+    });
+    assert.equal(unsigned.status,403);
+    assert.equal(h.calls.includes('approval-request'),false);
+    const requested=await fetch(h.url+'/api/enrollment-request',{
+      method:'POST',headers:{...signed,'Content-Type':'application/json'},body:'{}'
+    });
+    assert.equal(requested.status,201);
+    assert.equal((await requested.json()).state,'requested');
+    const forged=await fetch(h.url+'/api/enrollment-approve',{
+      method:'POST',headers:{...signed,'X-Employee-Role':'admin','Content-Type':'application/json'},
+      body:JSON.stringify({requestId:'11111111-1111-4111-8111-111111111111'})
+    });
+    assert.equal(forged.status,403);
+    const strong=await fetch(h.url+'/api/enrollment-approve',{
+      method:'POST',headers:{Authorization:'Bearer independent-passkey-manager',
+        'Content-Type':'application/json'},
+      body:JSON.stringify({requestId:'11111111-1111-4111-8111-111111111111'})
+    });
+    assert.equal(strong.status,200);
+    assert.deepEqual(await strong.json(),{approved:true});
+    const injected=await fetch(h.url+'/api/enrollment-approve',{
+      method:'POST',headers:{Authorization:'Bearer independent-passkey-manager',
+        'Content-Type':'application/json'},
+      body:JSON.stringify({requestId:'11111111-1111-4111-8111-111111111111',employeeId:'17'})
+    });
+    assert.equal(injected.status,400);
+  }finally{await h.close()}
 });
