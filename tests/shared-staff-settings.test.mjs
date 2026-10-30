@@ -101,6 +101,8 @@ test('public HTML has no enrolled factor credentials and requires browser-side s
     assert.match(html, /Employee Security Settings/);
     assert.match(html, /Authenticator app/);
     assert.match(html, /Passkeys/);
+    assert.match(html, /\\/staff-security\\/client\\.js/);
+    assert.match(html, /\\/staff-security\\/styles\\.css/);
     assert.ok(!html.includes(secret));
     assert.ok(!html.includes('otpauth://'));
     assert.ok(!html.includes('<script>'));
@@ -108,7 +110,13 @@ test('public HTML has no enrolled factor credentials and requires browser-side s
       const file = await fetch(h.url + asset);
       assert.equal(file.status, 200);
       assert.match(file.headers.get('cache-control'), /no-store/);
-      assert.ok((await file.text()).length > 400);
+      const body = await file.text();
+      assert.ok(body.length > 400);
+      if (asset === '/client.js') {
+        assert.match(body, /\\/staff-security\\/api\\//);
+        assert.match(body, /enrollmentExpiresAt/);
+        assert.ok(!body.includes('localStorage.setItem'));
+      }
     }
   } finally { await h.close(); }
 });
