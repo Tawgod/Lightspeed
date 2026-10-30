@@ -57,6 +57,8 @@ jobs:
         run: node --test tests/shared-lightspeed-foundation.test.mjs tests/shared-lightspeed-adapters.test.mjs tests/shared-lightspeed-postgres.test.mjs tests/shared-staff-security.test.mjs tests/shared-staff-throttle-postgres.test.mjs tests/shared-lightspeed-reads.test.mjs tests/shared-lightspeed-permissions.test.mjs tests/shared-staff-totp.test.mjs tests/shared-staff-totp-postgres.test.mjs tests/shared-staff-settings.test.mjs
       - name: Existing backend parse check
         run: node --check server.js
+      - name: Staff settings browser script parse check
+        run: node --check staff-security-client.js
       - name: Scanner and Core Operations regressions
         run: |
           node --test tests/scanner*.test.js
