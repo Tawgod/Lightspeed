@@ -58,8 +58,21 @@ async function fixture({ allow = false, factorState = 'not_enrolled' } = {}) {
       return {approved:true};
     }
   };
+  const mfa = {
+    authenticate: async ({context,code}) => {
+      if(context.get('authorization') !== 'Bearer signed-test-session' || code !== '123456')
+        throw Object.assign(new Error('Denied'),{status:401});
+      return {token:'signedmfatoken.'+'A'.repeat(43),expiresIn:300};
+    },
+    verify: async ({context,token}) => {
+      if(context.get('authorization') !== 'Bearer signed-test-session' ||
+          token !== 'signedmfatoken.'+'A'.repeat(43))
+        throw Object.assign(new Error('Denied'),{status:401});
+      return {verified:true,method:'totp',authenticatedAtMs:1729980000000};
+    }
+  };
   app.use('/staff-security', createStaffSecuritySettingsRouter({
-    verifyEmployee, authorizeSettings, totp, approvals
+    verifyEmployee, authorizeSettings, totp, approvals, mfa
   }));
   const server = await new Promise(resolve => {
     const s = app.listen(0, '127.0.0.1', () => resolve(s));
@@ -222,4 +235,32 @@ test('enrollment requests need a signed staff session and manager approval rejec
     });
     assert.equal(injected.status,400);
   }finally{await h.close()}
+});
+
+test('composed settings portal requires PIN session plus verified code for ephemeral MFA',async()=>{
+  const h=await fixture();
+  try{
+    const invalid=await fetch(h.url+'/api/mfa/session',{
+      method:'POST',headers:{'Content-Type':'application/json','X-Employee-Role':'admin'},
+      body:JSON.stringify({code:'123456'})
+    });
+    assert.equal(invalid.status,401);
+    const ok=await fetch(h.url+'/api/mfa/session',{
+      method:'POST',headers:{...signed,'Content-Type':'application/json'},
+      body:JSON.stringify({code:'123456'})
+    });
+    assert.equal(ok.status,200);
+    const data=await ok.json();
+    assert.equal(data.expiresIn,300);
+    assert.equal(data.method,'totp');
+    assert.ok(data.token);
+    const verified=await fetch(h.url+'/api/mfa/session',{
+      headers:{...signed,'X-HC-MFA-Session':data.token}
+    });
+    assert.equal(verified.status,200);
+    const spoof=await fetch(h.url+'/api/mfa/session',{
+      headers:{'X-HC-MFA-Session':data.token,'X-HC-Employee':'17'}
+    });
+    assert.equal(spoof.status,401);
+  } finally {await h.close();}
 });
