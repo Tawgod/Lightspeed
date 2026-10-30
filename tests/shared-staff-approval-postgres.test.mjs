@@ -37,7 +37,7 @@ test('enrollment approvals require independent signed manager proof and session 
     await assert.rejects(a.request({ context: { base: 'invalid', sessionBinding: employee.sessionBinding },
       sourceIp: '203.0.113.11' }), e => e.code === 'HC_FACTOR_APPROVAL_DENIED');
     await assert.rejects(a.request({ context: employee, sourceIp: 'untrusted-forwarded' }),
-      e => e.code === 'HC_FACTOR_APPROVAL_UNAVAILABLE');
+      e => e.code === 'HC_FACTOR_APPROVAL_DENIED');
 
     const requested = await a.request({ context: employee, sourceIp: '203.0.113.11' });
     assert.match(requested.requestId, /^[0-9a-f-]{36}$/);
