@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import { createStaffMfaSessions } from '../services/security/staffMfaSessions.js';
 import { createStaffMfaSessionRouter } from '../routes/staffMfaSession.js';
+import { createStaffAccessBaseline } from '../services/security/staffAccessBaseline.js';
+import { createStaffApprovedEnrollmentAdapters } from '../services/security/staffEnrollmentSettings.js';
 
 const gen1 = 'cdd2ad1c-48b4-41d4-84d2-d4e3b030d571';
 const gen2 = 'cdd2ad1c-48b4-41d4-84d2-d4e3b030d572';
@@ -115,4 +117,45 @@ test('mobile MFA verification route never trusts role, employee ID or unsigned p
     const unrelated=await fetch(base+'/session',{headers:{'X-HC-MFA-Session':info.token}});
     assert.equal(unrelated.status,401);
   } finally {await new Promise(resolve=>server.close(resolve));}
+});
+
+test('manager approval composition denies QR enrollment until approved and consumes grant once',async()=>{
+  let state='requested';
+  const approvals={
+    status:async()=>({state}),
+    start:async()=>{if(state!=='approved')return false;state='started';return true;},
+    allowConfirmation:async()=>state==='started',
+    finish:async()=>{if(state!=='started')return false;state='finished';return true;}
+  };
+  const adapters=createStaffApprovedEnrollmentAdapters({approvals});
+  const context={};
+  assert.equal(await adapters.authorizeSettings({request:context,action:'authenticator.status'}),true);
+  assert.equal(await adapters.authorizeSettings({request:context,action:'authenticator.enroll'}),false);
+  assert.equal(await adapters.authorizeEnrollment({context,phase:'begin'}),false);
+  state='approved';
+  assert.equal(await adapters.authorizeSettings({request:context,action:'authenticator.enroll'}),true);
+  assert.equal(await adapters.authorizeEnrollment({context,phase:'begin'}),true);
+  assert.equal(await adapters.authorizeEnrollment({context,phase:'begin'}),false);
+  assert.equal(await adapters.authorizeSettings({request:context,action:'authenticator.confirm'}),true);
+  assert.equal(await adapters.authorizeEnrollment({context,phase:'confirm'}),true);
+  assert.equal(await adapters.authorizeEnrollment({context,phase:'finish'}),true);
+  assert.equal(await adapters.authorizeEnrollment({context,phase:'confirm'}),false);
+  assert.throws(()=>createStaffApprovedEnrollmentAdapters(),TypeError);
+});
+
+test('signed TOTP proof integrates with exact-operation gate but never enables privileged writes',async()=>{
+  const f=setup();
+  const step=await f.session.authenticate({context:f.base,code:'123456'});
+  const gate=createStaffAccessBaseline({
+    verifyEmployeeSession:async()=>({id:17,active:true}),
+    verifyStepUp:async request=>f.session.verify({context:request,token:step.token}),
+    checkPermission:async ({operation})=>['tools.read','tools.stage'].includes(operation)
+  });
+  const read=await gate.authorize({request:f.base,action:'tools.read'});
+  assert.equal(read.factorMethod,'totp');
+  await assert.rejects(gate.authorize({request:f.base,action:'products.write'}),
+    e=>e.code==='HC_STAFF_ACCESS_DENIED');
+  f.rotate();
+  await assert.rejects(gate.authorize({request:f.base,action:'tools.read'}),
+    e=>e.code==='HC_STAFF_ACCESS_DENIED');
 });
