@@ -8,7 +8,10 @@ on:
       - 'tests/shared-lightspeed-*.test.mjs'
       - 'tests/shared-staff-security.test.mjs'
       - 'tests/shared-staff-throttle-postgres.test.mjs'
+      - 'tests/shared-staff-totp.test.mjs'
+      - 'tests/shared-staff-totp-postgres.test.mjs'
       - 'db/hc_staff_auth_throttle.sql'
+      - 'db/hc_staff_totp.sql'
       - 'db/lightspeed_shared_foundation.sql'
       - 'scripts/audit-lightspeed-consumers.mjs'
       - '.github/workflows/shared-lightspeed-foundation.yml'
@@ -45,7 +48,7 @@ jobs:
       - name: Install regression dependencies
         run: npm install --ignore-scripts --no-audit --no-fund
       - name: Foundation, adapter and disposable Postgres integration tests
-        run: node --test tests/shared-lightspeed-foundation.test.mjs tests/shared-lightspeed-adapters.test.mjs tests/shared-lightspeed-postgres.test.mjs tests/shared-staff-security.test.mjs tests/shared-staff-throttle-postgres.test.mjs
+        run: node --test tests/shared-lightspeed-foundation.test.mjs tests/shared-lightspeed-adapters.test.mjs tests/shared-lightspeed-postgres.test.mjs tests/shared-staff-security.test.mjs tests/shared-staff-throttle-postgres.test.mjs tests/shared-staff-totp.test.mjs tests/shared-staff-totp-postgres.test.mjs
       - name: Existing backend parse check
         run: node --check server.js
       - name: Scanner and Core Operations regressions
