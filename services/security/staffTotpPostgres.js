@@ -122,8 +122,9 @@ export function createPostgresStaffTotp({
          ON CONFLICT(employee_id) DO UPDATE
          SET secret_ciphertext=EXCLUDED.secret_ciphertext,
              status='pending',pending_expires_at=EXCLUDED.pending_expires_at,
-             enrollment_failures=0,last_used_step=-1,updated_at=now()
-         WHERE hc_staff_totp.status='pending'
+             enrollment_failures=0,last_used_step=-1,
+             factor_generation=gen_random_uuid(),updated_at=now()
+         WHERE hc_staff_totp.status IN ('pending','revoked')
          RETURNING employee_id`,
         [employeeId, encrypted, new Date(expiresAtMs).toISOString()]
       );
