@@ -20,6 +20,7 @@ on:
       - 'tests/shared-staff-totp-postgres.test.mjs'
       - 'tests/shared-staff-settings.test.mjs'
       - 'tests/shared-staff-binding.test.mjs'
+      - 'tests/shared-staff-subsystem-postgres.test.mjs'
       - 'db/hc_staff_auth_throttle.sql'
       - 'db/hc_staff_totp.sql'
       - 'db/lightspeed_shared_foundation.sql'
@@ -58,7 +59,7 @@ jobs:
       - name: Install regression dependencies
         run: npm install --ignore-scripts --no-audit --no-fund
       - name: Foundation, adapter and disposable Postgres integration tests
-        run: node --test tests/shared-lightspeed-foundation.test.mjs tests/shared-lightspeed-adapters.test.mjs tests/shared-lightspeed-postgres.test.mjs tests/shared-staff-security.test.mjs tests/shared-staff-throttle-postgres.test.mjs tests/shared-staff-totp.test.mjs tests/shared-staff-totp-postgres.test.mjs tests/shared-staff-settings.test.mjs tests/shared-staff-mfa.test.mjs tests/shared-staff-approval-postgres.test.mjs tests/shared-staff-binding.test.mjs
+        run: node --test tests/shared-lightspeed-foundation.test.mjs tests/shared-lightspeed-adapters.test.mjs tests/shared-lightspeed-postgres.test.mjs tests/shared-staff-security.test.mjs tests/shared-staff-throttle-postgres.test.mjs tests/shared-staff-totp.test.mjs tests/shared-staff-totp-postgres.test.mjs tests/shared-staff-settings.test.mjs tests/shared-staff-mfa.test.mjs tests/shared-staff-approval-postgres.test.mjs tests/shared-staff-binding.test.mjs tests/shared-staff-subsystem-postgres.test.mjs
       - name: Existing backend parse check
         run: node --check server.js
       - name: Staff settings browser script parse check
