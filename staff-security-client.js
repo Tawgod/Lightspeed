@@ -5,11 +5,19 @@
   const auth = () => window.HCStaffAuth;
   let enrollmentVisible = false;
   let approvalState = 'none';
+  let mfaToken = null;
+  let mfaExpiresAt = 0;
   let working = false;
   function notice(message) {
     const el = $('notice');
     el.textContent = message;
     el.hidden = !message;
+  }
+  function discardMfa() {
+    mfaToken = null;
+    mfaExpiresAt = 0;
+    $('mfaCode').value = '';
+    $('mfaState').textContent = 'Not verified';
   }
   function discardEnrollment() {
     enrollmentVisible = false;
@@ -33,7 +41,9 @@
     $('startEnrollment').disabled = true;
     $('requestApproval').disabled = !yes;
     $('checkApproval').disabled = !yes;
+    $('mfaButton').disabled = true;
     if (!yes) {
+      discardMfa();
       approvalState = 'none';
       $('approvalState').textContent = 'Not requested';
       $('approvalCodeBox').hidden = true;
@@ -112,15 +122,18 @@
       if (result.state === 'active') {
         $('authState').textContent = 'Enabled';
         $('startEnrollment').disabled = true;
+        $('mfaButton').disabled = false;
         $('authHelp').textContent = 'Your authenticator is enabled. Contact a manager if you need to change or recover it.';
         discardEnrollment();
       } else if (result.state === 'pending') {
         $('authState').textContent = 'Setup in progress';
+        $('mfaButton').disabled = true;
         $('startEnrollment').disabled = true;
         $('authHelp').textContent = 'An earlier setup was started. You can confirm its code, or restart with a new setup key.';
         $('confirmForm').hidden = false;
       } else if (result.state === 'not_enrolled') {
         $('authState').textContent = 'Not enrolled';
+        $('mfaButton').disabled = true;
         $('startEnrollment').disabled = approval.state !== 'approved';
         $('authHelp').textContent = 'Start setup when your registered workstation or approved enrollment verification is available.';
         discardEnrollment();
@@ -130,6 +143,7 @@
       notice('');
     } catch (error) {
       $('authState').textContent = 'Verification needed';
+      $('mfaButton').disabled = true;
       $('startEnrollment').disabled = true;
       notice(error.message);
     } finally { working = false; }
@@ -181,6 +195,7 @@
       if (result.confirmed !== true) throw Error('Authenticator confirmation was not completed.');
       discardEnrollment();
       $('authState').textContent = 'Enabled';
+      $('mfaButton').disabled = false;
       $('authHelp').textContent = 'Your authenticator is enabled. Keep a backup access method and contact a manager to reset or recover it.';
       $('startEnrollment').disabled = true;
       approvalState = 'none';
@@ -189,6 +204,39 @@
       notice('Authenticator enabled successfully.');
     } catch (error) { notice(error.message); }
     finally { $('otpCode').value = ''; $('confirmButton').disabled = false; working = false; }
+  }
+  async function verifyMfa(event) {
+    event.preventDefault();
+    if (working) return;
+    const code = $('mfaCode').value.trim();
+    $('mfaCode').value = '';
+    if (!/^\\d{6}$/.test(code)) {
+      notice('Enter a valid six-digit authenticator code.');
+      return;
+    }
+    working = true;
+    $('mfaButton').disabled = true;
+    discardMfa();
+    try {
+      const result = await request('mfa/session', { method:'POST', body:{code} });
+      if (typeof result.token !== 'string' || result.token.length > 1400 ||
+          !/^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$/.test(result.token) ||
+          !Number.isSafeInteger(result.expiresIn) ||
+          result.expiresIn <= 0 || result.expiresIn > 300) {
+        throw Error('Secure verification could not be established.');
+      }
+      // Never write a second-factor token into localStorage/sessionStorage.
+      // Future tool consumers must present both the base session and this
+      // ephemeral signed proof, verified on each backend operation.
+      mfaToken = result.token;
+      mfaExpiresAt = Date.now() + result.expiresIn * 1000;
+      $('mfaState').textContent = 'Verified';
+      $('mfaHelp').textContent =
+        'Additional verification active for up to ' + Math.ceil(result.expiresIn / 60) +
+        ' minutes, ending sooner if your employee session is signed out.';
+      notice('Authenticator accepted for this session.');
+    } catch (error) { notice(error.message); }
+    finally { working = false; $('mfaButton').disabled = false; }
   }
   $('signInForm').addEventListener('submit', async event => {
     event.preventDefault();
@@ -216,6 +264,7 @@
   $('startEnrollment').addEventListener('click', startEnrollment);
   $('refreshStatus').addEventListener('click', refresh);
   $('confirmForm').addEventListener('submit', confirmEnrollment);
+  $('mfaForm').addEventListener('submit', verifyMfa);
   $('copyKey').addEventListener('click', async () => {
     if (!enrollmentVisible || !$('setupKey').value) return;
     try {
@@ -224,9 +273,9 @@
     } catch { notice('Copy is unavailable. Enter the setup key manually.'); }
   });
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) discardEnrollment();
+    if (document.hidden) { discardEnrollment(); discardMfa(); }
   });
-  window.addEventListener('pagehide', discardEnrollment);
+  window.addEventListener('pagehide', () => { discardEnrollment(); discardMfa(); });
   if (auth()?.verify) {
     auth().verify().then(session => {
       setSignedIn(session);
