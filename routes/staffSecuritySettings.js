@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import bwipjs from 'bwip-js';
+import { createStaffMfaSessionRouter } from './staffMfaSession.js';
 
 // DEVELOPMENT CANDIDATE ONLY: this router is deliberately NOT mounted in server.js.
 // It is safe to mount only after verified workstation/passkey enrollment policy,
@@ -26,12 +27,13 @@ const noCache = (_req, res, next) => {
   });
   next();
 };
-const statusOf = error => [400, 401, 403, 429, 503].includes(error?.status) ? error.status : 503;
+const statusOf = error => [400, 401, 403, 409, 429, 503].includes(error?.status) ? error.status : 503;
 const errorResponse = (res, error) => {
   const status = statusOf(error);
   res.status(status).json({ error:
     status === 401 ? 'Please sign in again.' :
     status === 403 ? 'Additional employee verification is required.' :
+    status === 409 ? 'A setup request is already in progress.' :
     status === 429 ? 'Too many attempts. Please try later.' :
     status === 400 ? 'Invalid setup request.' :
     'Security settings are unavailable.' });
@@ -40,16 +42,21 @@ const validEmployee = employee => employee?.active === true &&
   /^[1-9][0-9]{0,17}$/.test(String(employee.id || ''));
 
 export function createStaffSecuritySettingsRouter({
-  verifyEmployee, authorizeSettings, totp
+  verifyEmployee, authorizeSettings, totp, approvals, mfa
 } = {}) {
   if (typeof verifyEmployee !== 'function' || typeof authorizeSettings !== 'function' ||
       typeof totp?.status !== 'function' ||
       typeof totp?.beginEnrollment !== 'function' ||
-      typeof totp?.confirmEnrollment !== 'function') {
+      typeof totp?.confirmEnrollment !== 'function' ||
+      ['request','status','approve'].some(name => typeof approvals?.[name] !== 'function') ||
+      typeof mfa?.authenticate !== 'function' || typeof mfa?.verify !== 'function') {
     throw new TypeError('A verified staff identity, independent setup authorization, and TOTP adapter are required.');
   }
   const router = express.Router();
   router.use(noCache);
+  // Mobile second-factor exchange is separate from base PIN identity. A valid
+  // TOTP produces only a short-lived signed, base-session-bound proof.
+  router.use('/api/mfa', createStaffMfaSessionRouter({ mfa }));
 
   // The page and assets contain no employee data or secrets. Don't assume that
   // serving HTML authenticates; all API routes independently enforce policy.
@@ -82,6 +89,47 @@ export function createStaffSecuritySettingsRouter({
     catch { /* denied */ }
     if (!accepted) throw deny();
   }
+
+  async function authenticatedEmployee(req) {
+    let employee;
+    try { employee = await verifyEmployee(req); }
+    catch { throw deny(); }
+    if (!validEmployee(employee)) throw deny();
+    return employee;
+  }
+
+  // A PIN-signed employee session may REQUEST manager approval. It cannot
+  // create a seed or approve itself. Requests are tightly rate-limited and
+  // bound by the backend to this precise signed employee session.
+  router.get('/api/enrollment-request', async (req, res) => {
+    try {
+      await authenticatedEmployee(req);
+      return res.json(await approvals.status({ context: req }));
+    } catch (error) { return errorResponse(res, error); }
+  });
+  router.post('/api/enrollment-request', express.json({ limit: '1kb', strict: true }),
+    async (req, res) => {
+      try {
+        if (!req.body || Object.keys(req.body).length !== 0)
+          return res.status(400).json({ error: 'Invalid setup request.' });
+        await authenticatedEmployee(req);
+        return res.status(201).json(await approvals.request({ context: req, sourceIp: req.ip }));
+      } catch (error) { return errorResponse(res, error); }
+    });
+  // No manager PIN grants here. The injected backend approver MUST validate an
+  // employee-bound passkey/security-key/managed-IdP MFA before approving.
+  router.post('/api/enrollment-approve', express.json({ limit: '1kb', strict: true }),
+    async (req, res) => {
+      try {
+        if (!req.body || Object.keys(req.body).length !== 1 ||
+            typeof req.body.requestId !== 'string' ||
+            !/^[a-fA-F0-9-]{36}$/.test(req.body.requestId)) {
+          return res.status(400).json({ error: 'Invalid approval request.' });
+        }
+        const approved = await approvals.approve({ context: req, requestId: req.body.requestId });
+        return res.json({ approved: approved.approved === true });
+      } catch (error) { return errorResponse(res, error); }
+    });
 
   router.get('/api/authenticator', async (req, res) => {
     try {
