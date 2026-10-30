@@ -26,6 +26,16 @@
       </form>
       <div id="signedInRow" class="signed-in" hidden><span id="employeeName"></span><button type="button" id="signOut" class="quiet">Sign out</button></div>
     </section>
+    <section class="panel" aria-labelledby="approvalTitle">
+      <div class="section-top"><div><h2 id="approvalTitle">Enrollment approval</h2><p>Request approval from an authorized manager before adding an authenticator. Your manager must verify their own stronger sign-in, not another four-digit PIN.</p></div><span class="status" id="approvalState">Not requested</span></div>
+      <div class="actions"><button id="requestApproval" type="button" disabled>Request approval</button><button id="checkApproval" type="button" class="quiet" disabled>Check approval</button></div>
+      <div id="approvalCodeBox" class="enroll" hidden>
+        <label for="approvalRequestId">Setup request ID to show your manager</label>
+        <input id="approvalRequestId" class="request-id" type="text" readonly autocomplete="off">
+        <p id="approvalExpiration" class="hint"></p>
+        <p class="hint">The manager approval screen is not connected yet. This request cannot be approved until a secure manager sign-in is deployed.</p>
+      </div>
+    </section>
     <section class="panel" aria-labelledby="authTitle">
       <div class="section-top"><div><h2 id="authTitle">Authenticator app</h2><p>Use Google Authenticator or another app that generates six-digit verification codes.</p></div><span class="status" id="authState">Not checked</span></div>
       <div class="steps">
