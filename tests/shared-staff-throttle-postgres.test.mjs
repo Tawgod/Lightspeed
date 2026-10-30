@@ -64,7 +64,7 @@ test('Postgres throttle: independent account/source ceilings, concurrency and sa
 
     const saved = await pool.query('SELECT key_hash FROM hc_staff_auth_throttle WHERE key_hash=$1', [accountHash]);
     assert.equal(saved.rows[0].key_hash.trim(), accountHash);
-    assert.equal(saved.rows[0].key_hash.includes('17'), false);
+    assert.match(saved.rows[0].key_hash.trim(), /^[a-f0-9]{64}$/);
     const sensitiveColumns = await pool.query(`
       SELECT column_name FROM information_schema.columns
       WHERE table_name='hc_staff_auth_throttle'`);
