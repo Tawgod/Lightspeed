@@ -83,3 +83,13 @@ The mutation tests also prove that failure to append a terminal audit event **af
 - Additional transport integrity guard (2026-10-29): streaming JSON decoding uses fatal UTF-8 validation, rejecting malformed byte sequences instead of silently replacing characters in product identifiers. Covered by regression test; not mounted in production.
 
 **Defense in depth (transport opt-in):** `createLightspeedTransport` now defaults to `mutationsAllowed:false`. POST/PUT/PATCH/DELETE are refused *before network activity* unless a trusted backend constructor explicitly opts in. This option does **not** replace the independent verified identity, permission, durable audit/idempotency and readback gates; downstream write consumers must use all gates. Any future vendor read endpoint requiring POST must have an explicitly reviewed dedicated read-only handling contract rather than silently enabling arbitrary mutations. The default remains safe for existing GET/HEAD read consumers.
+
+## Staff security assurance baseline candidate — 2026-10-30
+
+- Reusable, **unmounted** `services/security/staffAccessBaseline.js` explicitly classifies Timeclock status/clock, normal tool read/staging, product/PO/inventory/sales/credit writes and staff-permission changes.
+- A verified Timeclock employee session **alone** is insufficient: low-risk actions also require a separate, server-verified registered workstation or independent strong sign-in; high-risk writes/permissions require a fresh bound passkey, security key or OIDC MFA proof and an exact server-side operation grant. Spoofed browser role/device/header claims are not authority.
+- Construction requires trusted backend identity and permission adapters; optional station and step-up validators fail closed. The policy is **not yet connected to live identity-provider, device enrollment, or legacy Timeclock routes**.
+- Automated regression tests cover PIN-only denial, forged headers, expired/unbound factor proofs, missing grants, inactive employees and verifier failures. Last code/test CI [41091313029](https://github.com/Tawgod/Lightspeed/actions/runs/41091313029) **PASS**.
+- Cross-tool design/migration specification: `Tawgod/Hobby-Corner:main/STAFF_SECURITY_BASELINE.md`. Existing public-facing Timeclock clock/status identity handling must be coordinated with Chrome content-script migration before it can meet this baseline; it must not be switched off blindly during store hours.
+- No password/PIN, production credential, Timeclock data, Railway routing or extension deployment was changed.
+
