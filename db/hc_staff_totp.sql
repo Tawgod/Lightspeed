@@ -5,6 +5,7 @@
 CREATE TABLE IF NOT EXISTS hc_staff_totp (
   employee_id BIGINT PRIMARY KEY CHECK (employee_id > 0),
   secret_ciphertext BYTEA NOT NULL,
+  factor_generation UUID NOT NULL DEFAULT gen_random_uuid(),
   status TEXT NOT NULL CHECK (status IN ('pending','active')),
   pending_expires_at TIMESTAMPTZ,
   enrollment_failures SMALLINT NOT NULL DEFAULT 0
