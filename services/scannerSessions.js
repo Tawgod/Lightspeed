@@ -27,5 +27,21 @@ export function createScannerSessions({secret,ttlSeconds=900,now=()=>Date.now()}
     }
     return {employeeId:Number(payload.sub)};
   }
-  return {issue,verify,ttlSeconds};
+  // Stronger internal verifier for the security-settings/MFA service. The
+  // original verify(token) response is unchanged for existing consumers.
+  function verifyBound(token){
+    const {employeeId}=verify(token); // validates HMAC and expiry first.
+    let payload;
+    try{payload=JSON.parse(Buffer.from(token.split('.')[0],'base64url').toString('utf8'))}
+    catch{throw Object.assign(new Error('Invalid staff session.'),{status:401})}
+    const t=Math.floor(now()/1000);
+    if(typeof payload?.jti!=='string'||!/^[a-f0-9]{32}$/.test(payload.jti)||
+       !Number.isSafeInteger(payload?.iat)||payload.iat>t||
+       !Number.isSafeInteger(payload?.exp)||payload.exp>payload.iat+ttlSeconds){
+      throw Object.assign(new Error('Invalid bound staff session.'),{status:401});
+    }
+    return Object.freeze({employeeId,sessionId:payload.jti,
+      issuedAtMs:payload.iat*1000,expiresAtMs:payload.exp*1000});
+  }
+  return {issue,verify,verifyBound,ttlSeconds};
 }
