@@ -4,6 +4,7 @@
   const $ = id => document.getElementById(id);
   const auth = () => window.HCStaffAuth;
   let enrollmentVisible = false;
+  let approvalState = 'none';
   let working = false;
   function notice(message) {
     const el = $('notice');
@@ -29,8 +30,14 @@
     $('employeeName').textContent = yes
       ? 'Signed in as ' + String(session.employee.name || 'employee') : '';
     $('refreshStatus').disabled = !yes;
-    $('startEnrollment').disabled = !yes;
+    $('startEnrollment').disabled = true;
+    $('requestApproval').disabled = !yes;
+    $('checkApproval').disabled = !yes;
     if (!yes) {
+      approvalState = 'none';
+      $('approvalState').textContent = 'Not requested';
+      $('approvalCodeBox').hidden = true;
+      $('approvalRequestId').value = '';
       $('authState').textContent = 'Not checked';
       $('authHelp').textContent = 'Sign in to check whether an authenticator is enrolled.';
       discardEnrollment();
@@ -39,6 +46,7 @@
   function safeMessage(status, body) {
     if (status === 403) return 'Additional verified device or manager-approved enrollment is required. PIN sign-in alone cannot change security settings.';
     if (status === 401) return 'Your session or code was not accepted. Please sign in or try a new six-digit code.';
+    if (status === 409) return 'An enrollment request is already in progress.';
     if (status === 429) return 'Too many attempts. Please try again later.';
     return String(body?.error || 'Employee security settings are unavailable.');
   }
@@ -58,10 +66,48 @@
     if (!response.ok) throw Error(safeMessage(response.status, data));
     return data;
   }
+  function applyApproval(data) {
+    const state = ['none', 'requested', 'approved', 'started'].includes(data?.state)
+      ? data.state : 'none';
+    approvalState = state;
+    $('approvalState').textContent = ({
+      none: 'Not requested', requested: 'Awaiting manager',
+      approved: 'Approved', started: 'Enrollment started'
+    })[state];
+    const hasId = state !== 'none' && typeof data.requestId === 'string';
+    $('approvalCodeBox').hidden = !hasId;
+    $('approvalRequestId').value = hasId ? data.requestId : '';
+    $('approvalExpiration').textContent = Number.isSafeInteger(data?.expiresAtMs)
+      ? 'Expires at ' + new Date(data.expiresAtMs).toLocaleTimeString() + '.'
+      : '';
+    $('requestApproval').disabled = state !== 'none' || working;
+    $('startEnrollment').disabled = state !== 'approved' || working;
+    if (state === 'requested') $('authHelp').textContent =
+      'Your setup request is awaiting independently verified manager approval.';
+  }
+  async function loadApproval() {
+    const result = await request('enrollment-request');
+    applyApproval(result);
+    return result;
+  }
+  async function requestApproval() {
+    if (working) return;
+    working = true;
+    $('requestApproval').disabled = true;
+    try {
+      const data = await request('enrollment-request', { method: 'POST', body: {} });
+      applyApproval(data);
+      notice('Request created. Share the request ID with an authorized manager.');
+    } catch (error) {
+      notice(error.message);
+      $('requestApproval').disabled = false;
+    } finally { working = false; }
+  }
   async function refresh() {
     if (working) return;
     working = true;
     try {
+      const approval = await loadApproval();
       const result = await request('authenticator');
       if (result.state === 'active') {
         $('authState').textContent = 'Enabled';
@@ -70,12 +116,12 @@
         discardEnrollment();
       } else if (result.state === 'pending') {
         $('authState').textContent = 'Setup in progress';
-        $('startEnrollment').disabled = false;
+        $('startEnrollment').disabled = true;
         $('authHelp').textContent = 'An earlier setup was started. You can confirm its code, or restart with a new setup key.';
         $('confirmForm').hidden = false;
       } else if (result.state === 'not_enrolled') {
         $('authState').textContent = 'Not enrolled';
-        $('startEnrollment').disabled = false;
+        $('startEnrollment').disabled = approval.state !== 'approved';
         $('authHelp').textContent = 'Start setup when your registered workstation or approved enrollment verification is available.';
         discardEnrollment();
       } else {
@@ -90,6 +136,10 @@
   }
   async function startEnrollment() {
     if (working) return;
+    if (approvalState !== 'approved') {
+      notice('A separately verified manager approval is required before generating a setup key.');
+      return;
+    }
     working = true;
     $('startEnrollment').disabled = true;
     discardEnrollment();
@@ -113,6 +163,8 @@
       $('authState').textContent = 'Awaiting confirmation';
       $('authHelp').textContent = 'Enter your next six-digit authenticator code to activate this method.';
       enrollmentVisible = true;
+      approvalState = 'started';
+      $('approvalState').textContent = 'Enrollment started';
       notice('');
     } catch (error) { notice(error.message); }
     finally { working = false; $('startEnrollment').disabled = false; }
@@ -131,6 +183,9 @@
       $('authState').textContent = 'Enabled';
       $('authHelp').textContent = 'Your authenticator is enabled. Keep a backup access method and contact a manager to reset or recover it.';
       $('startEnrollment').disabled = true;
+      approvalState = 'none';
+      $('approvalState').textContent = 'Completed';
+      $('approvalCodeBox').hidden = true;
       notice('Authenticator enabled successfully.');
     } catch (error) { notice(error.message); }
     finally { $('otpCode').value = ''; $('confirmButton').disabled = false; working = false; }
@@ -151,6 +206,12 @@
     auth()?.signOut?.();
     setSignedIn(null);
     notice('Signed out. Your setup key has been cleared from this page.');
+  });
+  $('requestApproval').addEventListener('click', requestApproval);
+  $('checkApproval').addEventListener('click', async () => {
+    if (working) return;
+    try { await loadApproval(); notice('Enrollment approval status updated.'); }
+    catch (error) { notice(error.message); }
   });
   $('startEnrollment').addEventListener('click', startEnrollment);
   $('refreshStatus').addEventListener('click', refresh);
