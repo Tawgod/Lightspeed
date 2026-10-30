@@ -4,6 +4,7 @@
   const $ = id => document.getElementById(id);
   const auth = () => window.HCStaffAuth;
   let enrollmentVisible = false;
+  let enrollmentExpiresAt = 0;
   let approvalState = 'none';
   let mfaToken = null;
   let mfaExpiresAt = 0;
@@ -21,6 +22,7 @@
   }
   function discardEnrollment() {
     enrollmentVisible = false;
+    enrollmentExpiresAt = 0;
     $('enrollView').hidden = true;
     $('qrImage').removeAttribute('src');
     $('qrImage').hidden = true;
@@ -63,7 +65,7 @@
   async function request(endpoint, options = {}) {
     const session = auth()?.readSession?.();
     if (!session?.token) throw Error('Sign in with your Timeclock PIN first.');
-    const response = await fetch('./api/' + endpoint, {
+    const response = await fetch('/staff-security/api/' + endpoint, {
       method: options.method || 'GET', cache: 'no-store', mode: 'same-origin',
       credentials: 'omit',
       headers: {
@@ -177,6 +179,7 @@
       $('authState').textContent = 'Awaiting confirmation';
       $('authHelp').textContent = 'Enter your next six-digit authenticator code to activate this method.';
       enrollmentVisible = true;
+      enrollmentExpiresAt = Number.isSafeInteger(result.expiresAtMs) ? result.expiresAtMs : Date.now() + 600000;
       approvalState = 'started';
       $('approvalState').textContent = 'Enrollment started';
       notice('');
@@ -273,7 +276,14 @@
     } catch { notice('Copy is unavailable. Enter the setup key manually.'); }
   });
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { discardEnrollment(); discardMfa(); }
+    // Employees may temporarily switch to Google Authenticator on the SAME
+    // phone. Retain the pending QR only in this tab's memory for its short
+    // enrollment window; never persist to localStorage/sessionStorage.
+    if (document.hidden) discardMfa();
+    else if (enrollmentVisible && Date.now() >= enrollmentExpiresAt) {
+      discardEnrollment();
+      notice('Authenticator setup expired. Request a fresh approved enrollment.');
+    }
   });
   window.addEventListener('pagehide', () => { discardEnrollment(); discardMfa(); });
   if (auth()?.verify) {
