@@ -56,9 +56,9 @@ export function createPostgresStaffTotp({
       return String(employee.id);
     } catch { throw denied(); }
   }
-  async function permittedEnrollment(context, employeeId) {
+  async function permittedEnrollment(context, employeeId, phase) {
     try {
-      if (await authorizeEnrollment({ context, employeeId }) === true) return;
+      if (await authorizeEnrollment({ context, employeeId, phase }) === true) return;
     } catch { /* denied */ }
     throw denied();
   }
@@ -97,9 +97,20 @@ export function createPostgresStaffTotp({
     });
   }
 
+  async function getActiveGeneration({ context } = {}) {
+    const employeeId = await employeeFromContext(context);
+    return inTransaction(async client => {
+      const result = await client.query(
+        `SELECT factor_generation FROM hc_staff_totp
+         WHERE employee_id=$1 AND status='active'`, [employeeId]);
+      const generation = result.rows?.[0]?.factor_generation;
+      return typeof generation === 'string' ? generation : null;
+    });
+  }
+
   async function beginEnrollment({ context } = {}) {
     const employeeId = await employeeFromContext(context);
-    await permittedEnrollment(context, employeeId);
+    await permittedEnrollment(context, employeeId, 'begin');
     const secret = generateStaffTotpSecret();
     const encrypted = encrypt(secret, key, employeeId);
     const expiresAtMs = now() + TEN_MINUTES;
@@ -127,7 +138,7 @@ export function createPostgresStaffTotp({
 
   async function confirmEnrollment({ context, code } = {}) {
     const employeeId = await employeeFromContext(context);
-    await permittedEnrollment(context, employeeId);
+    await permittedEnrollment(context, employeeId, 'confirm');
     if (typeof code !== 'string' || !/^\d{6}$/.test(code)) throw invalid();
     return inTransaction(async client => {
       const result = await client.query(
@@ -151,8 +162,12 @@ export function createPostgresStaffTotp({
          last_used_step=$2,enrollment_failures=0,updated_at=now()
          WHERE employee_id=$1`, [employeeId, step]);
       return { confirmed: true };
-    }).then(result => {
+    }).then(async result => {
       if (!result.confirmed) throw invalid();
+      // For a durable one-time manager grant, mark it finished AFTER the
+      // authenticator becomes active. A failure is not permission to retry
+      // the enrollment; staff can inspect active status to recover.
+      await permittedEnrollment(context, employeeId, 'finish');
       return Object.freeze({ confirmed: true });
     });
   }
@@ -189,5 +204,5 @@ export function createPostgresStaffTotp({
       });
     });
   }
-  return Object.freeze({ status, beginEnrollment, confirmEnrollment, verifyCode });
+  return Object.freeze({ status, getActiveGeneration, beginEnrollment, confirmEnrollment, verifyCode });
 }
