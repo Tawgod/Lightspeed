@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import bwipjs from 'bwip-js';
+import { createStaffMfaSessionRouter } from './staffMfaSession.js';
 
 // DEVELOPMENT CANDIDATE ONLY: this router is deliberately NOT mounted in server.js.
 // It is safe to mount only after verified workstation/passkey enrollment policy,
@@ -41,17 +42,21 @@ const validEmployee = employee => employee?.active === true &&
   /^[1-9][0-9]{0,17}$/.test(String(employee.id || ''));
 
 export function createStaffSecuritySettingsRouter({
-  verifyEmployee, authorizeSettings, totp, approvals
+  verifyEmployee, authorizeSettings, totp, approvals, mfa
 } = {}) {
   if (typeof verifyEmployee !== 'function' || typeof authorizeSettings !== 'function' ||
       typeof totp?.status !== 'function' ||
       typeof totp?.beginEnrollment !== 'function' ||
       typeof totp?.confirmEnrollment !== 'function' ||
-      ['request','status','approve'].some(name => typeof approvals?.[name] !== 'function')) {
+      ['request','status','approve'].some(name => typeof approvals?.[name] !== 'function') ||
+      typeof mfa?.authenticate !== 'function' || typeof mfa?.verify !== 'function') {
     throw new TypeError('A verified staff identity, independent setup authorization, and TOTP adapter are required.');
   }
   const router = express.Router();
   router.use(noCache);
+  // Mobile second-factor exchange is separate from base PIN identity. A valid
+  // TOTP produces only a short-lived signed, base-session-bound proof.
+  router.use('/api/mfa', createStaffMfaSessionRouter({ mfa }));
 
   // The page and assets contain no employee data or secrets. Don't assume that
   // serving HTML authenticates; all API routes independently enforce policy.
