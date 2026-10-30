@@ -8,7 +8,7 @@ import { createStaffAccessBaseline } from '../services/security/staffAccessBasel
 const RFC_SECRET = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ';
 test('standard 6-digit TOTP is compatible with RFC 6238 and 30-second windows', () => {
   assert.equal(matchStaffTotpStep({ secret: RFC_SECRET, code: '287082', nowMs: 59000 }), 1);
-  assert.equal(matchStaffTotpStep({ secret: RFC_SECRET, code: '287082', nowMs: 90000 }), 2);
+  assert.equal(matchStaffTotpStep({ secret: RFC_SECRET, code: '287082', nowMs: 89000 }), 1);
   assert.equal(matchStaffTotpStep({ secret: RFC_SECRET, code: '287082', nowMs: 150000 }), null);
   assert.equal(matchStaffTotpStep({ secret: RFC_SECRET, code: '287082', nowMs: 0 }), null);
   assert.equal(matchStaffTotpStep({ secret: RFC_SECRET, code: '287082', nowMs: -1 }), null);
