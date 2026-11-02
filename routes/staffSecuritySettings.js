@@ -42,7 +42,8 @@ const validEmployee = employee => employee?.active === true &&
   /^[1-9][0-9]{0,17}$/.test(String(employee.id || ''));
 
 export function createStaffSecuritySettingsRouter({
-  verifyEmployee, authorizeSettings, totp, approvals, mfa
+  verifyEmployee, authorizeSettings, totp, approvals, mfa,
+  allowDirectEnrollmentRequests = true
 } = {}) {
   if (typeof verifyEmployee !== 'function' || typeof authorizeSettings !== 'function' ||
       typeof totp?.status !== 'function' ||
@@ -112,6 +113,9 @@ export function createStaffSecuritySettingsRouter({
       try {
         if (!req.body || Object.keys(req.body).length !== 0)
           return res.status(400).json({ error: 'Invalid setup request.' });
+        if (allowDirectEnrollmentRequests !== true) return res.status(403).json({
+          error: 'An administrator must send a private invitation before enrollment.'
+        });
         await authenticatedEmployee(req);
         return res.status(201).json(await approvals.request({ context: req, sourceIp: req.ip }));
       } catch (error) { return errorResponse(res, error); }
