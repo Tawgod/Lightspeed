@@ -9,6 +9,7 @@ on:
       - 'routes/staffStationProof.js'
       - 'routes/staffPasskey.js'
       - 'tests/shared-staff-discord-invitation-postgres.test.mjs'
+      - 'tests/shared-staff-invitation-client.test.mjs'
       - 'db/hc_staff_security_invitations.sql'
       - 'services/security/staffEnrollmentInvitations.js'
       - 'routes/staffEnrollmentInvitations.js'
@@ -85,6 +86,8 @@ jobs:
         run: node --test tests/shared-staff-passkey-client.test.mjs
       - name: Run Bot invitation sign-in to live QR and six-digit TOTP
         run: node --test --test-concurrency=1 tests/shared-staff-discord-invitation-postgres.test.mjs
+      - name: Employee invitation sign-in browser regression
+        run: node --test tests/shared-staff-invitation-client.test.mjs
       - name: Existing backend parse check
         run: node --check server.js
       - name: Staff settings browser script parse check
