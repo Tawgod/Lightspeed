@@ -84,7 +84,7 @@ test('native browser passkey enrollment, authentication, manager proof and memor
  await run('verifyPasskey');
  assert.deepEqual(Array.from(seen.authentication.challenge),[1,2,3,4]);
  const assertion=requests.find(x=>x.url==='/staff-passkey/authentication/verify');
- assert.equal(JSON.parse(assertion.init.body).response.signature,'Cgs');
+ assert.equal(JSON.parse(assertion.init.body).response.signature,'Cgs',assertion.init.body);
  assert.equal(node('managerApproval').disabled,false);
  node('requestId').value='33333333-3333-4333-8333-333333333333';
  await run('managerApproval');
