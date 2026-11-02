@@ -213,7 +213,7 @@
     if (working) return;
     const code = $('mfaCode').value.trim();
     $('mfaCode').value = '';
-    if (!/^\\d{6}$/.test(code)) {
+    if (!/^\d{6}$/.test(code)) {
       notice('Enter a valid six-digit authenticator code.');
       return;
     }
@@ -223,7 +223,7 @@
     try {
       const result = await request('mfa/session', { method:'POST', body:{code} });
       if (typeof result.token !== 'string' || result.token.length > 1400 ||
-          !/^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$/.test(result.token) ||
+          !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(result.token) ||
           !Number.isSafeInteger(result.expiresIn) ||
           result.expiresIn <= 0 || result.expiresIn > 300) {
         throw Error('Secure verification could not be established.');
