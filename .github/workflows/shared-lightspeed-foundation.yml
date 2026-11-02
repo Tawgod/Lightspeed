@@ -7,6 +7,7 @@ on:
       - 'services/security/**'
       - 'routes/staffSecuritySettings.js'
       - 'routes/staffStationProof.js'
+      - 'routes/staffPasskey.js'
       - 'tests/shared-staff-approval-postgres.test.mjs'
       - 'tests/shared-staff-mfa.test.mjs'
       - 'db/hc_staff_factor_approvals.sql'
@@ -25,10 +26,12 @@ on:
       - 'tests/shared-staff-bridge.test.mjs'
       - 'tests/shared-staff-workstations-postgres.test.mjs'
       - 'tests/shared-staff-station-http.test.mjs'
+      - 'tests/shared-staff-passkeys-postgres.test.mjs'
       - 'tests/shared-staff-subsystem-postgres.test.mjs'
       - 'db/hc_staff_auth_throttle.sql'
       - 'db/hc_staff_totp.sql'
       - 'db/hc_staff_stations.sql'
+      - 'db/hc_staff_passkeys.sql'
       - 'db/lightspeed_shared_foundation.sql'
       - 'scripts/audit-lightspeed-consumers.mjs'
       - '.github/workflows/shared-lightspeed-foundation.yml'
@@ -68,6 +71,8 @@ jobs:
         run: node --test tests/shared-lightspeed-foundation.test.mjs tests/shared-lightspeed-adapters.test.mjs tests/shared-lightspeed-postgres.test.mjs tests/shared-staff-security.test.mjs tests/shared-staff-throttle-postgres.test.mjs tests/shared-staff-totp.test.mjs tests/shared-staff-totp-postgres.test.mjs tests/shared-staff-settings.test.mjs tests/shared-staff-mfa.test.mjs tests/shared-staff-approval-postgres.test.mjs tests/shared-staff-binding.test.mjs tests/shared-staff-bridge.test.mjs tests/shared-staff-subsystem-postgres.test.mjs tests/shared-staff-settings-client.test.mjs
       - name: Real Ed25519 station challenge, revocation and access integration tests
         run: node --test --test-concurrency=1 tests/shared-staff-workstations-postgres.test.mjs tests/shared-staff-station-http.test.mjs
+      - name: Passkey WebAuthn ceremony and signed ES256 verification test
+        run: node --test --test-concurrency=1 tests/shared-staff-passkeys-postgres.test.mjs
       - name: Existing backend parse check
         run: node --check server.js
       - name: Staff settings browser script parse check
