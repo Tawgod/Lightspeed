@@ -9,6 +9,7 @@ import {createStaffAuthGateway} from '../services/staffAuthGateway.js';
 import {createPostgresStaffPasskeys} from '../services/security/staffPasskeysPostgres.js';
 import {createPostgresStaffLoginThrottle} from '../services/security/staffLoginThrottle.js';
 import {createStaffPasskeyRouter} from '../routes/staffPasskey.js';
+import {createStaffSecuritySubsystem} from '../services/security/staffSecuritySubsystem.js';
 import {createStaffSecurityAccessGate,createStaffBoundSessionAdapter}
   from '../services/security/staffSecurityBridge.js';
 
@@ -58,8 +59,10 @@ test('real ES256 passkey assertion, session binding, manager proof, counter and 
  const cose=ec2Cose(publicKey);
  const account={
    verifyPin:async pin=>pin==='9182'?{id:57,name:'Test Manager'}:
+     pin==='9183'?{id:58,name:'Test Staff'}:
      Promise.reject(Object.assign(new Error('Invalid PIN'),{status:401})),
-   authorize:async value=>active&&String(value)==='57'?{id:57,name:'Test Manager'}:null
+   authorize:async value=>active&&['57','58'].includes(String(value))?
+     {id:Number(value),name:String(value)==='57'?'Test Manager':'Test Staff'}:null
  };
  const auth=createStaffAuthGateway({
    identity:account,loginLimiter:async()=>true,
@@ -80,7 +83,8 @@ test('real ES256 passkey assertion, session binding, manager proof, counter and 
    }
  };
  try{
-   for(const name of ['hc_staff_auth_throttle.sql','hc_staff_passkeys.sql'])
+   for(const name of ['hc_staff_auth_throttle.sql','hc_staff_passkeys.sql',
+     'hc_staff_factor_approvals.sql','hc_staff_totp.sql'])
      await pool.query(await readFile(new URL('../db/'+name,import.meta.url),'utf8'));
    const passkeys=createPostgresStaffPasskeys({
      pool,origin:'http://localhost',rpID:'localhost',
@@ -94,9 +98,21 @@ test('real ES256 passkey assertion, session binding, manager proof, counter and 
        scope:'hc:staff:passkey-test'
      }),webauthn:provider
    });
+   const security=createStaffSecuritySubsystem({
+     staffAuthGateway:auth,pool,now:()=>clock,
+     totpEncryptionKey:randomBytes(32),
+     throttleHmacSecret:'test-only-passkey-integrated-throttle-hmac-secret-12345',
+     approvalHmacSecret:'test-only-passkey-integrated-approval-hmac-secret-12345',
+     mfaSessionSecret:'test-only-passkey-integrated-mfa-hmac-secret-123456',
+     verifyStrongManager:ctx=>passkeys.verifyStrongManager(ctx),
+     canApproveEnrollment:async p=>p.approverId==='57'&&p.employeeId==='58'&&
+       p.operation==='staff.authenticator.enroll',
+     canRecoverFactor:async()=>false
+   });
    const app=express();
    app.use('/api/staff-auth',auth.router);
    app.use('/passkey',createStaffPasskeyRouter({passkeys}));
+   app.use('/staff-security',security.settingsRouter);
    const server=await new Promise(ok=>{
      const s=app.listen(0,'127.0.0.1',()=>ok(s));
    });
@@ -176,6 +192,27 @@ test('real ES256 passkey assertion, session binding, manager proof, counter and 
        Authorization:'Bearer '+newSession,'X-HC-Passkey-Proof':proof
      }});
      assert.equal(crossSession.status,403);
+     // Full manager approval integration: PIN-only and forged role both fail.
+     const staffLogin=await post('/api/staff-auth/session',{pin:'9183'});
+     assert.equal(staffLogin.status,200);
+     const staffToken=(await staffLogin.json()).token;
+     const staffHeaders={Authorization:'Bearer '+staffToken};
+     const employeeRequest=await post('/staff-security/api/enrollment-request',{},staffHeaders);
+     assert.equal(employeeRequest.status,201);
+     const managerRequest=(await employeeRequest.json()).requestId;
+     const forgedApproval=await post('/staff-security/api/enrollment-approve',{
+       requestId:managerRequest
+     },{...h,'X-Employee-Role':'admin'});
+     assert.equal(forgedApproval.status,403,'manager PIN and role header are not enough');
+     const authorizedApproval=await post('/staff-security/api/enrollment-approve',{
+       requestId:managerRequest
+     },{...h,'X-HC-Passkey-Proof':proof});
+     assert.equal(authorizedApproval.status,200,
+       'real signed manager passkey proof authorizes exact employee enrollment grant');
+     assert.equal((await authorizedApproval.json()).approved,true);
+     const employeeEnrollment=await post('/staff-security/api/authenticator/enroll',{},staffHeaders);
+     assert.equal(employeeEnrollment.status,200);
+     assert.match((await employeeEnrollment.json()).manualKey,/^[A-Z2-7]{32}$/);
      const count=await pool.query('SELECT counter FROM hc_staff_passkeys WHERE credential_id=$1',[credentialId]);
      assert.equal(Number(count.rows[0].counter),1);
      const tampered=await fetch(origin+'/passkey/session',{headers:{
