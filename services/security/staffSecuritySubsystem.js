@@ -5,6 +5,8 @@ import { createPostgresStaffTotp } from './staffTotpPostgres.js';
 import { createStaffMfaSessions } from './staffMfaSessions.js';
 import { createStaffFactorRecovery } from './staffFactorRecovery.js';
 import { createStaffSecuritySettingsRouter } from '../../routes/staffSecuritySettings.js';
+import { createStaffEnrollmentInvitations } from './staffEnrollmentInvitations.js';
+import { createStaffEnrollmentInvitationRouter } from '../../routes/staffEnrollmentInvitations.js';
 
 // An unmounted, complete composition of the employee security candidates.
 // Never supply demo verifiers in production. A PIN-only manager or browser role
@@ -14,6 +16,7 @@ export function createStaffSecuritySubsystem({
   staffAuthGateway, pool, totpEncryptionKey, throttleHmacSecret,
   approvalHmacSecret, mfaSessionSecret,
   verifyStrongManager, canApproveEnrollment, canRecoverFactor,
+  enrollmentInvitations = null,
   now = () => Date.now()
 } = {}) {
   if (typeof staffAuthGateway?.verifyBoundEmployee !== 'function' ||
@@ -55,12 +58,26 @@ export function createStaffSecuritySubsystem({
   });
   const settingsRouter = createStaffSecuritySettingsRouter({
     verifyEmployee: verifyBase, authorizeSettings: gates.authorizeSettings,
-    totp, approvals, mfa
+    totp, approvals, mfa,
+    allowDirectEnrollmentRequests: !enrollmentInvitations
   });
+  let invitationRouter = null;
+  if (enrollmentInvitations) {
+    const inviteThrottle=createPostgresStaffLoginThrottle({
+      pool,secret:throttleHmacSecret,scope:'hc:staff:bot-enrollment'
+    });
+    const invitations=createStaffEnrollmentInvitations({
+      pool, ...enrollmentInvitations,
+      verifyBoundEmployee:verifyBase,
+      requestEnrollment:({context,sourceIp})=>approvals.request({context,sourceIp}),
+      throttle:inviteThrottle,now
+    });
+    invitationRouter=createStaffEnrollmentInvitationRouter({invitations});
+  }
   // Pass only to backend operation policy. Never accept a client-supplied
   // proof object; this method verifies HMAC, base session and factor version.
   async function verifyTotpStepUp(request) {
     return mfa.verify({ context: request, token: request.get('x-hc-mfa-session') });
   }
-  return Object.freeze({ settingsRouter, verifyTotpStepUp, recovery });
+  return Object.freeze({ settingsRouter, invitationRouter, verifyTotpStepUp, recovery });
 }
