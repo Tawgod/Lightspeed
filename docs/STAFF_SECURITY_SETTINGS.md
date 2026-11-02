@@ -48,3 +48,47 @@ No `GET` secret readback, factor reset/disable endpoint, public verify-code endp
 7. Run real device/browser and lost-phone acceptance with store employees, confirm key custody and Postgres backup/restore, and seek explicit production integration/deployment authorization.
 
 **Important:** This is a first usable candidate component, not a live settings page. The actual login/session and strong-factor provider integration is not yet wired; employees must not be directed to it in production.
+
+
+## Verified Timeclock-to-MFA policy bridge candidate — 2026-11-02
+
+New unmounted server-only module: services/security/staffSecurityBridge.js.
+Its createStaffBoundSessionAdapter({staffAuth}) calls the existing
+staffAuthGateway.verifyBoundEmployee verifier, rechecks active employee ID,
+unique server-signed session binding and expiry, and exposes
+verifyBaseSession for createStaffMfaSessions. It does **not** verify a
+four-digit PIN from request fields or accept an employee/role from the browser.
+
+createStaffSecurityAccessGate({staffSession,mfa,checkPermission,
+verifyWorkstation?,verifyStrongStepUp?}) feeds the existing
+staffAccessBaseline exact-operation policy. A request may present the
+short-lived signed X-HC-MFA-Session token **alongside** the current
+Timeclock signed session; the backend independently verifies the MFA
+signature, bound session, employee status and active factor generation.
+Verified TOTP may satisfy routine read/staging policy, but cannot enable
+products/PO/inventory/sales/store-credit/staff-permission mutations.
+
+Store workstation trust and stronger passkey/security-key/OIDC verification
+are intentionally **injected server-side interfaces**, not fabricated by this
+bridge. Omit either callback until its independent enrollment, signature/
+IdP verification, revocation and cross-device tests are complete: the
+corresponding assurance path then fails closed. The checkPermission callback
+must consult backend grants for the precise operation. The module deliberately
+does not mount staff routes, enable writes, apply schema, read a Railway secret
+or change legacy Timeclock clock-in. Do not wire a request header/body/Origin
+directly to either trusted callback.
+
+Regression file: tests/shared-staff-bridge.test.mjs covers spoofed
+headers, invalid Timeclock sessions, signed TOTP binding and revocation,
+restricted writes, strong-factor/permission conjunction and failing
+verification services. Phase 1 GitHub foundation CI run 41467459820
+passed with this file explicitly included. Phase 2 contains mirrored code
+and test, but its current-head CI must be checked independently.
+
+**Next integration gate:** Implement and test real workstation challenge/
+registration or independently verified passkey/IdP manager approval; confirm
+Timeclock's current signed-session verifier is the sole employee authority;
+repair legacy public clock/status authentication without breaking store
+clocking; verify trustworthy proxy IP handling, mobile browser/Chrome employee
+acceptance, secret custody, recovery, and staged database migrations. Only
+then seek explicit deployment authorization.
