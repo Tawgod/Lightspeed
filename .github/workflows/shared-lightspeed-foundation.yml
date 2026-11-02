@@ -14,6 +14,9 @@ on:
       - 'routes/staffMfaSession.js'
       - 'staff-security.html'
       - 'staff-security-client.js'
+      - 'staff-passkey-client.js'
+      - 'staff-passkey.html'
+      - 'staff-passkey.css'
       - 'staff-security.css'
       - 'tests/shared-lightspeed-*.test.mjs'
       - 'tests/shared-staff-security.test.mjs'
@@ -27,6 +30,7 @@ on:
       - 'tests/shared-staff-workstations-postgres.test.mjs'
       - 'tests/shared-staff-station-http.test.mjs'
       - 'tests/shared-staff-passkeys-postgres.test.mjs'
+      - 'tests/shared-staff-passkey-client.test.mjs'
       - 'tests/shared-staff-subsystem-postgres.test.mjs'
       - 'db/hc_staff_auth_throttle.sql'
       - 'db/hc_staff_totp.sql'
@@ -73,10 +77,14 @@ jobs:
         run: node --test --test-concurrency=1 tests/shared-staff-workstations-postgres.test.mjs tests/shared-staff-station-http.test.mjs
       - name: Passkey WebAuthn ceremony and signed ES256 verification test
         run: node --test --test-concurrency=1 tests/shared-staff-passkeys-postgres.test.mjs
+      - name: Passkey native browser client regression
+        run: node --test tests/shared-staff-passkey-client.test.mjs
       - name: Existing backend parse check
         run: node --check server.js
       - name: Staff settings browser script parse check
         run: node --check staff-security-client.js
+      - name: Passkey pilot browser parse check
+        run: node --check staff-passkey-client.js
       - name: Scanner and Core Operations regressions
         run: |
           node --test tests/scanner*.test.js
