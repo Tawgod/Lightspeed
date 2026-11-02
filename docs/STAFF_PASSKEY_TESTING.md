@@ -45,3 +45,11 @@ The PostgreSQL/localhost HTTP test uses actual P-256/ES256 cryptographic WebAuth
 Official engineering references: https://simplewebauthn.dev/docs/packages/server and https://developers.google.com/identity/passkeys/developer-guides/server-authentication.
 
 **No live passwords/PINs, employee credentials, Railway variables or database content were read or modified.**
+
+## Verified manager approval integration — 2026-11-02
+
+- The disposable-PostgreSQL HTTP test now uses a **real WebAuthn P-256 authentication assertion** to obtain a manager's server-signed proof, then wires `passkeys.verifyStrongManager` into the existing `createStaffSecuritySubsystem` as its independent manager verifier.
+- A **different** synthetic employee submits an Authenticator enrollment request through `staffSecuritySettings.js`. A manager PIN session with forged `X-Employee-Role` cannot approve. The manager's passkey proof **and** a separate exact `staff.authenticator.enroll` server permission can approve the request; the employee may then start TOTP enrollment. These test flows do not create any real manager/employee factors.
+- The native browser pilot `staff-passkey.html` keeps both signed employee and passkey tokens in memory, uses `navigator.credentials.create/get`, supports the above manager-approval action, and intentionally has no self-service first-passkey bootstrap.
+- Latest verified Phase 1 foundation run `41474392635` **PASS**, Scanner `41474392499` **PASS**, Core Operations `41474392819` **PASS** at test head `024fca591618ae7c15c1c4b934527a2ee4a3b589`. Phase 2 branch is mirrored but its latest-head CI has not been independently verified.
+- **Important limitations remain:** actual browser registration/biometric acceptance and truly independently authenticated first-owner bootstrap are NOT covered by these synthetic test identities. WebAuthn registration verifier is still simulated by a test fixture; authentication signature verification uses the real library. Do not mount or deploy based only on this CI.
