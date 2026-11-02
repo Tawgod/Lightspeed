@@ -24,7 +24,7 @@ function fixture() {
       if (request.get('authorization') !== 'Bearer signed-17' || !employeeActive)
         throw Error('Invalid Timeclock employee session');
       return {id: '17', employeeId: '17', active: true,
-        binding: 'signed-unique-session-jti-17', expiresAtMs: current + 60_000};
+        binding: 'signed-unique-session-jti-17', expiresAtMs: NOW + 60_000};
     }
   };
   const staffSession = createStaffBoundSessionAdapter({ staffAuth, now });
@@ -64,6 +64,10 @@ test('signed Timeclock binding is required; browser role and device headers prov
   });
   await assert.rejects(f.gate().authorize({request:req(),action:'tools.read'}), denied);
   await assert.rejects(f.gate().authorize({request:req(),action:'products.write'}), denied);
+  f.expire();
+  await assert.rejects(f.staffSession.verifyBaseSession(req()), {
+    code: 'HC_STAFF_SESSION_REQUIRED'
+  });
   assert.throws(() => createStaffBoundSessionAdapter(), TypeError);
   assert.throws(() => createStaffSecurityAccessGate(), TypeError);
 });
