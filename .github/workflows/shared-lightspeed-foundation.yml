@@ -8,6 +8,10 @@ on:
       - 'routes/staffSecuritySettings.js'
       - 'routes/staffStationProof.js'
       - 'routes/staffPasskey.js'
+      - 'tests/shared-staff-discord-invitation-postgres.test.mjs'
+      - 'db/hc_staff_security_invitations.sql'
+      - 'services/security/staffEnrollmentInvitations.js'
+      - 'routes/staffEnrollmentInvitations.js'
       - 'tests/shared-staff-approval-postgres.test.mjs'
       - 'tests/shared-staff-mfa.test.mjs'
       - 'db/hc_staff_factor_approvals.sql'
@@ -79,6 +83,8 @@ jobs:
         run: node --test --test-concurrency=1 tests/shared-staff-passkeys-postgres.test.mjs
       - name: Passkey native browser client regression
         run: node --test tests/shared-staff-passkey-client.test.mjs
+      - name: Run Bot invitation sign-in to live QR and six-digit TOTP
+        run: node --test --test-concurrency=1 tests/shared-staff-discord-invitation-postgres.test.mjs
       - name: Existing backend parse check
         run: node --check server.js
       - name: Staff settings browser script parse check
