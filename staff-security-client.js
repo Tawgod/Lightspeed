@@ -9,6 +9,17 @@
   let mfaToken = null;
   let mfaExpiresAt = 0;
   let working = false;
+  let invitationToken = null;
+  // Invite fragment is not sent to servers in HTTP requests. Remove it
+  // from the address bar and keep it only in memory until redeemed.
+  try {
+    const fragment = String(window.location?.hash || '');
+    const match = /^#invite=([A-Za-z0-9_-]{43})$/.exec(fragment);
+    if (match) invitationToken = match[1];
+    if (fragment.startsWith('#invite=')) {
+      window.history?.replaceState?.(null, '', window.location.pathname + window.location.search);
+    }
+  } catch { invitationToken = null; }
   function notice(message) {
     const el = $('notice');
     el.textContent = message;
@@ -77,6 +88,32 @@
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw Error(safeMessage(response.status, data));
     return data;
+  }
+  async function redeemInvitation() {
+    if (!invitationToken) return false;
+    const session = auth()?.readSession?.();
+    if (!session?.token) return false;
+    const token = invitationToken;
+    const response = await fetch('/staff-enrollment-invites/redeem', {
+      method:'POST',mode:'same-origin',cache:'no-store',credentials:'omit',
+      headers:{
+        'Authorization':'Bearer '+session.token,
+        'Content-Type':'application/json'
+      },
+      body:JSON.stringify({token})
+    });
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok) {
+      if(response.status===403 || response.status===409)invitationToken=null;
+      throw Error(response.status===403
+        ? 'This invitation is expired or belongs to a different employee.'
+        :response.status===409?'This invitation was already used.':
+        'Invitation service unavailable.');
+    }
+    invitationToken=null;
+    applyApproval(data);
+    notice('Administrator invitation accepted. Awaiting independently verified manager approval.');
+    return true;
   }
   function applyApproval(data) {
     const state = ['none', 'requested', 'approved', 'started'].includes(data?.state)
@@ -250,6 +287,7 @@
       const session = await auth()?.signIn?.(pin);
       if (!session?.token) throw Error('Staff sign-in is not available.');
       setSignedIn(session);
+      await redeemInvitation();
       await refresh();
     } catch (error) { notice(error.message); }
   });
@@ -289,7 +327,8 @@
   if (auth()?.verify) {
     auth().verify().then(session => {
       setSignedIn(session);
-      if (session?.token) refresh();
+      if (session?.token) redeemInvitation().then(() => refresh())
+        .catch(error => notice(error.message));
     }).catch(() => setSignedIn(null));
   } else {
     setSignedIn(null);
