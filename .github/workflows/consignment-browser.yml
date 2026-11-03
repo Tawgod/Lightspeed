@@ -1,0 +1,33 @@
+name: Consignment browser acceptance
+on:
+  push:
+    branches: [feature/consignment-consolidated-v2-20261028]
+  pull_request:
+    paths: ['consignment-*','shared-ui/consignment-*','tests/consignment-browser.mjs','server.js']
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --omit=dev --no-audit --no-fund
+      - run: npm install --no-save playwright
+      - run: npx playwright install chromium --with-deps
+      - name: Start isolated app
+        run: |
+          PORT=8080 SCANNER_ENABLED=false node server.js >/tmp/consignment-browser-server.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/consignment >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/consignment-browser-server.log
+          exit 1
+      - run: node tests/consignment-browser.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: consignment-navigation-screenshots
+          path: artifacts/consignment-browser/
+          if-no-files-found: ignore
