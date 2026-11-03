@@ -20,13 +20,14 @@ export function createStaffEnrollmentInvitationRouter({invitations}={}){
  const snow=/^[0-9]{15,22}$/;
  router.post('/bot/issue',express.json({limit:'2kb',strict:true}),async(req,res)=>{
    const b=req.body;
-   if(!b||Object.keys(b).sort().join(',')!=='actorDiscordId,guildId,roleIds,targetDiscordId'||
+   if(!b||!['actorDiscordId,guildId,roleIds,targetDiscordId','actorDiscordId,channelId,guildId,roleIds,targetDiscordId'].includes(Object.keys(b).sort().join(','))||
      !snow.test(String(b.actorDiscordId||''))||!snow.test(String(b.targetDiscordId||''))||
-     !snow.test(String(b.guildId||''))||!Array.isArray(b.roleIds))
+     !snow.test(String(b.guildId||''))||
+     (b.channelId!==undefined&&!snow.test(String(b.channelId)))||!Array.isArray(b.roleIds))
      return res.status(400).json({error:'Invalid invitation request.'});
    try{
      const invitation=await invitations.issue({
-       botCredential:req.get('x-hc-invitation-bot-key'),guild:b.guildId,
+       botCredential:req.get('x-hc-invitation-bot-key'),guild:b.guildId,channelId:b.channelId,
        actorDiscordId:b.actorDiscordId,targetDiscordId:b.targetDiscordId,
        roleIds:b.roleIds,sourceIp:req.ip
      });
