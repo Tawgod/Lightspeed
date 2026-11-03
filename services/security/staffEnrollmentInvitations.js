@@ -18,14 +18,22 @@ const exists=()=>Object.assign(new Error('Invitation already redeemed.'),{
 export function createStaffEnrollmentInvitations({
   pool,botSecret,tokenSecret,guildId,staffRoleId,adminRoleId,ownerRoleId,
   setupOrigin,verifyBoundEmployee,resolveDiscordEmployee,
-  canInvite,requestEnrollment,throttle,now=()=>Date.now()
+  canInvite,requestEnrollment,throttle,ownerOnlyTest=null,now=()=>Date.now()
 }={}){
   if(typeof pool?.connect!=='function'||
     typeof botSecret!=='string'||Buffer.byteLength(botSecret)<32||
     typeof tokenSecret!=='string'||Buffer.byteLength(tokenSecret)<32||
     !SNOWFLAKE.test(String(guildId||''))||
-    ![staffRoleId,adminRoleId,ownerRoleId].every(x=>SNOWFLAKE.test(String(x||'')))||
-    new Set([staffRoleId,adminRoleId,ownerRoleId]).size!==3||
+    (ownerOnlyTest===null ? (
+      ![staffRoleId,adminRoleId,ownerRoleId].every(x=>SNOWFLAKE.test(String(x||'')))||
+      new Set([staffRoleId,adminRoleId,ownerRoleId]).size!==3
+    ) : !(
+      process.env.HC_SECURITY_ENV==='isolated-staging'&&
+      ownerOnlyTest?.environment==='isolated-staging'&&
+      ownerOnlyTest?.ownerDiscordId==='115626919134887940'&&
+      guildId==='1485804234753573066'&&
+      ownerOnlyTest?.channelId==='1566905099429744700'
+    ))||
     [verifyBoundEmployee,resolveDiscordEmployee,canInvite,requestEnrollment,now]
       .some(x=>typeof x!=='function')||
     typeof throttle?.reserve!=='function')
@@ -69,7 +77,7 @@ export function createStaffEnrollmentInvitations({
     try{ok=await throttle.reserve({employeeId,sourceIp:ip})===true;}catch{throw down();}
     if(!ok)throw banned();
   }
-  async function issue({botCredential,guild,actorDiscordId,targetDiscordId,roleIds,sourceIp}={}){
+  async function issue({botCredential,guild,channelId,actorDiscordId,targetDiscordId,roleIds,sourceIp}={}){
     // Credentials authenticate trusted bot-to-backend transport, not a manager
     // passkey. Treat all other payload fields as assertions to validate.
     if(!same(botCredential,botSecret)||
@@ -77,7 +85,11 @@ export function createStaffEnrollmentInvitations({
        !SNOWFLAKE.test(String(targetDiscordId||''))||
        !Array.isArray(roleIds)||roleIds.length>100||
        !roleIds.every(r=>typeof r==='string'&&SNOWFLAKE.test(r))||
-       !(roleIds.includes(adminRoleId)||roleIds.includes(ownerRoleId)))
+       !(ownerOnlyTest!==null ?
+         (actorDiscordId===ownerOnlyTest.ownerDiscordId&&
+          targetDiscordId===ownerOnlyTest.ownerDiscordId&&
+          channelId===ownerOnlyTest.channelId&&roleIds.length===0) :
+         (roleIds.includes(adminRoleId)||roleIds.includes(ownerRoleId))))
       throw banned();
     const actor=await lookup(actorDiscordId),target=await lookup(targetDiscordId);
     await reserve(actor,sourceIp);
