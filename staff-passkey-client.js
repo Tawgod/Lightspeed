@@ -121,14 +121,23 @@
     run(async()=>{
       if(!baseToken)throw Error('Sign in before enrolling.');
       if(!navigator.credentials?.create)throw Error('This browser cannot enroll passkeys.');
-      const {challengeId,options}=await send('/staff-passkey/registration/options',{});
+      // Only the isolated Owner test page has this optional one-time field.
+      // Existing passkey clients remain unchanged when the field is absent.
+      const bootstrapField=byId('bootstrapKey');
+      const bootstrapValue=bootstrapField?.value.trim()||'';
+      if(bootstrapField&&!/^[A-Za-z0-9_-]{43,256}$/.test(bootstrapValue))
+        throw Error('Enter the independent Railway Owner bootstrap key.');
+      const bootstrapHeaders=bootstrapField?
+        {'X-HC-Owner-Bootstrap-Key':bootstrapValue}:{};
+      const {challengeId,options}=await send('/staff-passkey/registration/options',{},bootstrapHeaders);
       const publicKey=registrationOptions(options);
       const credential=await navigator.credentials.create({publicKey});
       if(!credential)throw Error('Passkey creation was cancelled.');
       const saved=await send('/staff-passkey/registration/verify',{
         challengeId,response:wrapRegistration(credential)
-      });
+      },bootstrapHeaders);
       if(saved.registered!==true)throw Error('Passkey registration was not confirmed.');
+      if(bootstrapField)bootstrapField.value='';
       show('Passkey registered. Verify it to activate manager security operations.');
     });
   });
@@ -168,7 +177,9 @@
   });
   byId('signout').addEventListener('click',()=>{
     baseToken=null;clearProof();
-    byId('pin').value='';byId('identity').textContent='Not signed in';
+    byId('pin').value='';
+    if(byId('bootstrapKey'))byId('bootstrapKey').value='';
+    byId('identity').textContent='Not signed in';
     show('Signed out. Local verification data cleared.');refresh();
   });
   document.addEventListener('visibilitychange',()=>{
