@@ -15,6 +15,12 @@ on:
       - 'tests/shared-security-isolated-identity.test.mjs'
       - 'staging/isolated-test-login.js'
       - 'tests/shared-security-isolated-login.test.mjs'
+      - 'tests/shared-security-isolated-migration.test.mjs'
+      - 'tests/shared-security-isolated-startup.test.mjs'
+      - 'staging/migrate-isolated-test-login.js'
+      - 'staging/test-login.html'
+      - 'staging/test-login.js'
+      - 'staging/test-login.css'
       - 'staging/staff-security-server.js'
       - 'tests/shared-security-staging-entry.test.mjs'
       - 'db/hc_staff_security_invitations.sql'
@@ -103,6 +109,8 @@ jobs:
         run: node --test tests/shared-security-isolated-identity.test.mjs
       - name: Signed isolated staging PIN-only login and throttle regression
         run: node --test tests/shared-security-isolated-login.test.mjs
+      - name: Isolated private database migration and startup
+        run: node --test tests/shared-security-isolated-migration.test.mjs tests/shared-security-isolated-startup.test.mjs
       - name: Existing backend parse check
         run: node --check server.js
       - name: Staff settings browser script parse check
