@@ -123,7 +123,9 @@
       if(!navigator.credentials?.create)throw Error('This browser cannot enroll passkeys.');
       // Only the isolated Owner test page has this optional one-time field.
       // Existing passkey clients remain unchanged when the field is absent.
-      const bootstrapField=byId('bootstrapKey');
+      const candidateField=byId('bootstrapKey');
+      const bootstrapField=candidateField?.tagName==='INPUT'&&candidateField.type==='password'
+        ?candidateField:null;
       const bootstrapValue=bootstrapField?.value.trim()||'';
       if(bootstrapField&&!/^[A-Za-z0-9_-]{43,256}$/.test(bootstrapValue))
         throw Error('Enter the independent Railway Owner bootstrap key.');
