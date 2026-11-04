@@ -13,7 +13,7 @@ const unavailable=()=>Object.assign(new Error('Passkey service unavailable.'),{s
 
 export function createPostgresStaffPasskeys({
  pool,origin,rpID,signingSecret,verifyBoundEmployee,authorizeRegistration,
- verifyStrongManager,canManage,loginThrottle,now=()=>Date.now(),
+ verifyStrongManager,canManage,loginThrottle,commitRegistrationGrant=null,now=()=>Date.now(),
  webauthn=officialWebAuthn
 }={}){
  if(typeof pool?.connect!=='function'||typeof signingSecret!=='string'||
@@ -21,6 +21,7 @@ export function createPostgresStaffPasskeys({
     [verifyBoundEmployee,authorizeRegistration,verifyStrongManager,canManage,now]
       .some(f=>typeof f!=='function')||
     typeof loginThrottle?.reserve!=='function'||
+    (commitRegistrationGrant!==null&&typeof commitRegistrationGrant!=='function')||
     ['generateRegistrationOptions','verifyRegistrationResponse',
       'generateAuthenticationOptions','verifyAuthenticationResponse']
       .some(key=>typeof webauthn?.[key]!=='function'))
@@ -154,6 +155,13 @@ export function createPostgresStaffPasskeys({
        "INSERT INTO hc_staff_passkey_events(event_id,credential_id,employee_id,kind) VALUES($1,$2,$3,'registered')",
        [randomUUID(),cred.id,person.id]
      );
+     // Optional staging-only one-use bootstrap grant must commit atomically
+     // with the first verified credential. A rejected grant rolls back both
+     // the credential and append-only event; PIN or Discord ownership alone
+     // cannot create a registered manager credential.
+     if(commitRegistrationGrant!==null)await commitRegistrationGrant({
+       context,employeeId:person.id,credentialId:cred.id,client:c
+     });
    });
    return Object.freeze({registered:true});
  }
