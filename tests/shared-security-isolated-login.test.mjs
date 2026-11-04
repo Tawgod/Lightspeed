@@ -45,6 +45,16 @@ test('only isolated synthetic PIN sessions are mounted; factor endpoints denied'
   assert.equal((await fetch(url+'/api/staff-auth/session',{
    headers:{Authorization:'Bearer forged'}
   })).status,401);
+  const page=await fetch(url+'/test-login');
+  assert.equal(page.status,200);
+  assert.match(await page.text(),/Test employee sign-in/);
+  assert.match(page.headers.get('content-security-policy'),/script-src 'self'/);
+  const js=await fetch(url+'/test-login.js');
+  assert.equal(js.status,200);
+  const client=await js.text();
+  assert.match(client,/signedSession/);
+  assert.doesNotMatch(client,/localStorage|sessionStorage/);
+  assert.equal((await fetch(url+'/test-login.css')).status,200);
   assert.equal((await fetch(url+'/staff-enrollment-invites/bot/issue')).status,503);
   assert.equal((await fetch(url+'/staff-security/')).status,503);
   assert.ok(pool.statements.some(x=>x.includes('hc_staff_auth_throttle')));
