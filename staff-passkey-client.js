@@ -189,6 +189,7 @@
   });
   window.addEventListener('pagehide',()=>{
     baseToken=null;clearProof();byId('pin').value='';byId('requestId').value='';
+    if(byId('bootstrapKey'))byId('bootstrapKey').value='';
   });
   refresh();
 })();
