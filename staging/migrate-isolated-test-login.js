@@ -26,7 +26,8 @@ export async function migrateIsolatedTestLogin({
   await client.connect();
   return client;
  },
- loadSchema=async()=>readFile(new URL('../db/hc_staff_auth_throttle.sql',import.meta.url),'utf8')
+ loadSchema=async()=>readFile(new URL('../db/hc_staff_auth_throttle.sql',import.meta.url),'utf8'),
+ loadSetupSchema=async()=>readFile(new URL('../db/hc_staging_pin_setup.sql',import.meta.url),'utf8')
 }={}){
   assertIsolatedTestDatabase(environment);
   const sql=await loadSchema();
@@ -36,6 +37,12 @@ export async function migrateIsolatedTestLogin({
   try{
     await client.query('BEGIN');
     await client.query(sql);
+    if(environment.HC_STAGING_PIN_SETUP_ENABLED==='true'){
+      const setupSql=await loadSetupSchema();
+      if(typeof setupSql!=='string'||!setupSql.includes('CREATE TABLE IF NOT EXISTS hc_staging_pin_setup'))
+        throw new Error('Invalid one-time PIN setup migration.');
+      await client.query(setupSql);
+    }
     await client.query('COMMIT');
   }catch(err){
     await client.query('ROLLBACK').catch(()=>{});
