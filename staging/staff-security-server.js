@@ -1,6 +1,7 @@
 import express from 'express';
 import pg from 'pg';
 import {createIsolatedTestLoginMount} from './isolated-test-login.js';
+import {assertIsolatedTestDatabase,migrateIsolatedTestLogin} from './migrate-isolated-test-login.js';
 
 // Isolated Railway staging entrypoint. Does not import server.js, mount
 // operational Lightspeed APIs, or create a demo staff identity.
@@ -44,8 +45,7 @@ export function startSecurityStaging({
   let activePool = null;
   if(environment.HC_STAGING_TEST_LOGIN_ENABLED==='true') {
     if(mountSecurity!==null)throw new Error('Cannot override active test PIN composition.');
-    if(typeof environment.DATABASE_URL!=='string'||!environment.DATABASE_URL.startsWith('postgresql://'))
-      throw new Error('Staging test login needs isolated PostgreSQL URL.');
+    assertIsolatedTestDatabase(environment);
     activePool=new pg.Pool({
       connectionString:environment.DATABASE_URL,
       max:4,
@@ -66,6 +66,31 @@ export function startSecurityStaging({
   return server;
 }
 
+// For Railway startup only: establish the schema before opening the health
+// endpoint. A fresh test PostgreSQL deployment may become ready shortly after
+// the API container, so retry transient DB readiness; never open login early.
+export async function launchSecurityStaging({
+  environment=process.env, migrate=migrateIsolatedTestLogin,
+  start=startSecurityStaging, pause=ms=>new Promise(resolve=>setTimeout(resolve,ms))
+}={}) {
+  if(environment.HC_STAGING_TEST_LOGIN_ENABLED==='true'){
+    assertIsolatedTestDatabase(environment);
+    let ready=false;
+    for(let attempt=0;attempt<20;attempt++){
+      try {await migrate({environment});ready=true;break;}
+      catch {
+        if(attempt===19)break;
+        await pause(3000);
+      }
+    }
+    if(!ready)throw new Error('Isolated test database migration could not become ready.');
+  }
+  return start({environment});
+}
+
 if (process.argv[1] && import.meta.url === new URL('file://' + process.argv[1]).href) {
-  startSecurityStaging();
+  launchSecurityStaging().catch(()=>{
+    console.error('Isolated security test service startup failed.');
+    process.exitCode=1;
+  });
 }
