@@ -18,7 +18,14 @@ export function createIsolatedTestLoginMount({
     if(typeof environment[name]!=='string'||environment[name].length<32)
       throw new Error('Staging login missing a separate strong service secret.');
   }
-  const setup=environment.HC_STAGING_PIN_SETUP_ENABLED==='true'
+  // PIN storage is independent of the one-time setup route. Disabling
+  // setup must never revert login to the obsolete environment PIN hash.
+  const storeMode=environment.HC_STAGING_PIN_STORE_MODE||'legacy-env';
+  if(!['legacy-env','database'].includes(storeMode))
+    throw new Error('Unknown isolated PIN storage mode.');
+  if(environment.HC_STAGING_PIN_SETUP_ENABLED==='true'&&storeMode==='legacy-env')
+    throw new Error('One-time PIN setup requires database-backed storage.');
+  const setup=storeMode==='database'
     ?createIsolatedPinSetup({environment,pool}):null;
   const identity=createIsolatedTestIdentity({
     environment, ...(setup?{readPinHash:setup.pinHash}:{})
@@ -47,7 +54,7 @@ export function createIsolatedTestLoginMount({
         res.type(type).sendFile(fileURLToPath(new URL('./'+file,import.meta.url)));
       });
     }
-    if(setup){
+    if(setup?.enabled){
       for(const [route,file,type] of [
         ['/test-pin-setup','test-pin-setup.html','html'],
         ['/test-pin-setup.js','test-pin-setup.js','application/javascript']
