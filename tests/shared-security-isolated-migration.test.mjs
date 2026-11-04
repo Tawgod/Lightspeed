@@ -21,7 +21,7 @@ test('migration refuses prod markers, public databases and malformed URLs',()=>{
   {DATABASE_URL:'postgresql://u:p@postgres.railway.internal:5432/'},
   {DATABASE_URL:''}
  ]) assert.throws(()=>assertIsolatedTestDatabase({...env,...changed}));
- assert.equal(assertIsolatedTestDatabase(env).hostname,'Postgres.railway.internal');
+ assert.equal(assertIsolatedTestDatabase(env).hostname,'postgres.railway.internal');
 });
 test('isolated migration applies known throttle schema in transaction; commits once',async()=>{
  const calls=[],client={
