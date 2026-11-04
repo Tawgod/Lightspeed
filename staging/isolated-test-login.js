@@ -2,6 +2,7 @@ import {fileURLToPath} from 'node:url';
 import {createStaffAuthGateway} from '../services/staffAuthGateway.js';
 import {createPostgresStaffLoginThrottle} from '../services/security/staffLoginThrottle.js';
 import {createIsolatedTestIdentity} from './isolated-test-identity.js';
+import {createIsolatedPinSetup} from './isolated-pin-setup.js';
 
 // Explicitly mounts ONLY signed PIN sessions. Not invitations, manager
 // approvals, TOTP QR seeds, or production Lightspeed/Timeclock routes.
@@ -17,7 +18,11 @@ export function createIsolatedTestLoginMount({
     if(typeof environment[name]!=='string'||environment[name].length<32)
       throw new Error('Staging login missing a separate strong service secret.');
   }
-  const identity=createIsolatedTestIdentity({environment});
+  const setup=environment.HC_STAGING_PIN_SETUP_ENABLED==='true'
+    ?createIsolatedPinSetup({environment,pool}):null;
+  const identity=createIsolatedTestIdentity({
+    environment, ...(setup?{readPinHash:setup.pinHash}:{})
+  });
   const throttle=createPostgresStaffLoginThrottle({
     pool,secret:environment.HC_STAGING_THROTTLE_SECRET,
     scope:'hc:isolated-test:pin'
@@ -41,6 +46,19 @@ export function createIsolatedTestLoginMount({
         });
         res.type(type).sendFile(fileURLToPath(new URL('./'+file,import.meta.url)));
       });
+    }
+    if(setup){
+      for(const [route,file,type] of [
+        ['/test-pin-setup','test-pin-setup.html','html'],
+        ['/test-pin-setup.js','test-pin-setup.js','application/javascript']
+      ])app.get(route,(_req,res)=>{
+        res.set({
+          'Content-Security-Policy':"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; form-action 'none'; frame-ancestors 'none'; base-uri 'none'",
+          'Cache-Control':'no-store, max-age=0'
+        });
+        res.type(type).sendFile(fileURLToPath(new URL('./'+file,import.meta.url)));
+      });
+      app.use('/api/test-pin-setup',setup.router);
     }
     app.use('/api/staff-auth',gateway.router);
     app.use((_req,res)=>res.status(503).json({
