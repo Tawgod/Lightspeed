@@ -99,6 +99,21 @@ jobs:
           node-version: '22'
       - name: Install regression dependencies
         run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Read-only staging production-dependency audit summary
+        run: |
+          npm audit --omit=dev --json > /tmp/hc-staging-audit.json || true
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          let report;
+          try {report=JSON.parse(readFileSync('/tmp/hc-staging-audit.json','utf8'));}
+          catch {console.log('Dependency audit unavailable');process.exit(0);}
+          console.log('Audit counts:',JSON.stringify(report.metadata?.vulnerabilities||{}));
+          for(const [name,details] of Object.entries(report.vulnerabilities||{})){
+            if(['high','critical'].includes(details.severity))
+              console.log('Review required:',name,'severity:',details.severity,
+                'advisories:',(details.via||[]).map(v=>typeof v==='string'?v:String(v.title||v.name||'unknown')).join('; '));
+          }
+          NODE
       - name: Foundation, adapter and disposable Postgres integration tests
         run: node --test tests/shared-lightspeed-foundation.test.mjs tests/shared-lightspeed-adapters.test.mjs tests/shared-lightspeed-postgres.test.mjs tests/shared-staff-security.test.mjs tests/shared-staff-throttle-postgres.test.mjs tests/shared-staff-totp.test.mjs tests/shared-staff-totp-postgres.test.mjs tests/shared-staff-settings.test.mjs tests/shared-staff-mfa.test.mjs tests/shared-staff-approval-postgres.test.mjs tests/shared-staff-binding.test.mjs tests/shared-staff-bridge.test.mjs tests/shared-staff-subsystem-postgres.test.mjs tests/shared-staff-settings-client.test.mjs
       - name: Real Ed25519 station challenge, revocation and access integration tests
