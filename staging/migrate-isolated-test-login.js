@@ -37,7 +37,7 @@ export async function migrateIsolatedTestLogin({
   try{
     await client.query('BEGIN');
     await client.query(sql);
-    if(environment.HC_STAGING_PIN_SETUP_ENABLED==='true'){
+    if(environment.HC_STAGING_PIN_STORE_MODE==='database'||environment.HC_STAGING_PIN_SETUP_ENABLED==='true'){
       const setupSql=await loadSetupSchema();
       if(typeof setupSql!=='string'||!setupSql.includes('CREATE TABLE IF NOT EXISTS hc_staging_pin_setup'))
         throw new Error('Invalid one-time PIN setup migration.');
