@@ -28,7 +28,7 @@ export function createIsolatedPinSetup({
  // Optional feature flag is fail closed. The admin-supplied secret exists ONLY in
  // Railway variables; it never appears in an HTML response or Git history.
  const enabled=environment.HC_STAGING_PIN_SETUP_ENABLED==='true';
- const bootstrap=environment.HC_STAGING_PIN_SETUP_KEY||'';
+ const bootstrap=enabled?(environment.HC_STAGING_PIN_SETUP_KEY||''):'';
  if(enabled&&(bootstrap.length<43||bootstrap.length>256))
    throw new Error('A separate high-entropy one-time PIN setup key is required.');
  const router=express.Router();
