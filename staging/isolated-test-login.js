@@ -3,6 +3,9 @@ import {createStaffAuthGateway} from '../services/staffAuthGateway.js';
 import {createPostgresStaffLoginThrottle} from '../services/security/staffLoginThrottle.js';
 import {createIsolatedTestIdentity} from './isolated-test-identity.js';
 import {createIsolatedPinSetup} from './isolated-pin-setup.js';
+import {createPostgresStaffPasskeys} from '../services/security/staffPasskeysPostgres.js';
+import {createStaffPasskeyRouter} from '../routes/staffPasskey.js';
+import {createIsolatedFirstOwnerPasskeyGrant} from './isolated-owner-passkey-grant.js';
 
 // Explicitly mounts ONLY signed PIN sessions. Not invitations, manager
 // approvals, TOTP QR seeds, or production Lightspeed/Timeclock routes.
@@ -38,6 +41,31 @@ export function createIsolatedTestLoginMount({
     identity,sessionSecret:environment.HC_STAGING_SESSION_SECRET,
     loginLimiter:({ip})=>throttle.reserve({employeeId:'901',sourceIp:ip})
   });
+  // First-Owner passkey is separately gated and does not mount any TOTP,
+  // invitation, or recovery endpoints. PIN alone cannot register the passkey.
+  let passkeys=null;
+  if(environment.HC_STAGING_OWNER_PASSKEY_ENABLED==='true'){
+    const signingSecret=environment.HC_STAGING_PASSKEY_SIGNING_SECRET;
+    if(typeof signingSecret!=='string'||signingSecret.length<32)
+      throw new Error('Independent staging passkey signing secret required.');
+    const grant=createIsolatedFirstOwnerPasskeyGrant({
+      environment,pool,verifyBoundEmployee:gateway.verifyBoundEmployee
+    });
+    const passkeyThrottle=createPostgresStaffLoginThrottle({
+      pool,secret:environment.HC_STAGING_THROTTLE_SECRET,
+      scope:'hc:isolated-test:owner-passkey'
+    });
+    passkeys=createPostgresStaffPasskeys({
+      pool,origin:environment.HC_STAGING_PUBLIC_ORIGIN,
+      rpID:'staff-security-staging-test.up.railway.app',signingSecret,
+      verifyBoundEmployee:gateway.verifyBoundEmployee,
+      authorizeRegistration:grant.authorizeRegistration,
+      commitRegistrationGrant:grant.commitRegistrationGrant,
+      verifyStrongManager:async()=>{throw new Error('No factor recovery bootstrap');},
+      canManage:async()=>false,
+      loginThrottle:passkeyThrottle
+    });
+  }
   function mount(app){
     // Staging-only, same-origin browser sign-in. No local/session storage
     // and no client-side authorization of enrollment or approvals.
@@ -66,6 +94,16 @@ export function createIsolatedTestLoginMount({
         res.type(type).sendFile(fileURLToPath(new URL('./'+file,import.meta.url)));
       });
       app.use('/api/test-pin-setup',setup.router);
+    }
+    if(passkeys){
+      app.get('/test-owner-passkey',(_req,res)=>{
+        res.set({
+          'Content-Security-Policy':"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; form-action 'none'; frame-ancestors 'none'; base-uri 'none'",
+          'Cache-Control':'no-store, max-age=0'
+        });
+        res.type('html').sendFile(fileURLToPath(new URL('./test-owner-passkey.html',import.meta.url)));
+      });
+      app.use('/staff-passkey',createStaffPasskeyRouter({passkeys}));
     }
     app.use('/api/staff-auth',gateway.router);
     app.use((_req,res)=>res.status(503).json({
