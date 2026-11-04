@@ -26,7 +26,10 @@ export async function migrateIsolatedTestLogin({
   await client.connect();
   return client;
  },
- loadSchema=async()=>readFile(new URL('../db/hc_staff_auth_throttle.sql',import.meta.url),'utf8')
+ loadSchema=async()=>readFile(new URL('../db/hc_staff_auth_throttle.sql',import.meta.url),'utf8'),
+ loadSetupSchema=async()=>readFile(new URL('../db/hc_staging_pin_setup.sql',import.meta.url),'utf8'),
+ loadPasskeySchema=async()=>readFile(new URL('../db/hc_staff_passkeys.sql',import.meta.url),'utf8'),
+ loadOwnerBootstrapSchema=async()=>readFile(new URL('../db/hc_staging_owner_passkey_bootstrap.sql',import.meta.url),'utf8')
 }={}){
   assertIsolatedTestDatabase(environment);
   const sql=await loadSchema();
@@ -36,6 +39,24 @@ export async function migrateIsolatedTestLogin({
   try{
     await client.query('BEGIN');
     await client.query(sql);
+    if(environment.HC_STAGING_PIN_STORE_MODE==='database'||environment.HC_STAGING_PIN_SETUP_ENABLED==='true'){
+      const setupSql=await loadSetupSchema();
+      if(typeof setupSql!=='string'||!setupSql.includes('CREATE TABLE IF NOT EXISTS hc_staging_pin_setup'))
+        throw new Error('Invalid one-time PIN setup migration.');
+      await client.query(setupSql);
+    }
+    if(environment.HC_STAGING_OWNER_PASSKEY_ENABLED==='true'){
+      if(environment.HC_STAGING_PIN_STORE_MODE!=='database'||
+         environment.HC_STAGING_PIN_SETUP_ENABLED!=='false')
+        throw new Error('First Owner passkey requires retired PIN setup and persisted PIN.');
+      const passkeySql=await loadPasskeySchema();
+      const bootstrapSql=await loadOwnerBootstrapSchema();
+      if(typeof passkeySql!=='string'||!passkeySql.includes('CREATE TABLE IF NOT EXISTS hc_staff_passkeys')||
+         typeof bootstrapSql!=='string'||!bootstrapSql.includes('CREATE TABLE IF NOT EXISTS hc_staging_owner_passkey_bootstrap'))
+        throw new Error('Invalid isolated first-Owner WebAuthn schema.');
+      await client.query(passkeySql);
+      await client.query(bootstrapSql);
+    }
     await client.query('COMMIT');
   }catch(err){
     await client.query('ROLLBACK').catch(()=>{});
