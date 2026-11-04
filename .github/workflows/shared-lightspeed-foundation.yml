@@ -11,6 +11,10 @@ on:
       - 'tests/shared-staff-discord-invitation-postgres.test.mjs'
       - 'tests/shared-staff-invitation-client.test.mjs'
       - 'tests/shared-staff-malcor-owner-invite.test.mjs'
+      - 'staging/isolated-test-identity.js'
+      - 'tests/shared-security-isolated-identity.test.mjs'
+      - 'staging/isolated-test-login.js'
+      - 'tests/shared-security-isolated-login.test.mjs'
       - 'staging/staff-security-server.js'
       - 'tests/shared-security-staging-entry.test.mjs'
       - 'db/hc_staff_security_invitations.sql'
@@ -95,6 +99,10 @@ jobs:
         run: node --test tests/shared-security-staging-entry.test.mjs
       - name: Malcor owner-only test staging permission regression
         run: node --test tests/shared-staff-malcor-owner-invite.test.mjs
+      - name: Synthetic owner-only staging identity regression
+        run: node --test tests/shared-security-isolated-identity.test.mjs
+      - name: Signed isolated staging PIN-only login and throttle regression
+        run: node --test tests/shared-security-isolated-login.test.mjs
       - name: Existing backend parse check
         run: node --check server.js
       - name: Staff settings browser script parse check
