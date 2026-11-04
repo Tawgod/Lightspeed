@@ -1,6 +1,10 @@
 # Hobby Corner — isolated test PIN sign-in
 
-**Status (2026-11-03):** Implemented on development branch, **not deployed**. Never point this service at production Timeclock or Lightspeed data.
+**Current status (verified 2026-11-04):** Synthetic test PIN setup **Deployed and user accepted**. Owner confirmed successful setup and browser sign-in; isolated Railway security API and Postgres are online. Production Timeclock is untouched. Historical stages below are retained.
+
+**Next staged change (not live):** Railway test patch `679a3524-f460-45ce-84fe-f451127a851b` pins source `49c81533fe2c6bbeb3189319afc039299b95be96`, sets `HC_STAGING_PIN_STORE_MODE=database`, disables `HC_STAGING_PIN_SETUP_ENABLED` and blanks the spent `HC_STAGING_PIN_SETUP_KEY`. Database PIN storage remains active after closing the one-time page. Foundation CI `41863666385` and Scanner `41863666368` passed for that source. **Do not accept the patch without explicit test deployment authorization and a planned user sign-in retest.**
+
+Never point this service at production Timeclock or Lightspeed data.
 
 ## Components
 - `staging/staff-security-server.js` starts only under `NODE_ENV=test` and `HC_SECURITY_ENV=isolated-staging`; without the opt-in flag all non-health routes respond 503.
