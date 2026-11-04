@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hobby Corner · Isolated Staff Sign-in Test</title>
+  <link rel="stylesheet" href="/test-login.css">
+  <script defer src="/test-login.js"></script>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">HOBBY CORNER / TEST ENVIRONMENT</p>
+    <h1>Test employee sign-in</h1>
+    <p class="intro">This is a synthetic staging identity only. It is not your live Timeclock account, and Authenticator enrollment is not active yet.</p>
+    <form id="test-login" autocomplete="off">
+      <label for="test-pin">Four-digit test PIN</label>
+      <input id="test-pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" autocomplete="off" required autofocus>
+      <button type="submit" id="login-button">Sign in to staging</button>
+    </form>
+    <p id="login-status" aria-live="polite" role="status"></p>
+    <p class="foot">No token is saved to browser storage. This page cannot access real store data or generate an Authenticator QR.</p>
+  </main>
+</body>
+</html>
