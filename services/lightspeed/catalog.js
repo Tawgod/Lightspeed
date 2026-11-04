@@ -1,8 +1,6 @@
+import { readLightspeedCollection } from './readCollection.js';
 // Read-only catalog references. Existing Special Orders category route is preserved
 // while these parsing rules are contract-tested for future migration.
-const rows = value => Array.isArray(value) ? value :
-  (Array.isArray(value?.data) ? value.data : []);
-
 export function normalizeProductCategories(result) {
   const found = new Map();
   const visit = value => {
@@ -53,8 +51,8 @@ export function createLightspeedCatalogRead({ transport } = {}) {
       const response = await transport.request('/api/2026-07/product_categories?page_size=1000&include=family');
       return normalizeProductCategories(response);
     },
-    async suppliers() { return rows(await transport.request('/api/2026-04/suppliers?page_size=1000')); },
-    async brands() { return rows(await transport.request('/api/2026-04/brands?page_size=1000')); },
-    async tags() { return rows(await transport.request('/api/2026-04/tags?page_size=1000')); }
+    async suppliers() { return readLightspeedCollection({ transport, path:'/api/2026-04/suppliers?page_size=1000' }); },
+    async brands() { return readLightspeedCollection({ transport, path:'/api/2026-04/brands?page_size=1000' }); },
+    async tags() { return readLightspeedCollection({ transport, path:'/api/2026-04/tags?page_size=1000' }); }
   });
 }

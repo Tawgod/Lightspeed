@@ -180,7 +180,7 @@ test('customer read/search preserves Special Orders query shape and leading zero
 test('customer read fails closed on incomplete remote search envelopes', async () => {
   const { createLightspeedCustomersRead } = await import('../services/lightspeed/customers.js');
   const service = createLightspeedCustomersRead({ transport: { async request() { return { warning: 'no results provided' }; } } });
-  await assert.rejects(service.search('Jane'), error => error.code === 'LIGHTSPEED_INCOMPLETE_SEARCH');
+  await assert.rejects(service.search('Jane'), error => error.code === 'LIGHTSPEED_INCOMPLETE_READ');
 });
 
 test('catalog category paths match legacy parent hierarchy and detect cycles', async () => {
