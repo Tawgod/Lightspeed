@@ -34,3 +34,13 @@ DATABASE_URL=${{Postgres.DATABASE_URL}}
 ## Verification
 
 Run `node --test tests/shared-security-isolated-identity.test.mjs tests/shared-security-isolated-login.test.mjs tests/shared-security-staging-entry.test.mjs`. Those are integration tests with synthetic accounts and simulated Postgres throttle; confirm end-to-end operation on an actual isolated Railway PostgreSQL instance separately.
+
+## 2026-11-04 staging activation checkpoint
+
+- **Code verified:** GitHub Actions foundation `41844243506`, scanner `41844243658`, Core Ops `41844243509` all passed at commit `d0d0be4b349c45c00285be3609c60418f38f6d06`.
+- **Browser test UI:** `GET /test-login` serves a same-origin PIN form with Content Security Policy; signed session stays only in browser memory. There are no QR or manager approval routes on this staging mount.
+- **Automatic startup migration:** `staging/migrate-isolated-test-login.js` verifies an exact test identity/guild plus an internal `*.railway.internal` PostgreSQL URL and applies only `db/hc_staff_auth_throttle.sql`, transactionally and idempotently. `launchSecurityStaging` retries private DB readiness before opening the HTTP listener. Do not run the migration on a production database.
+- **Railway ready but NOT deployed:** `Hobby Corner Integration Test/test` patch `ae35bd65-381a-4b33-804c-a7bbdfb4853d` contains only the new test Postgres + volume and the `staff-security-staging` service. The old `malcor` and `hobby-bot-security-test` staging placeholders were removed without impacting any running service. The new API is pinned to the tested commit.
+- **Non-production credentials staged:** random synthetic PIN's scrypt hash, separate random signed-session and throttle secrets, and `HC_STAGING_TEST_LOGIN_ENABLED=true`. No production credential has been reused. Do not copy or log the secret values or PIN in GitHub. Rate limiting is persisted in the new isolated PostgreSQL.
+- **Remaining operator approval:** commit the staged Railway test-environment patch (creates running services and incurs Railway resource usage), then request a Railway-generated HTTPS domain for the security API, verify `/health`, `/test-login`, correct/incorrect PIN sign-in and denied enrollment routes.
+- **Not part of this step:** Malcor invitation API activation and the real first Owner passkey. Those still require independent strong proof and separately reviewed factor enrollment schema and migration.
