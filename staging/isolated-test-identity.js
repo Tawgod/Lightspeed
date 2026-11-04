@@ -12,7 +12,8 @@ const forbidden = () => Object.assign(new Error('Test employee authentication fa
 
 export function createIsolatedTestIdentity({
   environment = process.env,
-  passwordHash = environment.HC_STAGING_TEST_PIN_HASH
+  passwordHash = environment.HC_STAGING_TEST_PIN_HASH,
+  readPinHash = null
 } = {}) {
   if (environment.NODE_ENV !== 'test' ||
       environment.HC_SECURITY_ENV !== 'isolated-staging' ||
@@ -20,15 +21,20 @@ export function createIsolatedTestIdentity({
       environment.HC_STAGING_TEST_GUILD_ID !== GUILD) {
     throw new Error('Isolated test employee identity refused outside authorized staging.');
   }
-  const match=typeof passwordHash==='string' && HASH.exec(passwordHash);
-  if(!match)throw new Error('An explicit scrypt-hashed synthetic test PIN is required.');
-  const salt=Buffer.from(match[1],'hex'),expected=Buffer.from(match[2],'hex');
+  if(readPinHash!==null && typeof readPinHash!=='function')
+    throw new Error('Trusted test PIN hash reader required.');
+  if(readPinHash===null && !(typeof passwordHash==='string' && HASH.test(passwordHash)))
+    throw new Error('An explicit scrypt-hashed synthetic test PIN is required.');
   const employee=Object.freeze({
     id:EMPLOYEE,name:'Staging Test Owner',role:'test-owner',
     permissionSource:'synthetic_staging_only',active:true
   });
   async function verifyPin(pin){
     if(typeof pin!=='string'||!/^\d{4}$/.test(pin))throw forbidden();
+    const current=readPinHash===null?passwordHash:await readPinHash();
+    const match=typeof current==='string' && HASH.exec(current);
+    if(!match)throw forbidden();
+    const salt=Buffer.from(match[1],'hex'),expected=Buffer.from(match[2],'hex');
     const computed=scryptSync(pin,salt,64,{N:16384,r:8,p:1});
     if(!timingSafeEqual(computed,expected))throw forbidden();
     return employee;
