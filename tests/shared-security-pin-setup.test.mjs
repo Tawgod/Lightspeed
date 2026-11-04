@@ -6,6 +6,7 @@ const origin='https://staff-security-staging-test.up.railway.app';
 const environment={
  NODE_ENV:'test',HC_SECURITY_ENV:'isolated-staging',
  HC_STAGING_TEST_LOGIN_ENABLED:'true',HC_STAGING_PIN_SETUP_ENABLED:'true',
+ HC_STAGING_PIN_STORE_MODE:'database',
  HC_STAGING_PIN_SETUP_KEY:'test-only-32-byte-credential-abcde-1234567890-ABCDEFG',
  HC_STAGING_PUBLIC_ORIGIN:origin,
  HC_STAGING_TEST_OWNER_DISCORD_ID:'115626919134887940',
@@ -67,4 +68,52 @@ test('setup cannot mount outside test environment or with missing high-entropy s
   {HC_STAGING_PUBLIC_ORIGIN:'https://bad.example'},
   {HC_STAGING_PIN_SETUP_KEY:'short'}
  ])assert.throws(()=>createIsolatedTestLoginMount({environment:{...environment,...changes},pool}));
+});
+
+test('turning setup off preserves the saved PIN while closing setup routes',async()=>{
+ const {state,pool}=fake();
+ // Represent a successfully completed one-time setup and the persisted row.
+ const live=createIsolatedTestLoginMount({environment,pool});
+ const liveApp=createSecurityStagingApp({environment,mountSecurity:live.mount});
+ const first=await new Promise(resolve=>{const s=liveApp.listen(0,'127.0.0.1',()=>resolve(s));});
+ try{
+  const host='http://127.0.0.1:'+first.address().port;
+  const saved=await fetch(host+'/api/test-pin-setup/set',{
+   method:'POST',headers:{'Content-Type':'application/json','Origin':origin},
+   body:JSON.stringify({setupKey:environment.HC_STAGING_PIN_SETUP_KEY,pin:'1842'})
+  });
+  assert.equal(saved.status,201);
+  assert.ok(state.completed);
+ }finally{await new Promise(resolve=>first.close(resolve));}
+ const closed={...environment,HC_STAGING_PIN_SETUP_ENABLED:'false'};
+ delete closed.HC_STAGING_PIN_SETUP_KEY;
+ delete closed.HC_STAGING_TEST_PIN_HASH;
+ const login=createIsolatedTestLoginMount({environment:closed,pool});
+ const app=createSecurityStagingApp({environment:closed,mountSecurity:login.mount});
+ const server=await new Promise(resolve=>{const s=app.listen(0,'127.0.0.1',()=>resolve(s));});
+ try{
+  const url='http://127.0.0.1:'+server.address().port;
+  const auth=await fetch(url+'/api/staff-auth/session',{
+   method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({pin:'1842'})
+  });
+  assert.equal(auth.status,200);
+  assert.equal((await auth.json()).employee.id,'901');
+  assert.notEqual((await fetch(url+'/test-pin-setup')).status,200);
+  assert.notEqual((await fetch(url+'/test-pin-setup.js')).status,200);
+  assert.notEqual((await fetch(url+'/api/test-pin-setup/set',{
+   method:'POST',headers:{'Content-Type':'application/json','Origin':origin},
+   body:JSON.stringify({setupKey:environment.HC_STAGING_PIN_SETUP_KEY,pin:'3321'})
+  })).status,201);
+  assert.equal(state.completed,true);
+  const wrong=await fetch(url+'/api/staff-auth/session',{
+   method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:'3321'})
+  });
+  assert.equal(wrong.status,401);
+ }finally{await new Promise(resolve=>server.close(resolve));}
+});
+test('invalid storage mode or attempt to enable setup without database fails closed',()=>{
+ const {pool}=fake();
+ assert.throws(()=>createIsolatedTestLoginMount({environment:{...environment,HC_STAGING_PIN_STORE_MODE:'unsupported'},pool}));
+ assert.throws(()=>createIsolatedTestLoginMount({environment:{...environment,HC_STAGING_PIN_STORE_MODE:'legacy-env'},pool}));
 });
