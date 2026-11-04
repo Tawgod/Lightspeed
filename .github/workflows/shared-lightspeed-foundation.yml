@@ -21,6 +21,11 @@ on:
       - 'staging/test-login.html'
       - 'staging/test-login.js'
       - 'staging/test-login.css'
+      - 'staging/isolated-pin-setup.js'
+      - 'staging/test-pin-setup.html'
+      - 'staging/test-pin-setup.js'
+      - 'db/hc_staging_pin_setup.sql'
+      - 'tests/shared-security-pin-setup.test.mjs'
       - 'staging/staff-security-server.js'
       - 'tests/shared-security-staging-entry.test.mjs'
       - 'db/hc_staff_security_invitations.sql'
@@ -111,6 +116,8 @@ jobs:
         run: node --test tests/shared-security-isolated-login.test.mjs
       - name: Isolated private database migration and startup
         run: node --test tests/shared-security-isolated-migration.test.mjs tests/shared-security-isolated-startup.test.mjs
+      - name: Isolated one-time PIN setup, replay and login regression
+        run: node --test tests/shared-security-pin-setup.test.mjs
       - name: Existing backend parse check
         run: node --check server.js
       - name: Staff settings browser script parse check
