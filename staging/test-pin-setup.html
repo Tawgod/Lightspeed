@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hobby Corner · Create Test PIN</title>
+<link rel="stylesheet" href="/test-login.css"><script defer src="/test-pin-setup.js"></script></head>
+<body><main>
+<p class="eyebrow">HOBBY CORNER / ISOLATED STAGING</p>
+<h1>Create your test PIN</h1>
+<p class="intro">Use the one-time setup key stored in Railway's <strong>staff-security-staging</strong> Variables. Choose a new four-digit test-only PIN, not your real Timeclock PIN. This setup can only be completed once.</p>
+<form id="pin-setup" autocomplete="off">
+<label for="setup-key">One-time Railway setup key</label><input id="setup-key" type="password" autocomplete="off" required>
+<label for="new-pin">Choose a four-digit test PIN</label><input id="new-pin" type="password" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" autocomplete="new-password" required>
+<label for="confirm-pin">Confirm test PIN</label><input id="confirm-pin" type="password" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" autocomplete="new-password" required>
+<button id="setup-button" type="submit">Create test PIN</button></form>
+<p id="setup-status" role="status" aria-live="polite"></p>
+<p class="foot">Do not enter a live employee PIN. The one-time key and PIN are never stored in browser storage. Once complete, use the separate test sign-in page.</p>
+</main></body></html>
