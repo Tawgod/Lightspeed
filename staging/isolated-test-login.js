@@ -44,13 +44,20 @@ export function createIsolatedTestLoginMount({
   // First-Owner passkey is separately gated and does not mount any TOTP,
   // invitation, or recovery endpoints. PIN alone cannot register the passkey.
   let passkeys=null;
+  if(environment.HC_STAGING_OWNER_BOOTSTRAP_ENABLED==='true'&&
+     environment.HC_STAGING_OWNER_PASSKEY_ENABLED!=='true')
+    throw new Error('First Owner bootstrap cannot run without the passkey verifier.');
   if(environment.HC_STAGING_OWNER_PASSKEY_ENABLED==='true'){
     const signingSecret=environment.HC_STAGING_PASSKEY_SIGNING_SECRET;
     if(typeof signingSecret!=='string'||signingSecret.length<32)
       throw new Error('Independent staging passkey signing secret required.');
-    const grant=createIsolatedFirstOwnerPasskeyGrant({
-      environment,pool,verifyBoundEmployee:gateway.verifyBoundEmployee
-    });
+    const bootstrapOpen=environment.HC_STAGING_OWNER_BOOTSTRAP_ENABLED==='true';
+    // Once the first passkey is registered, operators may permanently retire
+    // the high-entropy bootstrap key/flag while preserving passkey verification.
+    const grant=bootstrapOpen
+      ?createIsolatedFirstOwnerPasskeyGrant({
+         environment,pool,verifyBoundEmployee:gateway.verifyBoundEmployee
+       }):null;
     const passkeyThrottle=createPostgresStaffLoginThrottle({
       pool,secret:environment.HC_STAGING_THROTTLE_SECRET,
       scope:'hc:isolated-test:owner-passkey'
@@ -59,8 +66,10 @@ export function createIsolatedTestLoginMount({
       pool,origin:environment.HC_STAGING_PUBLIC_ORIGIN,
       rpID:'staff-security-staging-test.up.railway.app',signingSecret,
       verifyBoundEmployee:gateway.verifyBoundEmployee,
-      authorizeRegistration:grant.authorizeRegistration,
-      commitRegistrationGrant:grant.commitRegistrationGrant,
+      authorizeRegistration:grant?grant.authorizeRegistration:async()=>false,
+      commitRegistrationGrant:grant?grant.commitRegistrationGrant:async()=>{
+        throw new Error('Owner bootstrap is permanently closed.');
+      },
       verifyStrongManager:async()=>{throw new Error('No factor recovery bootstrap');},
       canManage:async()=>false,
       loginThrottle:passkeyThrottle
