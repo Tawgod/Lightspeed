@@ -76,6 +76,20 @@ export async function migrateIsolatedTestLogin({
           throw new Error('Invalid isolated enrollment migration source.');
         await client.query(migration);
       }
+      // Enrollment is a third stage, not a bootstrap shortcut. Refuse to
+      // expose the invitation or QR routers unless a verified first-Owner
+      // WebAuthn credential was committed and its one-time grant consumed.
+      const active=await client.query(
+        'SELECT credential_id FROM hc_staff_passkeys WHERE employee_id=$1 AND revoked_at IS NULL',
+        ['901']
+      );
+      const grant=await client.query(
+        'SELECT credential_id,consumed_at FROM hc_staging_owner_passkey_bootstrap WHERE id=1'
+      );
+      if(active.rowCount!==1||grant.rowCount!==1||
+         !grant.rows?.[0]?.consumed_at||
+         active.rows?.[0]?.credential_id!==grant.rows[0].credential_id)
+        throw new Error('Verified synthetic Owner passkey bootstrap is required before factor enrollment.');
     }
     await client.query('COMMIT');
   }catch(err){
