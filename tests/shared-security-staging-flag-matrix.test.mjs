@@ -39,6 +39,11 @@ async function verifyClosed(config,expectPasskeyPage=false){
   for(const e of endpoints){
    const res=await fetch(base+e.path,{method:e.method});
    assert.equal(res.status,e.status,e.method+' '+e.path);
+   if(expectPasskeyPage&&e.path==='/test-owner-passkey'){
+     const html=await res.text();
+     assert.match(html,/data-owner-pilot-mode="verify-only"/);
+     assert.doesNotMatch(html,/id="bootstrapKey"/);
+   }
   }
   const health=await fetch(base+'/health');
   assert.equal(health.status,200);
