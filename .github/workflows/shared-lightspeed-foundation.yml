@@ -35,6 +35,7 @@ on:
       - 'db/hc_staging_owner_passkey_bootstrap.sql'
       - 'staging/test-owner-passkey.html'
       - 'tests/shared-security-owner-bootstrap.test.mjs'
+      - 'tests/shared-security-owner-bootstrap-browser.test.mjs'
       - 'tests/shared-security-owner-bootstrap-postgres.test.mjs'
       - 'tests/shared-security-owner-passkey-routing.test.mjs'
       - 'staging/staff-security-server.js'
@@ -148,6 +149,8 @@ jobs:
         run: node --test tests/shared-security-pin-setup.test.mjs
       - name: Isolated first Owner passkey bootstrap and route safeguards
         run: node --test tests/shared-security-owner-bootstrap.test.mjs tests/shared-security-owner-passkey-routing.test.mjs
+      - name: Owner bootstrap browser secret clearing on cancel and denial
+        run: node --test tests/shared-security-owner-bootstrap-browser.test.mjs
       - name: Verified Owner bootstrap atomicity on disposable Postgres
         run: node --test --test-concurrency=1 tests/shared-security-owner-bootstrap-postgres.test.mjs
       - name: Exact isolated Owner WebAuthn approval policy denial tests
