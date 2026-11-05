@@ -1,6 +1,7 @@
 import express from 'express';
 import pg from 'pg';
 import {createIsolatedTestLoginMount} from './isolated-test-login.js';
+import {assertIsolatedOwnerEnrollmentConfiguration} from './isolated-owner-enrollment.js';
 import {assertIsolatedTestDatabase,migrateIsolatedTestLogin} from './migrate-isolated-test-login.js';
 
 // Isolated Railway staging entrypoint. Does not import server.js, mount
@@ -75,6 +76,10 @@ export async function launchSecurityStaging({
 }={}) {
   if(environment.HC_STAGING_TEST_LOGIN_ENABLED==='true'){
     assertIsolatedTestDatabase(environment);
+    // New factor migrations must never begin with incomplete or shared
+    // secrets. The existing synthetic test PIN remains usable if disabled.
+    if(environment.HC_STAGING_OWNER_ENROLLMENT_ENABLED==='true')
+      assertIsolatedOwnerEnrollmentConfiguration(environment);
     // Validate the separate Owner bootstrap prerequisites before creating
     // any expiring database grant, not after the staging API starts.
     if(environment.HC_STAGING_OWNER_BOOTSTRAP_ENABLED==='true'&&
