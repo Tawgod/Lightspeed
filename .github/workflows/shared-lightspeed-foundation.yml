@@ -1,7 +1,7 @@
 name: Shared Lightspeed foundation
 on:
   pull_request:
-    branches: [integration/hobby-corner-consolidation]
+    branches: [integration/hobby-corner-consolidation, feature/shared-lightspeed-services-phase1-20261029]
     paths:
       - 'services/lightspeed/**'
       - 'services/security/**'
