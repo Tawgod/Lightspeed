@@ -4,19 +4,26 @@
 -- WebAuthn credential is needed to consume this grant.
 CREATE TABLE IF NOT EXISTS hc_staging_owner_passkey_bootstrap (
  id INTEGER PRIMARY KEY CHECK (id=1),
- expires_at TIMESTAMPTZ NOT NULL,
+ started_at TIMESTAMPTZ,
+ expires_at TIMESTAMPTZ,
  consumed_at TIMESTAMPTZ,
  credential_id TEXT,
- CHECK ((consumed_at IS NULL AND credential_id IS NULL) OR
-        (consumed_at IS NOT NULL AND credential_id IS NOT NULL))
+ CHECK ((started_at IS NULL AND expires_at IS NULL AND consumed_at IS NULL AND credential_id IS NULL) OR
+        (started_at IS NOT NULL AND expires_at IS NOT NULL AND expires_at>started_at AND
+         ((consumed_at IS NULL AND credential_id IS NULL) OR
+          (consumed_at IS NOT NULL AND consumed_at>=started_at AND credential_id IS NOT NULL))))
 );
-INSERT INTO hc_staging_owner_passkey_bootstrap(id,expires_at)
- VALUES(1,now()+INTERVAL '4 hours') ON CONFLICT(id) DO NOTHING;
+-- No expiry starts when the service deploys. A trusted signed test session
+-- AND independent owner bootstrap key must initiate the single-use window.
+INSERT INTO hc_staging_owner_passkey_bootstrap(id)
+ VALUES(1) ON CONFLICT(id) DO NOTHING;
 CREATE TABLE IF NOT EXISTS hc_staging_owner_passkey_bootstrap_events(
  event_id UUID PRIMARY KEY,
  employee_id BIGINT NOT NULL CHECK (employee_id=901),
- credential_id TEXT NOT NULL,
- kind TEXT NOT NULL CHECK(kind='completed'),
+ credential_id TEXT,
+ kind TEXT NOT NULL CHECK(kind IN ('started','completed')),
+ CHECK ((kind='started' AND credential_id IS NULL) OR
+        (kind='completed' AND credential_id IS NOT NULL)),
  occurred_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE OR REPLACE FUNCTION hc_staging_owner_bootstrap_audit_immutable()
