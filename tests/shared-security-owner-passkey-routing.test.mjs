@@ -102,13 +102,12 @@ test('retiring first-Owner bootstrap key preserves existing passkey verification
  try{
   const base='http://127.0.0.1:'+server.address().port;
   assert.equal((await fetch(base+'/test-owner-passkey')).status,200);
-  const signed=await fetch(base+'/api/staff-auth/session',{
-   method:'POST',headers:{'Content-Type':'application/json'},
-   body:JSON.stringify({pin:'4567'})
+  assert.equal((await fetch(base+'/staff-passkey/client.js')).status,200);
+  const missingProof=await fetch(base+'/staff-passkey/authentication/options',{
+   method:'POST',headers:{'Content-Type':'application/json','Origin':cfg.HC_STAGING_PUBLIC_ORIGIN},
+   body:'{}'
   });
-  // We have no usable credential in this fixture; the endpoint must still
-  // exist with normal authentication checks, not disappear or open registration.
-  assert.ok([200,429,503].includes(signed.status));
+  assert.equal(missingProof.status,403,'the passkey verifier remains mounted but requires a signed session');
   const unauthorized=await fetch(base+'/staff-passkey/registration/options',{
    method:'POST',headers:{'Content-Type':'application/json','Origin':cfg.HC_STAGING_PUBLIC_ORIGIN},
    body:'{}'
