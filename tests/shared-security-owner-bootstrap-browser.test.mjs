@@ -4,7 +4,7 @@ import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 
 const key='OWNER-internal-one-time-bootstrap-secret-9876543210-ABCDEFGH';
-async function scene({apiFails=false,cancelCeremony=false,skipRegister=false}={}){
+async function scene({apiFails=false,cancelCeremony=false,skipRegister=false,verifyOnly=false}={}){
  const source=await readFile(new URL('../staff-passkey-client.js',import.meta.url),'utf8');
  const callbacks=new Map(),elements=new Map(),requests=[];
  function element(id){
@@ -18,7 +18,8 @@ async function scene({apiFails=false,cancelCeremony=false,skipRegister=false}={}
  let credentialPrompts=0;
  const context={
    document:{
-     getElementById:element,hidden:false,
+     getElementById:id=>verifyOnly&&id==='bootstrapKey'?null:element(id),hidden:false,
+     body:{dataset:{ownerPilotMode:verifyOnly?'verify-only':'register'}},
      addEventListener(type,cb){callbacks.set('document:'+type,cb)}
    },
    window:{addEventListener(type,cb){callbacks.set('window:'+type,cb)}},
@@ -57,7 +58,7 @@ async function scene({apiFails=false,cancelCeremony=false,skipRegister=false}={}
  }
  element('pin').value='1234';
  await invoke('login','submit');
- element('bootstrapKey').value=key;
+ if(!verifyOnly)element('bootstrapKey').value=key;
  if(!skipRegister)await invoke('registerPasskey');
  return {elements,requests,credentialPrompts,invoke,callbacks,context};
 }
@@ -96,4 +97,14 @@ test('switching away before registration clears an unused private Owner bootstra
  await x.invoke('registerPasskey');
  assert.equal(x.requests.length,1,'an empty key must be reentered before registration is attempted');
  assert.match(x.elements.get('message').textContent,/independent Railway Owner bootstrap key/i);
+});
+
+test('closed Owner bootstrap page keeps authentication available but cannot send another registration request',async()=>{
+ const x=await scene({verifyOnly:true,skipRegister:true});
+ assert.equal(x.elements.get('registerPasskey').disabled,true);
+ assert.equal(x.elements.get('verifyPasskey').disabled,false);
+ assert.match(x.elements.get('message').textContent,/isolated test account/i);
+ await x.invoke('registerPasskey');
+ assert.equal(x.requests.length,1,'verification-only page must not call registration endpoint');
+ assert.match(x.elements.get('message').textContent,/bootstrap is closed/i);
 });
