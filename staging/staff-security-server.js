@@ -104,17 +104,14 @@ export async function launchSecurityStaging({
     assertIsolatedTestDatabase(environment);
     // New factor migrations must never begin with incomplete or shared
     // secrets. The existing synthetic test PIN remains usable if disabled.
-    if(environment.HC_STAGING_OWNER_ENROLLMENT_ENABLED==='true')
-      assertIsolatedOwnerEnrollmentConfiguration(environment);
-    // Validate the separate Owner bootstrap prerequisites before creating
-    // any expiring database grant, not after the staging API starts.
-    if(environment.HC_STAGING_OWNER_BOOTSTRAP_ENABLED==='true'&&
-       environment.HC_STAGING_OWNER_PASSKEY_ENABLED!=='true')
-      throw new Error('Owner bootstrap requires an enabled passkey verifier.');
+    // Preflight safe setting-name diagnostics before deeper configuration
+    // checks, without exposing credentials or starting migrations/sockets.
     const issues = checkIsolatedPasskeyConfiguration(environment);
     if (issues.length) {
       throw new Error('Invalid isolated Owner passkey prerequisites: ' + issues.join(', '));
     }
+    if(environment.HC_STAGING_OWNER_ENROLLMENT_ENABLED==='true')
+      assertIsolatedOwnerEnrollmentConfiguration(environment);
     let ready=false;
     for(let attempt=0;attempt<20;attempt++){
       try {await migrate({environment});ready=true;break;}
