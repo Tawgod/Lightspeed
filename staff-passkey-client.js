@@ -129,6 +129,10 @@
       const bootstrapValue=bootstrapField?.value.trim()||'';
       if(bootstrapField&&!/^[A-Za-z0-9_-]{43,256}$/.test(bootstrapValue))
         throw Error('Enter the independent Railway Owner bootstrap key.');
+      // Clear the private bootstrap credential from the DOM before any
+      // network request or native WebAuthn prompt. A cancelled/failed
+      // ceremony requires re-entry rather than leaving the key visible.
+      if(bootstrapField)bootstrapField.value='';
       const bootstrapHeaders=bootstrapField?
         {'X-HC-Owner-Bootstrap-Key':bootstrapValue}:{};
       const {challengeId,options}=await send('/staff-passkey/registration/options',{},bootstrapHeaders);
@@ -139,7 +143,6 @@
         challengeId,response:wrapRegistration(credential)
       },bootstrapHeaders);
       if(saved.registered!==true)throw Error('Passkey registration was not confirmed.');
-      if(bootstrapField)bootstrapField.value='';
       show('Passkey registered. Verify it to activate manager security operations.');
     });
   });
