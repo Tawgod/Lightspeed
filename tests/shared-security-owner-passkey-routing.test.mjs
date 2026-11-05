@@ -13,6 +13,7 @@ const env={
  HC_STAGING_PIN_STORE_MODE:'database',HC_STAGING_PIN_SETUP_ENABLED:'false',
  HC_STAGING_PUBLIC_ORIGIN:'https://staff-security-staging-test.up.railway.app',
  HC_STAGING_OWNER_PASSKEY_ENABLED:'true',
+ HC_STAGING_OWNER_BOOTSTRAP_ENABLED:'true',
  HC_STAGING_OWNER_BOOTSTRAP_KEY:'TEST-only-out-of-band-Owner-ceremony-key-value_1234567890',
  HC_STAGING_PASSKEY_SIGNING_SECRET:'test-only-passkey-signed-proofs-not-for-prod-abcdefghi',
  HC_STAGING_SESSION_SECRET:'test-only-session-secret-not-for-prod-abcd1234',
@@ -33,7 +34,7 @@ function pool(){
  };
 }
 test('Owner passkey test routes are disabled until explicit isolated flag',async()=>{
- const cfg={...env,HC_STAGING_OWNER_PASSKEY_ENABLED:'false'};
+ const cfg={...env,HC_STAGING_OWNER_PASSKEY_ENABLED:'false',HC_STAGING_OWNER_BOOTSTRAP_ENABLED:'false'};
  const login=createIsolatedTestLoginMount({environment:cfg,pool:pool()});
  const app=createSecurityStagingApp({environment:cfg,mountSecurity:login.mount});
  const server=await new Promise(ok=>{const s=app.listen(0,'127.0.0.1',()=>ok(s))});
@@ -90,4 +91,30 @@ test('isolated Owner passkey migration is opt-in, transactional and includes app
  assert.equal(queries.filter(q=>q.startsWith('CREATE TABLE')).length,4);
  assert.equal(queries.at(0),'BEGIN');
  assert.equal(queries.at(-1),'COMMIT');
+});
+
+test('retiring first-Owner bootstrap key preserves existing passkey verification routes and denies new registration',async()=>{
+ const cfg={...env,HC_STAGING_OWNER_BOOTSTRAP_ENABLED:'false'};
+ delete cfg.HC_STAGING_OWNER_BOOTSTRAP_KEY;
+ const login=createIsolatedTestLoginMount({environment:cfg,pool:pool()});
+ const app=createSecurityStagingApp({environment:cfg,mountSecurity:login.mount});
+ const server=await new Promise(resolve=>{const s=app.listen(0,'127.0.0.1',()=>resolve(s));});
+ try{
+  const base='http://127.0.0.1:'+server.address().port;
+  assert.equal((await fetch(base+'/test-owner-passkey')).status,200);
+  const signed=await fetch(base+'/api/staff-auth/session',{
+   method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({pin:'4567'})
+  });
+  // We have no usable credential in this fixture; the endpoint must still
+  // exist with normal authentication checks, not disappear or open registration.
+  assert.ok([200,429,503].includes(signed.status));
+  const unauthorized=await fetch(base+'/staff-passkey/registration/options',{
+   method:'POST',headers:{'Content-Type':'application/json','Origin':cfg.HC_STAGING_PUBLIC_ORIGIN},
+   body:'{}'
+  });
+  assert.equal(unauthorized.status,403);
+  assert.equal((await fetch(base+'/staff-enrollment-invites/bot/issue')).status,503);
+  assert.equal((await fetch(base+'/staff-security/')).status,503);
+ }finally{await new Promise(resolve=>server.close(resolve));}
 });
