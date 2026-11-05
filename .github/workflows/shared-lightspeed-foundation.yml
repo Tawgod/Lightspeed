@@ -28,11 +28,14 @@ on:
       - 'tests/shared-security-pin-setup.test.mjs'
       - 'staging/isolated-owner-passkey-grant.js'
       - 'staging/isolated-owner-approval-policy.js'
+      - 'staging/isolated-owner-enrollment.js'
+      - 'tests/shared-security-isolated-owner-enrollment.test.mjs'
       - 'tests/shared-security-isolated-owner-approval.test.mjs'
       - 'tests/shared-security-isolated-owner-approval-postgres.test.mjs'
       - 'db/hc_staging_owner_passkey_bootstrap.sql'
       - 'staging/test-owner-passkey.html'
       - 'tests/shared-security-owner-bootstrap.test.mjs'
+      - 'tests/shared-security-owner-bootstrap-browser.test.mjs'
       - 'tests/shared-security-owner-bootstrap-postgres.test.mjs'
       - 'tests/shared-security-owner-passkey-routing.test.mjs'
       - 'staging/staff-security-server.js'
@@ -146,12 +149,16 @@ jobs:
         run: node --test tests/shared-security-pin-setup.test.mjs
       - name: Isolated first Owner passkey bootstrap and route safeguards
         run: node --test tests/shared-security-owner-bootstrap.test.mjs tests/shared-security-owner-passkey-routing.test.mjs
+      - name: Owner bootstrap browser secret clearing on cancel and denial
+        run: node --test tests/shared-security-owner-bootstrap-browser.test.mjs
       - name: Verified Owner bootstrap atomicity on disposable Postgres
         run: node --test --test-concurrency=1 tests/shared-security-owner-bootstrap-postgres.test.mjs
       - name: Exact isolated Owner WebAuthn approval policy denial tests
         run: node --test tests/shared-security-isolated-owner-approval.test.mjs
       - name: Test Owner's real PostgreSQL independent passkey approval gate
         run: node --test --test-concurrency=1 tests/shared-security-isolated-owner-approval-postgres.test.mjs
+      - name: Isolated synthetic Owner invitation and Authenticator composition preflight
+        run: node --test tests/shared-security-isolated-owner-enrollment.test.mjs
       - name: Existing backend parse check
         run: node --check server.js
       - name: Staff settings browser script parse check
