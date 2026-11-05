@@ -116,7 +116,7 @@ test('isolated enrollment migration validates credentials before private databas
  assert.equal(connected,0,'invalid secrets must fail before any DB connection');
  await assert.rejects(migrateIsolatedTestLogin(args),
    /Verified synthetic Owner passkey bootstrap is required/);
- assert.equal(sql.at(-2),'ROLLBACK','unconsumed bootstrap must roll back all migrations');
+ assert.equal(sql.at(-1),'ROLLBACK','unconsumed bootstrap must roll back all migrations');
  sql.length=0;
  consumed=true;
  await migrateIsolatedTestLogin(args);
