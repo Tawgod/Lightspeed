@@ -108,13 +108,17 @@
     run(async()=>{
       const pin = byId('pin').value;
       byId('pin').value = '';
-      if (!/^\d{4}$/.test(pin)) throw Error('Enter your four-digit Timeclock PIN.');
+      if (!/^\d{4}$/.test(pin)) throw Error(byId('bootstrapKey')
+        ? 'Enter your four-digit staging test PIN.'
+        : 'Enter your four-digit Timeclock PIN.');
       const info = await send('/api/staff-auth/session',{pin});
       if(typeof info.token!=='string'||!info.employee?.id)throw Error('Signed employee session unavailable.');
       baseToken = info.token;
       clearProof();
       byId('identity').textContent = 'Signed in as '+String(info.employee.name || 'employee');
-      show('Signed in. Enrollment still requires an independently approved authorization.');
+      show(byId('bootstrapKey')
+        ? 'Signed in to the isolated test account. An independent Owner key is still required to create your passkey.'
+        : 'Signed in. Enrollment still requires an independently approved authorization.');
     });
   });
   byId('registerPasskey').addEventListener('click',()=>{
@@ -143,7 +147,9 @@
         challengeId,response:wrapRegistration(credential)
       },bootstrapHeaders);
       if(saved.registered!==true)throw Error('Passkey registration was not confirmed.');
-      show('Passkey registered. Verify it to activate manager security operations.');
+      show(byId('bootstrapKey')
+        ? 'Owner test passkey registered. Verify it next; Authenticator enrollment is not enabled.'
+        : 'Passkey registered. Verify it to activate manager security operations.');
     });
   });
   byId('verifyPasskey').addEventListener('click',()=>{
@@ -165,7 +171,9 @@
       proofToken=result.token;
       proofExpires=Date.now()+result.expiresIn*1000;
       byId('proof').textContent = 'Verified (five minutes maximum)';
-      show('Passkey verified. Manager operations still require your exact permission.');
+      show(byId('bootstrapKey')
+        ? 'Owner test passkey verified. Employee Authenticator enrollment remains disabled.'
+        : 'Passkey verified. Manager operations still require your exact permission.');
     });
   });
   byId('managerApproval').addEventListener('click',()=>{
@@ -190,7 +198,10 @@
   document.addEventListener('visibilitychange',()=>{
     // A browser may hide during native credential prompts. Preserve the base
     // session in memory so the ceremony can complete, but clear step-up proof.
-    if(document.hidden){clearProof();refresh();}
+    if(document.hidden){
+      if(byId('bootstrapKey'))byId('bootstrapKey').value='';
+      clearProof();refresh();
+    }
   });
   window.addEventListener('pagehide',()=>{
     baseToken=null;clearProof();byId('pin').value='';byId('requestId').value='';
