@@ -53,6 +53,7 @@ test('after repeated schema failures service never opens a socket',async()=>{
 test('first Owner bootstrap rejects missing independent key before creating an expiring grant',async()=>{
  const ready={
   ...env,HC_STAGING_OWNER_PASSKEY_ENABLED:'true',
+ HC_STAGING_OWNER_BOOTSTRAP_ENABLED:'true',
   HC_STAGING_PIN_STORE_MODE:'database',
   HC_STAGING_PIN_SETUP_ENABLED:'false',
   HC_STAGING_PUBLIC_ORIGIN:'https://staff-security-staging-test.up.railway.app',
@@ -74,4 +75,22 @@ test('first Owner bootstrap rejects missing independent key before creating an e
   assert.equal(migrated,0);
   assert.equal(started,0);
  }
+});
+
+test('first Owner bootstrap may be retired while WebAuthn signing remains enabled',async()=>{
+ const cfg={
+  ...env,HC_STAGING_OWNER_PASSKEY_ENABLED:'true',
+  HC_STAGING_OWNER_BOOTSTRAP_ENABLED:'false',
+  HC_STAGING_PIN_STORE_MODE:'database',HC_STAGING_PIN_SETUP_ENABLED:'false',
+  HC_STAGING_PUBLIC_ORIGIN:'https://staff-security-staging-test.up.railway.app',
+  HC_STAGING_PASSKEY_SIGNING_SECRET:'test-only-independent-passkey-signing-1234567890'
+ };
+ delete cfg.HC_STAGING_OWNER_BOOTSTRAP_KEY;
+ let migrated=0,started=0;
+ await launchSecurityStaging({
+  environment:cfg,migrate:async()=>{migrated++},
+  start:()=>{started++;return 'started';}
+ });
+ assert.equal(migrated,1);
+ assert.equal(started,1);
 });
