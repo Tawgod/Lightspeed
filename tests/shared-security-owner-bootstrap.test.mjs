@@ -9,7 +9,8 @@ const env={
  HC_STAGING_TEST_GUILD_ID:'1485804234753573066',
  HC_STAGING_TEST_LOGIN_ENABLED:'true',
  HC_STAGING_PIN_STORE_MODE:'database',HC_STAGING_PIN_SETUP_ENABLED:'false',
- HC_STAGING_OWNER_PASSKEY_ENABLED:'true',HC_STAGING_PUBLIC_ORIGIN:origin,
+ HC_STAGING_OWNER_PASSKEY_ENABLED:'true',
+ HC_STAGING_OWNER_BOOTSTRAP_ENABLED:'true',HC_STAGING_PUBLIC_ORIGIN:origin,
  HC_STAGING_OWNER_BOOTSTRAP_KEY:key
 };
 const now=Date.parse('2026-11-04T18:00:00Z');
@@ -56,6 +57,7 @@ test('first Owner passkey bootstrap requires exact staging, persisted PIN and in
   {HC_STAGING_PIN_STORE_MODE:'legacy-env'},
   {HC_STAGING_PIN_SETUP_ENABLED:'true'},
   {HC_STAGING_OWNER_PASSKEY_ENABLED:'false'},
+  {HC_STAGING_OWNER_BOOTSTRAP_ENABLED:'false'},
   {HC_STAGING_OWNER_BOOTSTRAP_KEY:'short'},
   {HC_STAGING_PUBLIC_ORIGIN:'https://evil.example'}
  ])assert.throws(()=>createIsolatedFirstOwnerPasskeyGrant({...opts,environment:{...env,...change}}));
