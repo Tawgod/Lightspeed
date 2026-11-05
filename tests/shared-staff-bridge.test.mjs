@@ -177,3 +177,59 @@ test('strong-factor verification must be fresh and permission is checked per act
   await assert.rejects(gate.authorize({request:req(),action:'inventory.adjust'}),denied);
   await assert.rejects(gate.authorize({request:req('Bearer signed-99'),action:'products.write'}),denied);
 });
+
+test('active off-clock owner and staff can use permitted tools; payroll clock status is not authorization', async () => {
+  for (const [employeeId, clockedIn] of [['17', false], ['18', true], ['19', undefined]]) {
+    const staffSession = createStaffBoundSessionAdapter({
+      now: () => NOW,
+      staffAuth: {
+        verifyBoundEmployee: async () => ({
+          id: employeeId, employeeId, active: true,
+          role: employeeId === '17' ? 'owner' : 'staff',
+          clockedIn,
+          binding: 'signed-unique-session-' + employeeId,
+          expiresAtMs: NOW + 60_000
+        })
+      }
+    });
+    const gate = createStaffSecurityAccessGate({
+      staffSession,
+      mfa: { verify: async () => { throw Error('No MFA token'); } },
+      now: () => NOW,
+      verifyWorkstation: async () => ({
+        verified: true, deviceId: 'registered-test-station',
+        expiresAtMs: NOW + 30_000
+      }),
+      checkPermission: async ({ identity, operation }) =>
+        identity.id === employeeId && operation === 'tools.read'
+    });
+    assert.equal((await gate.authorize({request:req(),action:'tools.read'})).employeeId, employeeId);
+    await assert.rejects(gate.authorize({request:req(),action:'products.write'}), denied);
+  }
+});
+
+test('inactive employees are denied regardless of payroll clock state or registered workstation', async () => {
+  for (const clockedIn of [true, false]) {
+    const staffSession = createStaffBoundSessionAdapter({
+      now: () => NOW,
+      staffAuth: {
+        verifyBoundEmployee: async () => ({
+          id: '17', employeeId: '17', active: false, clockedIn,
+          binding: 'signed-unique-session-jti-17',
+          expiresAtMs: NOW + 60_000
+        })
+      }
+    });
+    const gate = createStaffSecurityAccessGate({
+      staffSession,
+      mfa: { verify: async () => { throw Error('No MFA token'); } },
+      now: () => NOW,
+      verifyWorkstation: async () => ({
+        verified: true, deviceId: 'registered-test-station',
+        expiresAtMs: NOW + 30_000
+      }),
+      checkPermission: async () => true
+    });
+    await assert.rejects(gate.authorize({request:req(),action:'tools.read'}), denied);
+  }
+});
