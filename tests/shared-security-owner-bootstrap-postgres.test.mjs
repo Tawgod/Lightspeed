@@ -96,8 +96,16 @@ test('atomic verified first Owner WebAuthn registration rolls back a rejected in
    canManage:async()=>false,loginThrottle:{reserve:async()=>true},
    webauthn
   });
+  const initial=await pool.query('SELECT started_at,expires_at FROM hc_staging_owner_passkey_bootstrap WHERE id=1');
+  assert.equal(initial.rows[0].started_at,null,'deploy migration must not begin Owner grant expiry');
+  assert.equal(initial.rows[0].expires_at,null,'four-hour window begins only at an approved ceremony');
   const fail=make(async()=>{throw Object.assign(Error('Rejected'),{code:'HC_PASSKEY_DENIED'})});
   const beginning=await fail.beginRegistration({context:login,sourceIp:'127.0.0.1'});
+  const started=await pool.query('SELECT started_at,expires_at FROM hc_staging_owner_passkey_bootstrap WHERE id=1');
+  assert.ok(started.rows[0].started_at);
+  assert.ok(started.rows[0].expires_at);
+  assert.ok(Math.abs(started.rows[0].expires_at.getTime()-started.rows[0].started_at.getTime()-14400000)<1000);
+  assert.equal((await pool.query("SELECT 1 FROM hc_staging_owner_passkey_bootstrap_events WHERE kind='started'")).rowCount,1);
   await assert.rejects(fail.finishRegistration({
    context:login,challengeId:beginning.challengeId,response:{id:currentKey}
   }),e=>e.code==='HC_PASSKEY_DENIED');
@@ -114,7 +122,8 @@ test('atomic verified first Owner WebAuthn registration rolls back a rejected in
    context:login,challengeId:next.challengeId,response:{id:currentKey}
   })).registered,true);
   assert.equal((await pool.query('SELECT 1 FROM hc_staff_passkeys WHERE credential_id=$1',[currentKey])).rowCount,1);
-  assert.equal((await pool.query('SELECT 1 FROM hc_staging_owner_passkey_bootstrap_events WHERE credential_id=$1',[currentKey])).rowCount,1);
+  assert.equal((await pool.query("SELECT 1 FROM hc_staging_owner_passkey_bootstrap_events WHERE credential_id=$1 AND kind='completed'",[currentKey])).rowCount,1);
+  assert.equal((await pool.query("SELECT 1 FROM hc_staging_owner_passkey_bootstrap_events WHERE kind='started'")).rowCount,1,'retry must not reactivate grant');
   const state1=await pool.query('SELECT consumed_at FROM hc_staging_owner_passkey_bootstrap WHERE id=1');
   assert.ok(state1.rows[0].consumed_at);
   await assert.rejects(accept.beginRegistration({context:login,sourceIp:'127.0.0.1'}),e=>e.code==='HC_PASSKEY_DENIED');
