@@ -62,3 +62,58 @@ test('staff gateway only yields bound sessions after signed PIN login and Timecl
     assert.equal(revoked.status,403);
   }finally{await new Promise(resolve=>server.close(resolve))}
 });
+
+test('signed owner sessions stay usable before and after clock-out without creating time entries', async () => {
+  let active = true;
+  let clockedIn = false;
+  let verifyCalls = 0;
+  let authorizeCalls = 0;
+  const identity = {
+    verifyPin: async pin => {
+      verifyCalls++;
+      if (pin !== '1234') throw Object.assign(new Error('Invalid PIN'), {status:401});
+      return {id:17,name:'Synthetic Owner',role:'owner',active:true,clockedIn};
+    },
+    authorize: async id => {
+      authorizeCalls++;
+      return active && Number(id)===17
+        ? {id:17,name:'Synthetic Owner',role:'owner',active:true,clockedIn}
+        : null;
+    }
+  };
+  const gateway = createStaffAuthGateway({
+    identity, sessionSecret:'test-only-staff-off-clock-session-key-123456789',
+    loginLimiter:async()=>true
+  });
+  const app = express();
+  app.use('/api/staff-auth',gateway.router);
+  const server = await new Promise(resolve=>{
+    const s=app.listen(0,'127.0.0.1',()=>resolve(s));
+  });
+  try {
+    const url='http://127.0.0.1:'+server.address().port;
+    const login=await fetch(url+'/api/staff-auth/session',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({pin:'1234'})
+    });
+    assert.equal(login.status,200);
+    const {token,employee}=await login.json();
+    assert.equal(employee.id,17);
+    assert.equal(verifyCalls,1);
+    const context={get:name=>name.toLowerCase()==='authorization'?'Bearer '+token:undefined};
+    const offClock=await gateway.verifyBoundEmployee(context);
+    assert.equal(offClock.id,'17');
+    assert.equal(offClock.active,true);
+    assert.equal(clockedIn,false);
+    clockedIn=true;
+    assert.equal((await gateway.verifyBoundEmployee(context)).id,'17');
+    clockedIn=false; // clocking out is not a session revocation
+    assert.equal((await gateway.verifyBoundEmployee(context)).id,'17');
+    assert.equal((await fetch(url+'/api/staff-auth/session',{
+      headers:{Authorization:'Bearer '+token}
+    })).status,200);
+    assert.ok(authorizeCalls>=4);
+    active=false; // employment deactivation DOES revoke access
+    await assert.rejects(gateway.verifyBoundEmployee(context),error=>error?.status===403);
+  } finally {await new Promise(resolve=>server.close(resolve));}
+});
