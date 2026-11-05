@@ -137,3 +137,43 @@ test('station proof works for routine reads only and backend errors fail closed'
     verifyStrongStepUp: async () => {throw Error('provider offline');} });
   await assert.rejects(offline.authorize({request:req(),action:'tools.read'}),denied);
 });
+
+test('unlisted operations and failed permission checks remain denied even with verified MFA', async () => {
+  const f = fixture();
+  const ticket = await f.mfa.authenticate({context:req(),code:'123456',sourceIp:'203.0.113.10'});
+  const request = {
+    ...req(),
+    get: name => name.toLowerCase() === 'x-hc-mfa-session'
+      ? ticket.token : req().get(name)
+  };
+  await assert.rejects(f.gate().authorize({request,action:'customers.export'}),denied);
+  await assert.rejects(f.gate().authorize({request,action:'__proto__'}),denied);
+  await assert.rejects(f.gate().authorize({request,action:'tools.stage.extra'}),denied);
+  await assert.rejects(f.gate({
+    checkPermission: async () => { throw Error('Permission service unavailable'); }
+  }).authorize({request,action:'tools.read'}),denied);
+  await assert.rejects(f.gate({
+    checkPermission: async () => 'true'
+  }).authorize({request,action:'tools.read'}),denied);
+});
+
+test('strong-factor verification must be fresh and permission is checked per action', async () => {
+  const f = fixture();
+  for (const authenticatedAtMs of [NOW + 1, NOW - 300_000, Number.NaN]) {
+    const gate = f.gate({
+      verifyStrongStepUp: async () => ({
+        verified:true,employeeId:'17',method:'passkey',authenticatedAtMs
+      })
+    });
+    await assert.rejects(gate.authorize({request:req(),action:'products.write'}),denied);
+  }
+  const gate = f.gate({
+    verifyStrongStepUp: async () => ({
+      verified:true,employeeId:'17',method:'passkey',authenticatedAtMs:NOW
+    }),
+    checkPermission: async ({operation}) => operation === 'products.write'
+  });
+  assert.equal((await gate.authorize({request:req(),action:'products.write'})).assurance,'step-up');
+  await assert.rejects(gate.authorize({request:req(),action:'inventory.adjust'}),denied);
+  await assert.rejects(gate.authorize({request:req('Bearer signed-99'),action:'products.write'}),denied);
+});
