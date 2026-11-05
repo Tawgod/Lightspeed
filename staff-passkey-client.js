@@ -3,6 +3,13 @@
   // UNMOUNTED manual pilot UI. All tokens stay in memory; no local/session
   // storage or extension APIs. PIN sign-in alone can never enroll a passkey.
   const byId = id => document.getElementById(id);
+  const verifyOnly = () => document.body?.dataset?.ownerPilotMode==='verify-only';
+  // Generic passkey pages do not have an Owner bootstrap input. Check the
+  // actual element type so mock DOMs and unrelated pages stay unchanged.
+  const isOwnerPilot = () => {
+    const field=byId('bootstrapKey');
+    return verifyOnly() || (field?.tagName==='INPUT'&&field.type==='password');
+  };
   let baseToken = null, proofToken = null, proofExpires = 0, busy = false;
   const b64bytes = text => {
     if (typeof text !== 'string' || !/^[A-Za-z0-9_-]+$/.test(text)) throw Error('Invalid security challenge.');
@@ -28,7 +35,7 @@
     byId('managerApproval').disabled = true;
   }
   function refresh() {
-    byId('registerPasskey').disabled = !baseToken || busy;
+    byId('registerPasskey').disabled = verifyOnly() || !baseToken || busy;
     byId('verifyPasskey').disabled = !baseToken || busy;
     byId('signout').disabled = !baseToken || busy;
     byId('managerApproval').disabled = !baseToken || !proofToken ||
@@ -108,7 +115,7 @@
     run(async()=>{
       const pin = byId('pin').value;
       byId('pin').value = '';
-      if (!/^\d{4}$/.test(pin)) throw Error(byId('bootstrapKey')
+      if (!/^\d{4}$/.test(pin)) throw Error(isOwnerPilot()
         ? 'Enter your four-digit staging test PIN.'
         : 'Enter your four-digit Timeclock PIN.');
       const info = await send('/api/staff-auth/session',{pin});
@@ -116,7 +123,7 @@
       baseToken = info.token;
       clearProof();
       byId('identity').textContent = 'Signed in as '+String(info.employee.name || 'employee');
-      show(byId('bootstrapKey')
+      show(isOwnerPilot()
         ? 'Signed in to the isolated test account. An independent Owner key is still required to create your passkey.'
         : 'Signed in. Enrollment still requires an independently approved authorization.');
     });
@@ -124,6 +131,7 @@
   byId('registerPasskey').addEventListener('click',()=>{
     run(async()=>{
       if(!baseToken)throw Error('Sign in before enrolling.');
+      if(verifyOnly())throw Error('Owner bootstrap is closed. Verify your existing passkey.');
       if(!navigator.credentials?.create)throw Error('This browser cannot enroll passkeys.');
       // Only the isolated Owner test page has this optional one-time field.
       // Existing passkey clients remain unchanged when the field is absent.
@@ -147,7 +155,7 @@
         challengeId,response:wrapRegistration(credential)
       },bootstrapHeaders);
       if(saved.registered!==true)throw Error('Passkey registration was not confirmed.');
-      show(byId('bootstrapKey')
+      show(isOwnerPilot()
         ? 'Owner test passkey registered. Verify it next; Authenticator enrollment is not enabled.'
         : 'Passkey registered. Verify it to activate manager security operations.');
     });
@@ -171,7 +179,7 @@
       proofToken=result.token;
       proofExpires=Date.now()+result.expiresIn*1000;
       byId('proof').textContent = 'Verified (five minutes maximum)';
-      show(byId('bootstrapKey')
+      show(isOwnerPilot()
         ? 'Owner test passkey verified. Employee Authenticator enrollment remains disabled.'
         : 'Passkey verified. Manager operations still require your exact permission.');
     });
