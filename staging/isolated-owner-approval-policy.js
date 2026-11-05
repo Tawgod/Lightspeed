@@ -19,6 +19,7 @@ export function createIsolatedOwnerApprovalPolicy({
      environment.HC_STAGING_PIN_STORE_MODE!=='database'||
      environment.HC_STAGING_PIN_SETUP_ENABLED!=='false'||
      environment.HC_STAGING_OWNER_PASSKEY_ENABLED!=='true'||
+     environment.HC_STAGING_OWNER_APPROVAL_ENABLED!=='true'||
      typeof verifyOwnerPasskey!=='function'||typeof now!=='function')
     throw new TypeError('Isolated Owner manager approval requires a real verified test passkey.');
   async function canApproveEnrollment({
