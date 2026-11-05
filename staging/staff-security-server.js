@@ -67,6 +67,32 @@ export function startSecurityStaging({
   return server;
 }
 
+// Safe operator diagnostics: only fixed configuration NAMES, never secret values.
+export function checkIsolatedPasskeyConfiguration(environment = {}) {
+  const problems = [];
+  if (environment.HC_STAGING_OWNER_PASSKEY_ENABLED !== 'true') {
+    if (environment.HC_STAGING_OWNER_BOOTSTRAP_ENABLED === 'true')
+      problems.push('HC_STAGING_OWNER_PASSKEY_ENABLED');
+    return problems;
+  }
+  if (environment.HC_STAGING_PIN_STORE_MODE !== 'database')
+    problems.push('HC_STAGING_PIN_STORE_MODE');
+  if (environment.HC_STAGING_PIN_SETUP_ENABLED !== 'false')
+    problems.push('HC_STAGING_PIN_SETUP_ENABLED');
+  if (environment.HC_STAGING_PUBLIC_ORIGIN !== 'https://staff-security-staging-test.up.railway.app')
+    problems.push('HC_STAGING_PUBLIC_ORIGIN');
+  if (typeof environment.HC_STAGING_PASSKEY_SIGNING_SECRET !== 'string' ||
+      environment.HC_STAGING_PASSKEY_SIGNING_SECRET.length < 32)
+    problems.push('HC_STAGING_PASSKEY_SIGNING_SECRET');
+  if (environment.HC_STAGING_OWNER_BOOTSTRAP_ENABLED === 'true' &&
+      !/^[A-Za-z0-9_-]{43,256}$/.test(environment.HC_STAGING_OWNER_BOOTSTRAP_KEY || ''))
+    problems.push('HC_STAGING_OWNER_BOOTSTRAP_KEY');
+  if (environment.HC_STAGING_OWNER_ENROLLMENT_ENABLED === 'true' &&
+      environment.HC_STAGING_OWNER_BOOTSTRAP_ENABLED === 'true')
+    problems.push('HC_STAGING_OWNER_ENROLLMENT_ENABLED');
+  return problems;
+}
+
 // For Railway startup only: establish the schema before opening the health
 // endpoint. A fresh test PostgreSQL deployment may become ready shortly after
 // the API container, so retry transient DB readiness; never open login early.
@@ -85,15 +111,9 @@ export async function launchSecurityStaging({
     if(environment.HC_STAGING_OWNER_BOOTSTRAP_ENABLED==='true'&&
        environment.HC_STAGING_OWNER_PASSKEY_ENABLED!=='true')
       throw new Error('Owner bootstrap requires an enabled passkey verifier.');
-    if(environment.HC_STAGING_OWNER_PASSKEY_ENABLED==='true'){
-      if(environment.HC_STAGING_PIN_STORE_MODE!=='database'||
-         environment.HC_STAGING_PIN_SETUP_ENABLED!=='false'||
-         environment.HC_STAGING_PUBLIC_ORIGIN!=='https://staff-security-staging-test.up.railway.app'||
-         typeof environment.HC_STAGING_PASSKEY_SIGNING_SECRET!=='string'||
-         environment.HC_STAGING_PASSKEY_SIGNING_SECRET.length<32||
-         (environment.HC_STAGING_OWNER_BOOTSTRAP_ENABLED==='true'&&
-          !/^[A-Za-z0-9_-]{43,256}$/.test(environment.HC_STAGING_OWNER_BOOTSTRAP_KEY||'')))
-        throw new Error('Invalid isolated Owner passkey prerequisites.');
+    const issues = checkIsolatedPasskeyConfiguration(environment);
+    if (issues.length) {
+      throw new Error('Invalid isolated Owner passkey prerequisites: ' + issues.join(', '));
     }
     let ready=false;
     for(let attempt=0;attempt<20;attempt++){
@@ -109,8 +129,13 @@ export async function launchSecurityStaging({
 }
 
 if (process.argv[1] && import.meta.url === new URL('file://' + process.argv[1]).href) {
-  launchSecurityStaging().catch(()=>{
-    console.error('Isolated security test service startup failed.');
+  launchSecurityStaging().catch(error=>{
+    // Never print runtime errors or secret contents. This one known prefix is
+    // emitted only by the fixed-name preflight above.
+    const message = typeof error?.message === 'string' && 
+      error.message.startsWith('Invalid isolated Owner passkey prerequisites:')
+      ? error.message : 'Isolated security test service startup failed.';
+    console.error(message);
     process.exitCode=1;
   });
 }
