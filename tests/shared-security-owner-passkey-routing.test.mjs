@@ -101,7 +101,12 @@ test('retiring first-Owner bootstrap key preserves existing passkey verification
  const server=await new Promise(resolve=>{const s=app.listen(0,'127.0.0.1',()=>resolve(s));});
  try{
   const base='http://127.0.0.1:'+server.address().port;
-  assert.equal((await fetch(base+'/test-owner-passkey')).status,200);
+  const page=await fetch(base+'/test-owner-passkey');
+  assert.equal(page.status,200);
+  const html=await page.text();
+  assert.match(html,/Verify your existing Owner passkey/);
+  assert.match(html,/data-owner-pilot-mode="verify-only"/);
+  assert.doesNotMatch(html,/id="bootstrapKey"/);
   assert.equal((await fetch(base+'/staff-passkey/client.js')).status,200);
   const missingProof=await fetch(base+'/staff-passkey/authentication/options',{
    method:'POST',headers:{'Content-Type':'application/json','Origin':cfg.HC_STAGING_PUBLIC_ORIGIN},
