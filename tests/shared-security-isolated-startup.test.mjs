@@ -49,3 +49,29 @@ test('after repeated schema failures service never opens a socket',async()=>{
  }),/database migration could not become ready/);
  assert.equal(attempts,20);assert.equal(pauses,19);assert.equal(starts,0);
 });
+
+test('first Owner bootstrap rejects missing independent key before creating an expiring grant',async()=>{
+ const ready={
+  ...env,HC_STAGING_OWNER_PASSKEY_ENABLED:'true',
+  HC_STAGING_PIN_STORE_MODE:'database',
+  HC_STAGING_PIN_SETUP_ENABLED:'false',
+  HC_STAGING_PUBLIC_ORIGIN:'https://staff-security-staging-test.up.railway.app',
+  HC_STAGING_OWNER_BOOTSTRAP_KEY:'test-only-out-of-band-owner-key-1234567890abcdef123456',
+  HC_STAGING_PASSKEY_SIGNING_SECRET:'test-only-independent-passkey-signing-1234567890'
+ };
+ for(const change of [
+  {HC_STAGING_OWNER_BOOTSTRAP_KEY:''},
+  {HC_STAGING_PUBLIC_ORIGIN:'https://evil.example'},
+  {HC_STAGING_PIN_SETUP_ENABLED:'true'},
+  {HC_STAGING_PASSKEY_SIGNING_SECRET:'short'}
+ ]){
+  let migrated=0,started=0;
+  await assert.rejects(launchSecurityStaging({
+   environment:{...ready,...change},
+   migrate:async()=>{migrated++},
+   start:()=>{started++}
+  }));
+  assert.equal(migrated,0);
+  assert.equal(started,0);
+ }
+});
