@@ -34,6 +34,7 @@ on:
       - 'tests/shared-security-isolated-owner-approval-postgres.test.mjs'
       - 'db/hc_staging_owner_passkey_bootstrap.sql'
       - 'staging/test-owner-passkey.html'
+      - 'staging/test-owner-passkey-verify.html'
       - 'tests/shared-security-owner-bootstrap.test.mjs'
       - 'tests/shared-security-owner-bootstrap-browser.test.mjs'
       - 'tests/shared-security-staging-flag-matrix.test.mjs'
