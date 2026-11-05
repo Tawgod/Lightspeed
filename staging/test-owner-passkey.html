@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Hobby Corner · First Owner Passkey Test</title>
+<link rel="stylesheet" href="/staff-passkey/styles.css">
+<script defer src="/staff-passkey/client.js"></script>
+</head>
+<body>
+<main>
+<header>
+<p class="eyebrow">HOBBY CORNER / ISOLATED TEST ONLY</p>
+<h1>Register your Owner passkey</h1>
+<p>This page uses only the synthetic staging employee. Sign in with your test PIN and separately provide the one-time Owner bootstrap key from Railway. Your device's passkey verification must succeed before enrollment completes.</p>
+</header>
+<section>
+<h2>1. Sign in to staging</h2>
+<form id="login" autocomplete="off">
+<label for="pin">Synthetic test PIN</label>
+<input id="pin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" required>
+<button type="submit">Sign in</button>
+</form>
+<p id="identity" role="status">Not signed in</p>
+<button id="signout" type="button" disabled>Sign out</button>
+</section>
+<section>
+<h2>2. Independently authorize the first Owner passkey</h2>
+<p>Your one-time key is different from the test PIN. It is provisioned only in the isolated Railway environment. This key is consumed atomically when your passkey registration completes and cannot be reused.</p>
+<label for="bootstrapKey">Owner bootstrap key</label>
+<input id="bootstrapKey" type="password" autocomplete="off" spellcheck="false">
+<button id="registerPasskey" type="button" disabled>Create Owner passkey</button>
+</section>
+<section>
+<h2>3. Verify the passkey</h2>
+<p>Use the passkey on your device or security key to create a five-minute signed proof. The proof remains only in memory in this page.</p>
+<button id="verifyPasskey" type="button" disabled>Verify Owner passkey</button>
+<p id="proof" role="status">Not verified</p>
+</section>
+<section hidden>
+<h2>Manager approval unavailable in this pilot</h2>
+<label for="requestId">Request</label><input id="requestId" type="text" autocomplete="off">
+<button id="managerApproval" type="button" disabled>Not enabled</button>
+</section>
+<p id="message" role="status" aria-live="polite"></p>
+<footer>This page never enables Authenticator QR or employee enrollment by itself. No real Timeclock PINs, production employee data, or live manager grants are used.</footer>
+</main>
+</body></html>
