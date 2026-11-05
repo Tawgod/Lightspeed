@@ -27,6 +27,8 @@ on:
       - 'db/hc_staging_pin_setup.sql'
       - 'tests/shared-security-pin-setup.test.mjs'
       - 'staging/isolated-owner-passkey-grant.js'
+      - 'staging/isolated-owner-approval-policy.js'
+      - 'tests/shared-security-isolated-owner-approval.test.mjs'
       - 'db/hc_staging_owner_passkey_bootstrap.sql'
       - 'staging/test-owner-passkey.html'
       - 'tests/shared-security-owner-bootstrap.test.mjs'
@@ -145,6 +147,8 @@ jobs:
         run: node --test tests/shared-security-owner-bootstrap.test.mjs tests/shared-security-owner-passkey-routing.test.mjs
       - name: Verified Owner bootstrap atomicity on disposable Postgres
         run: node --test --test-concurrency=1 tests/shared-security-owner-bootstrap-postgres.test.mjs
+      - name: Exact isolated Owner WebAuthn approval policy denial tests
+        run: node --test tests/shared-security-isolated-owner-approval.test.mjs
       - name: Existing backend parse check
         run: node --check server.js
       - name: Staff settings browser script parse check
