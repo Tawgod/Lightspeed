@@ -28,6 +28,7 @@ export function createIsolatedFirstOwnerPasskeyGrant({
     environment.HC_STAGING_PIN_STORE_MODE!=='database'||
     environment.HC_STAGING_PIN_SETUP_ENABLED!=='false'||
     environment.HC_STAGING_OWNER_PASSKEY_ENABLED!=='true'||
+    environment.HC_STAGING_OWNER_BOOTSTRAP_ENABLED!=='true'||
     environment.HC_STAGING_PUBLIC_ORIGIN!==PUBLIC_ORIGIN||
     !/^[A-Za-z0-9_-]{43,256}$/.test(environment.HC_STAGING_OWNER_BOOTSTRAP_KEY||'')||
     typeof pool?.query!=='function'||typeof verifyBoundEmployee!=='function'||
