@@ -88,7 +88,18 @@ test('new factor routes are composed only with trusted identity, proof, and dist
  }finally{await new Promise(ok=>server.close(ok));}
 });
 test('isolated enrollment migration validates credentials before private database access and creates only approved schemas',async()=>{
- let connected=0;const sql=[],client={query:async q=>{sql.push(q)},end:async()=>{}};
+ let connected=0,consumed=false;
+ const sql=[],client={
+   query:async q=>{
+     sql.push(q);
+     if(q.startsWith('SELECT credential_id FROM hc_staff_passkeys'))
+       return {rowCount:1,rows:[{credential_id:'verified-owner-passkey-credential'}]};
+     if(q.startsWith('SELECT credential_id,consumed_at FROM hc_staging_owner_passkey_bootstrap'))
+       return {rowCount:1,rows:[{credential_id:'verified-owner-passkey-credential',consumed_at:consumed?new Date():null}]};
+     return {rowCount:0,rows:[]};
+   },
+   end:async()=>{}
+ };
  const args={
   environment,connect:async()=>{connected++;return client},
   loadSchema:async()=> 'CREATE TABLE IF NOT EXISTS hc_staff_auth_throttle(x INTEGER);',
@@ -103,8 +114,13 @@ test('isolated enrollment migration validates credentials before private databas
    ...args,environment:{...environment,HC_STAGING_INVITE_TOKEN_SECRET:'short'}
  }));
  assert.equal(connected,0,'invalid secrets must fail before any DB connection');
+ await assert.rejects(migrateIsolatedTestLogin(args),
+   /Verified synthetic Owner passkey bootstrap is required/);
+ assert.equal(sql.at(-2),'ROLLBACK','unconsumed bootstrap must roll back all migrations');
+ sql.length=0;
+ consumed=true;
  await migrateIsolatedTestLogin(args);
- assert.equal(connected,1);
+ assert.equal(connected,2);
  assert.equal(sql[0],'BEGIN');
  assert.equal(sql.at(-1),'COMMIT');
  assert.equal(sql.filter(x=>x.startsWith('CREATE TABLE')).length,7);
