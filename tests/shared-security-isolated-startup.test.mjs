@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {launchSecurityStaging} from '../staging/staff-security-server.js';
+import {launchSecurityStaging,checkIsolatedPasskeyConfiguration} from '../staging/staff-security-server.js';
 const env={
  NODE_ENV:'test',HC_SECURITY_ENV:'isolated-staging',
  HC_STAGING_TEST_LOGIN_ENABLED:'true',
@@ -93,4 +93,39 @@ test('first Owner bootstrap may be retired while WebAuthn signing remains enable
  });
  assert.equal(migrated,1);
  assert.equal(started,1);
+});
+
+test('isolated preflight reports names only and never outputs secret values',async()=>{
+ const secret='do-not-log-this-test-secret';
+ const bootstrap='test-bootstrap-token_abcdefghijklmnopqrstuvwxyz0123456789';
+ const config={...env,
+   HC_STAGING_OWNER_PASSKEY_ENABLED:'true',
+   HC_STAGING_OWNER_BOOTSTRAP_ENABLED:'true',
+   HC_STAGING_PIN_STORE_MODE:'database',
+   HC_STAGING_PIN_SETUP_ENABLED:'false',
+   HC_STAGING_PUBLIC_ORIGIN:'https://staff-security-staging-test.up.railway.app',
+   HC_STAGING_PASSKEY_SIGNING_SECRET:'short',
+   HC_STAGING_OWNER_BOOTSTRAP_KEY:secret,
+   HC_STAGING_OWNER_ENROLLMENT_ENABLED:'true'
+ };
+ const problems=checkIsolatedPasskeyConfiguration(config);
+ assert.deepEqual(problems,[
+   'HC_STAGING_PASSKEY_SIGNING_SECRET',
+   'HC_STAGING_OWNER_BOOTSTRAP_KEY',
+   'HC_STAGING_OWNER_ENROLLMENT_ENABLED'
+ ]);
+ let migrated=0;
+ await assert.rejects(launchSecurityStaging({
+   environment:config,migrate:async()=>{migrated++},start:()=>{throw Error('no start')}
+ }),error=>{
+   assert.match(error.message,/HC_STAGING_OWNER_BOOTSTRAP_KEY/);
+   assert.doesNotMatch(error.message,/do-not-log-this-test-secret|test-bootstrap-token/);
+   return true;
+ });
+ assert.equal(migrated,0);
+ assert.deepEqual(checkIsolatedPasskeyConfiguration({
+   ...config,HC_STAGING_PASSKEY_SIGNING_SECRET:'test-only-independent-signing-secret-123456',
+   HC_STAGING_OWNER_BOOTSTRAP_KEY:bootstrap,
+   HC_STAGING_OWNER_ENROLLMENT_ENABLED:'false'
+ }),[]);
 });
