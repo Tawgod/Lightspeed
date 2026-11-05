@@ -21,6 +21,17 @@ on:
       - 'staging/test-login.html'
       - 'staging/test-login.js'
       - 'staging/test-login.css'
+      - 'staging/isolated-pin-setup.js'
+      - 'staging/test-pin-setup.html'
+      - 'staging/test-pin-setup.js'
+      - 'db/hc_staging_pin_setup.sql'
+      - 'tests/shared-security-pin-setup.test.mjs'
+      - 'staging/isolated-owner-passkey-grant.js'
+      - 'db/hc_staging_owner_passkey_bootstrap.sql'
+      - 'staging/test-owner-passkey.html'
+      - 'tests/shared-security-owner-bootstrap.test.mjs'
+      - 'tests/shared-security-owner-bootstrap-postgres.test.mjs'
+      - 'tests/shared-security-owner-passkey-routing.test.mjs'
       - 'staging/staff-security-server.js'
       - 'tests/shared-security-staging-entry.test.mjs'
       - 'db/hc_staff_security_invitations.sql'
@@ -89,6 +100,21 @@ jobs:
           node-version: '22'
       - name: Install regression dependencies
         run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Read-only staging production-dependency audit summary
+        run: |
+          npm audit --omit=dev --json > /tmp/hc-staging-audit.json || true
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          let report;
+          try {report=JSON.parse(readFileSync('/tmp/hc-staging-audit.json','utf8'));}
+          catch {console.log('Dependency audit unavailable');process.exit(0);}
+          console.log('Audit counts:',JSON.stringify(report.metadata?.vulnerabilities||{}));
+          for(const [name,details] of Object.entries(report.vulnerabilities||{})){
+            if(['high','critical'].includes(details.severity))
+              console.log('Review required:',name,'severity:',details.severity,
+                'advisories:',(details.via||[]).map(v=>typeof v==='string'?v:String(v.title||v.name||'unknown')).join('; '));
+          }
+          NODE
       - name: Foundation, adapter and disposable Postgres integration tests
         run: node --test tests/shared-lightspeed-foundation.test.mjs tests/shared-lightspeed-adapters.test.mjs tests/shared-lightspeed-postgres.test.mjs tests/shared-staff-security.test.mjs tests/shared-staff-throttle-postgres.test.mjs tests/shared-staff-totp.test.mjs tests/shared-staff-totp-postgres.test.mjs tests/shared-staff-settings.test.mjs tests/shared-staff-mfa.test.mjs tests/shared-staff-approval-postgres.test.mjs tests/shared-staff-binding.test.mjs tests/shared-staff-bridge.test.mjs tests/shared-staff-subsystem-postgres.test.mjs tests/shared-staff-settings-client.test.mjs
       - name: Real Ed25519 station challenge, revocation and access integration tests
@@ -111,6 +137,12 @@ jobs:
         run: node --test tests/shared-security-isolated-login.test.mjs
       - name: Isolated private database migration and startup
         run: node --test tests/shared-security-isolated-migration.test.mjs tests/shared-security-isolated-startup.test.mjs
+      - name: Isolated one-time PIN setup, replay and login regression
+        run: node --test tests/shared-security-pin-setup.test.mjs
+      - name: Isolated first Owner passkey bootstrap and route safeguards
+        run: node --test tests/shared-security-owner-bootstrap.test.mjs tests/shared-security-owner-passkey-routing.test.mjs
+      - name: Verified Owner bootstrap atomicity on disposable Postgres
+        run: node --test --test-concurrency=1 tests/shared-security-owner-bootstrap-postgres.test.mjs
       - name: Existing backend parse check
         run: node --check server.js
       - name: Staff settings browser script parse check
