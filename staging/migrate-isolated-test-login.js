@@ -1,5 +1,6 @@
 import {readFile} from 'node:fs/promises';
 import pg from 'pg';
+import {assertIsolatedOwnerEnrollmentConfiguration} from './isolated-owner-enrollment.js';
 
 // An idempotent schema creation job for the *isolated* Railway test database.
 // It does not migrate any operational Lightspeed or production Timeclock data.
@@ -29,9 +30,14 @@ export async function migrateIsolatedTestLogin({
  loadSchema=async()=>readFile(new URL('../db/hc_staff_auth_throttle.sql',import.meta.url),'utf8'),
  loadSetupSchema=async()=>readFile(new URL('../db/hc_staging_pin_setup.sql',import.meta.url),'utf8'),
  loadPasskeySchema=async()=>readFile(new URL('../db/hc_staff_passkeys.sql',import.meta.url),'utf8'),
- loadOwnerBootstrapSchema=async()=>readFile(new URL('../db/hc_staging_owner_passkey_bootstrap.sql',import.meta.url),'utf8')
+ loadOwnerBootstrapSchema=async()=>readFile(new URL('../db/hc_staging_owner_passkey_bootstrap.sql',import.meta.url),'utf8'),
+ loadApprovalSchema=async()=>readFile(new URL('../db/hc_staff_factor_approvals.sql',import.meta.url),'utf8'),
+ loadTotpSchema=async()=>readFile(new URL('../db/hc_staff_totp.sql',import.meta.url),'utf8'),
+ loadInviteSchema=async()=>readFile(new URL('../db/hc_staff_security_invitations.sql',import.meta.url),'utf8')
 }={}){
   assertIsolatedTestDatabase(environment);
+  if(environment.HC_STAGING_OWNER_ENROLLMENT_ENABLED==='true')
+    assertIsolatedOwnerEnrollmentConfiguration(environment);
   const sql=await loadSchema();
   if(typeof sql!=='string' || !sql.includes('CREATE TABLE IF NOT EXISTS hc_staff_auth_throttle'))
     throw new Error('Invalid isolated throttle migration source.');
@@ -56,6 +62,20 @@ export async function migrateIsolatedTestLogin({
         throw new Error('Invalid isolated first-Owner WebAuthn schema.');
       await client.query(passkeySql);
       await client.query(bootstrapSql);
+    }
+    if(environment.HC_STAGING_OWNER_ENROLLMENT_ENABLED==='true'){
+      // Never use production data. The exact test-only environment and
+      // non-shared secrets were validated before acquiring the connection.
+      for(const [load,anchor] of [
+        [loadApprovalSchema,'CREATE TABLE IF NOT EXISTS hc_staff_factor_approvals'],
+        [loadTotpSchema,'CREATE TABLE IF NOT EXISTS hc_staff_totp'],
+        [loadInviteSchema,'CREATE TABLE IF NOT EXISTS hc_staff_security_invitations']
+      ]){
+        const migration=await load();
+        if(typeof migration!=='string'||!migration.includes(anchor))
+          throw new Error('Invalid isolated enrollment migration source.');
+        await client.query(migration);
+      }
     }
     await client.query('COMMIT');
   }catch(err){
