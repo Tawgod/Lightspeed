@@ -18,11 +18,18 @@ const context=(overrides={})=>({
  get(name){return ({origin,'x-hc-owner-bootstrap-key':key,'sec-fetch-site':'same-origin',...overrides})[name.toLowerCase()]||null;}
 });
 function createDb(){
- const row={consumed_at:null,expires_at:new Date(now+3600000)},events=[],otherPasskeys=[];
+ const row={started_at:null,consumed_at:null,expires_at:null},events=[],otherPasskeys=[];
  const queries=[];
  const client={
   async query(sql,args=[]){
    queries.push(sql);
+   if(sql.includes('WITH activated AS')){
+    if(row.started_at||row.consumed_at)return {rows:[],rowCount:0};
+    row.started_at=new Date(now);
+    row.expires_at=new Date(now+4*3600000);
+    events.push([args[0],args[1],null,'started']);
+    return {rows:[{event_id:args[0]}],rowCount:1};
+   }
    if(sql.includes('FROM hc_staging_owner_passkey_bootstrap')&&sql.includes('FOR UPDATE'))return {rows:[{...row}],rowCount:1};
    if(sql.includes('FROM hc_staff_passkeys'))return {rows:otherPasskeys,rowCount:otherPasskeys.length};
    if(sql.startsWith('UPDATE hc_staging_owner_passkey_bootstrap')){
@@ -84,13 +91,15 @@ test('one real approved registration can consume bootstrap exactly once, with au
   context:context(),employeeId:'901',credentialId:'abc-valid-webauthn-public-credential',client:db.client
  });
  assert.ok(db.row.consumed_at);
- assert.equal(db.events.length,1);
- assert.equal(db.events[0][1],'901');
+ assert.equal(db.events.length,2);
+ assert.equal(db.events[0][3],'started');
+ assert.equal(db.events[1][3],'completed');
+ assert.equal(db.events[1][1],'901');
  await assert.rejects(grant.authorizeRegistration(g));
  await assert.rejects(grant.commitRegistrationGrant({
   context:context(),employeeId:'901',credentialId:'other-credential',client:db.client
  }));
- assert.equal(db.events.length,1);
+ assert.equal(db.events.length,2);
 });
 test('second active passkey and wrong credential owner are never bootstrap-granted',async()=>{
  const db=createDb(),grant=createIsolatedFirstOwnerPasskeyGrant({
@@ -103,4 +112,29 @@ test('second active passkey and wrong credential owner are never bootstrap-grant
  }));
  assert.equal(db.row.consumed_at,null);
  assert.equal(db.events.length,0);
+});
+
+test('window starts only when authorized Owner begins and never resets on completion, expiry or replay',async()=>{
+ const db=createDb(),grant=createIsolatedFirstOwnerPasskeyGrant({
+  environment:env,pool:db.pool,verifyBoundEmployee:async()=>signedOwner,now:()=>now
+ });
+ const auth={context:context(),employeeId:'901'};
+ await assert.rejects(grant.authorizeRegistration({...auth,phase:'complete'}));
+ assert.equal(db.row.started_at,null);
+ assert.equal(db.events.length,0);
+ await grant.authorizeRegistration({...auth,phase:'begin'});
+ const initialStart=db.row.started_at.getTime(),expiry=db.row.expires_at.getTime();
+ assert.equal(expiry-initialStart,4*3600000);
+ assert.equal(db.events.length,1);
+ await grant.authorizeRegistration({...auth,phase:'begin'});
+ assert.equal(db.row.started_at.getTime(),initialStart);
+ assert.equal(db.events.length,1,'duplicate begins must not append another audit event');
+ db.row.expires_at=new Date(now-1);
+ await assert.rejects(grant.authorizeRegistration({...auth,phase:'begin'}));
+ assert.equal(db.events.length,1,'expired window cannot be reopened by an old key');
+ assert.equal(db.row.started_at.getTime(),initialStart);
+ db.row.expires_at=new Date(expiry);
+ db.row.consumed_at=new Date(now);
+ await assert.rejects(grant.authorizeRegistration({...auth,phase:'begin'}));
+ assert.equal(db.events.length,1,'consumed grant must never be reset');
 });
