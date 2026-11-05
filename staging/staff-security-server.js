@@ -77,14 +77,18 @@ export async function launchSecurityStaging({
     assertIsolatedTestDatabase(environment);
     // Validate the separate Owner bootstrap prerequisites before creating
     // any expiring database grant, not after the staging API starts.
+    if(environment.HC_STAGING_OWNER_BOOTSTRAP_ENABLED==='true'&&
+       environment.HC_STAGING_OWNER_PASSKEY_ENABLED!=='true')
+      throw new Error('Owner bootstrap requires an enabled passkey verifier.');
     if(environment.HC_STAGING_OWNER_PASSKEY_ENABLED==='true'){
       if(environment.HC_STAGING_PIN_STORE_MODE!=='database'||
          environment.HC_STAGING_PIN_SETUP_ENABLED!=='false'||
          environment.HC_STAGING_PUBLIC_ORIGIN!=='https://staff-security-staging-test.up.railway.app'||
-         !/^[A-Za-z0-9_-]{43,256}$/.test(environment.HC_STAGING_OWNER_BOOTSTRAP_KEY||'')||
          typeof environment.HC_STAGING_PASSKEY_SIGNING_SECRET!=='string'||
-         environment.HC_STAGING_PASSKEY_SIGNING_SECRET.length<32)
-        throw new Error('Invalid isolated first Owner passkey bootstrap prerequisites.');
+         environment.HC_STAGING_PASSKEY_SIGNING_SECRET.length<32||
+         (environment.HC_STAGING_OWNER_BOOTSTRAP_ENABLED==='true'&&
+          !/^[A-Za-z0-9_-]{43,256}$/.test(environment.HC_STAGING_OWNER_BOOTSTRAP_KEY||'')))
+        throw new Error('Invalid isolated Owner passkey prerequisites.');
     }
     let ready=false;
     for(let attempt=0;attempt<20;attempt++){
