@@ -18,7 +18,7 @@ const exists=()=>Object.assign(new Error('Invitation already redeemed.'),{
 export function createStaffEnrollmentInvitations({
   pool,botSecret,tokenSecret,guildId,staffRoleId,adminRoleId,ownerRoleId,
   setupOrigin,verifyBoundEmployee,resolveDiscordEmployee,
-  canInvite,requestEnrollment,throttle,ownerOnlyTest=null,now=()=>Date.now()
+  canInvite,requestEnrollment,throttle,ownerOnlyTest=null,environment=process.env,now=()=>Date.now()
 }={}){
   if(typeof pool?.connect!=='function'||
     typeof botSecret!=='string'||Buffer.byteLength(botSecret)<32||
@@ -28,7 +28,7 @@ export function createStaffEnrollmentInvitations({
       ![staffRoleId,adminRoleId,ownerRoleId].every(x=>SNOWFLAKE.test(String(x||'')))||
       new Set([staffRoleId,adminRoleId,ownerRoleId]).size!==3
     ) : !(
-      process.env.HC_SECURITY_ENV==='isolated-staging'&&
+      environment?.HC_SECURITY_ENV==='isolated-staging'&&
       ownerOnlyTest?.environment==='isolated-staging'&&
       ownerOnlyTest?.ownerDiscordId==='115626919134887940'&&
       guildId==='1485804234753573066'&&
