@@ -4,7 +4,7 @@ import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 
 const key='OWNER-internal-one-time-bootstrap-secret-9876543210-ABCDEFGH';
-async function scene({apiFails=false,cancelCeremony=false}={}){
+async function scene({apiFails=false,cancelCeremony=false,skipRegister=false}={}){
  const source=await readFile(new URL('../staff-passkey-client.js',import.meta.url),'utf8');
  const callbacks=new Map(),elements=new Map(),requests=[];
  function element(id){
@@ -58,8 +58,8 @@ async function scene({apiFails=false,cancelCeremony=false}={}){
  element('pin').value='1234';
  await invoke('login','submit');
  element('bootstrapKey').value=key;
- await invoke('registerPasskey');
- return {elements,requests,credentialPrompts,invoke};
+ if(!skipRegister)await invoke('registerPasskey');
+ return {elements,requests,credentialPrompts,invoke,callbacks,context};
 }
 test('one-time bootstrap key leaves DOM before a rejected authorization request',async()=>{
  const x=await scene({apiFails:true});
@@ -78,4 +78,22 @@ test('cancelled WebAuthn prompt never leaves the one-time Owner key in the field
  assert.match(x.elements.get('message').textContent,/cancelled/i);
  await x.invoke('signout');
  assert.equal(x.elements.get('bootstrapKey').value,'');
+});
+
+test('staging Owner pilot explains test PIN and never promises Authenticator readiness',async()=>{
+ const x=await scene({skipRegister:true});
+ assert.match(x.elements.get('message').textContent,/isolated test account/i);
+ assert.match(x.elements.get('message').textContent,/independent Owner key/i);
+ assert.doesNotMatch(x.elements.get('message').textContent,/Timeclock PIN|manager security operations/i);
+});
+test('switching away before registration clears an unused private Owner bootstrap key',async()=>{
+ const x=await scene({skipRegister:true});
+ assert.equal(x.elements.get('bootstrapKey').value,key);
+ x.context.document.hidden=true;
+ x.callbacks.get('document:visibilitychange')();
+ assert.equal(x.elements.get('bootstrapKey').value,'');
+ assert.equal(x.requests.length,1,'visibility loss cannot submit the bootstrap key or an enrollment request');
+ await x.invoke('registerPasskey');
+ assert.equal(x.requests.length,1,'an empty key must be reentered before registration is attempted');
+ assert.match(x.elements.get('message').textContent,/independent Railway Owner bootstrap key/i);
 });
