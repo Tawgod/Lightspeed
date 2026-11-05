@@ -7,7 +7,8 @@ const env={
   HC_STAGING_TEST_OWNER_DISCORD_ID:'115626919134887940',
   HC_STAGING_TEST_GUILD_ID:'1485804234753573066',
   HC_STAGING_PUBLIC_ORIGIN:ORIGIN,HC_STAGING_PIN_STORE_MODE:'database',
-  HC_STAGING_PIN_SETUP_ENABLED:'false',HC_STAGING_OWNER_PASSKEY_ENABLED:'true'
+  HC_STAGING_PIN_SETUP_ENABLED:'false',HC_STAGING_OWNER_PASSKEY_ENABLED:'true',
+  HC_STAGING_OWNER_APPROVAL_ENABLED:'true'
 };
 const proof=()=>({
   verified:true,method:'passkey',active:true,id:'901',employeeId:'901',
@@ -29,7 +30,8 @@ test('staging Owner permission requires exact owner, guild, test host and real p
     {HC_STAGING_PUBLIC_ORIGIN:'https://evil.example'},
     {HC_STAGING_PIN_STORE_MODE:'legacy-env'},
     {HC_STAGING_PIN_SETUP_ENABLED:'true'},
-    {HC_STAGING_OWNER_PASSKEY_ENABLED:'false'}
+    {HC_STAGING_OWNER_PASSKEY_ENABLED:'false'},
+    {HC_STAGING_OWNER_APPROVAL_ENABLED:'false'}
   ])assert.throws(()=>create({environment:{...env,...change}}));
   assert.throws(()=>create({verifyOwnerPasskey:null}));
 });
