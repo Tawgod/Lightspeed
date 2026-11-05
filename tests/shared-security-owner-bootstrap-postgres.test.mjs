@@ -19,6 +19,7 @@ const env={
  HC_STAGING_TEST_LOGIN_ENABLED:'true',
  HC_STAGING_PIN_STORE_MODE:'database',HC_STAGING_PIN_SETUP_ENABLED:'false',
  HC_STAGING_OWNER_PASSKEY_ENABLED:'true',
+ HC_STAGING_OWNER_BOOTSTRAP_ENABLED:'true',
  HC_STAGING_PUBLIC_ORIGIN:origin,HC_STAGING_OWNER_BOOTSTRAP_KEY:key
 };
 test('atomic verified first Owner WebAuthn registration rolls back a rejected independent grant',gated,async()=>{
