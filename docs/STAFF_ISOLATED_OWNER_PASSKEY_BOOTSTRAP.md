@@ -35,3 +35,9 @@ The **first** Owner passkey cannot be approved by an already-registered Owner pa
 - Independently confirm passkey revocation and recovery design before enabling real employee factors. No unrestricted reset via PIN or Discord owner claims.
 
 **Production and real employee enrollment:** remain blocked. The test key proves administrative access to an isolated staging environment, not a production-grade organizational identity. Deployment and Authenticator enrollment are separate review gates.
+
+## Bootstrap key browser lifetime
+
+The first-Owner registration page clears the secret key's password input **before** requesting WebAuthn registration options and before opening the device's native passkey prompt. The key is sent only in the exact `X-HC-Owner-Bootstrap-Key` header to the authorized same-origin registration-options and registration-verification endpoints, never in a URL, public Discord channel or local/session storage. Rejected requests and cancelled browser ceremonies require the operator to re-enter the key. The page clears the key again on signout and page exit.
+
+Automated regression: `tests/shared-security-owner-bootstrap-browser.test.mjs`, Phase 1 foundation CI `42059458931` **SUCCESS** (2026-11-05). Hardware/phone-based passkey acceptance and the full isolated Owner approval/TOTP workflow remain **not deployed and not tested by the user**.
