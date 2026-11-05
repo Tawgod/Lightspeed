@@ -55,17 +55,47 @@ export function createIsolatedFirstOwnerPasskeyGrant({
      throw denial();
    await trustedOwner(context);
    try{
-     const state=await pool.query(
-       'SELECT consumed_at,expires_at FROM hc_staging_owner_passkey_bootstrap WHERE id=1'
-     );
-     const row=state.rows?.[0];
-     if(!row||row.consumed_at||new Date(row.expires_at).getTime()<=validTime())
-       throw denial();
+     // Refuse to start a fresh bootstrap window for an account that already
+     // has an active passkey. A completed grant can never be reset here.
      const existing=await pool.query(
        'SELECT 1 FROM hc_staff_passkeys WHERE employee_id=$1 AND revoked_at IS NULL LIMIT 1',
        [EMPLOYEE]
      );
      if(existing.rowCount!==0)throw denial();
+     if(phase==='begin'){
+       // One statement atomically starts the four-hour window and appends
+       // its audit record. If it was already started, the CTE does nothing;
+       // if it was completed, the CTE can never re-arm it.
+       await pool.query(`
+         WITH activated AS (
+           UPDATE hc_staging_owner_passkey_bootstrap
+              SET started_at=now(), expires_at=now()+INTERVAL '4 hours'
+            WHERE id=1 AND started_at IS NULL AND expires_at IS NULL
+              AND consumed_at IS NULL
+            RETURNING id
+         )
+         INSERT INTO hc_staging_owner_passkey_bootstrap_events
+           (event_id,employee_id,credential_id,kind)
+         SELECT $1,$2,NULL,'started' FROM activated
+         RETURNING event_id
+       `,[randomUUID(),EMPLOYEE]);
+     }
+     const state=await pool.query(
+       'SELECT started_at,consumed_at,expires_at FROM hc_staging_owner_passkey_bootstrap WHERE id=1'
+     );
+     const row=state.rows?.[0];
+     if(!row||!row.started_at||!row.expires_at||row.consumed_at||
+        new Date(row.expires_at).getTime()<=validTime())
+       throw denial();
+     // Recheck after activation in case another passkey was registered
+     // concurrently by a separate approved path.
+     if(phase==='begin'){
+       const still=await pool.query(
+         'SELECT 1 FROM hc_staff_passkeys WHERE employee_id=$1 AND revoked_at IS NULL LIMIT 1',
+         [EMPLOYEE]
+       );
+       if(still.rowCount!==0)throw denial();
+     }
      return true;
    }catch{throw denial();}
  }
@@ -78,10 +108,11 @@ export function createIsolatedFirstOwnerPasskeyGrant({
       typeof client?.query!=='function')throw denial();
    await trustedOwner(context);
    const state=await client.query(
-     'SELECT consumed_at,expires_at FROM hc_staging_owner_passkey_bootstrap WHERE id=1 FOR UPDATE'
+     'SELECT started_at,consumed_at,expires_at FROM hc_staging_owner_passkey_bootstrap WHERE id=1 FOR UPDATE'
    );
    const row=state.rows?.[0];
-   if(!row||row.consumed_at||new Date(row.expires_at).getTime()<=validTime())
+   if(!row||!row.started_at||!row.expires_at||row.consumed_at||
+      new Date(row.expires_at).getTime()<=validTime())
      throw denial();
    const others=await client.query(
      'SELECT 1 FROM hc_staff_passkeys WHERE employee_id=$1 AND credential_id<>$2 AND revoked_at IS NULL LIMIT 1',
