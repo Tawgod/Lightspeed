@@ -120,7 +120,9 @@ export function createIsolatedTestLoginMount({
           'Content-Security-Policy':"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; form-action 'none'; frame-ancestors 'none'; base-uri 'none'",
           'Cache-Control':'no-store, max-age=0'
         });
-        res.type('html').sendFile(fileURLToPath(new URL('./test-owner-passkey.html',import.meta.url)));
+        const page=environment.HC_STAGING_OWNER_BOOTSTRAP_ENABLED==='true'
+          ?'./test-owner-passkey.html':'./test-owner-passkey-verify.html';
+        res.type('html').sendFile(fileURLToPath(new URL(page,import.meta.url)));
       });
       app.use('/staff-passkey',createStaffPasskeyRouter({passkeys}));
     }
