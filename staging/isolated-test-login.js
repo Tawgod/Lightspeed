@@ -6,6 +6,7 @@ import {createIsolatedPinSetup} from './isolated-pin-setup.js';
 import {createPostgresStaffPasskeys} from '../services/security/staffPasskeysPostgres.js';
 import {createStaffPasskeyRouter} from '../routes/staffPasskey.js';
 import {createIsolatedFirstOwnerPasskeyGrant} from './isolated-owner-passkey-grant.js';
+import {createIsolatedOwnerEnrollmentMount} from './isolated-owner-enrollment.js';
 
 // Explicitly mounts ONLY signed PIN sessions. Not invitations, manager
 // approvals, TOTP QR seeds, or production Lightspeed/Timeclock routes.
@@ -75,6 +76,15 @@ export function createIsolatedTestLoginMount({
       loginThrottle:passkeyThrottle
     });
   }
+  // Explicit third-stage opt-in. Registering a passkey must NOT silently
+  // expose invitation issuance, Authenticator seeds or manager approvals.
+  let enrollment=null;
+  if(environment.HC_STAGING_OWNER_ENROLLMENT_ENABLED==='true'){
+    if(!passkeys)throw new Error('Independent Owner WebAuthn must precede enrollment.');
+    enrollment=createIsolatedOwnerEnrollmentMount({
+      environment,pool,staffAuthGateway:gateway,identity,passkeys
+    });
+  }
   function mount(app){
     // Staging-only, same-origin browser sign-in. No local/session storage
     // and no client-side authorization of enrollment or approvals.
@@ -113,6 +123,10 @@ export function createIsolatedTestLoginMount({
         res.type('html').sendFile(fileURLToPath(new URL('./test-owner-passkey.html',import.meta.url)));
       });
       app.use('/staff-passkey',createStaffPasskeyRouter({passkeys}));
+    }
+    if(enrollment){
+      app.use('/staff-security',enrollment.settingsRouter);
+      app.use('/staff-enrollment-invites',enrollment.invitationRouter);
     }
     app.use('/api/staff-auth',gateway.router);
     app.use((_req,res)=>res.status(503).json({
