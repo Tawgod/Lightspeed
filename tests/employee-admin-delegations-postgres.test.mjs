@@ -42,6 +42,10 @@ test('Owner delegates onboarding and scoped tools but not private employee data 
   assert.equal(await delegates.canAdmin({employeeId:'902',operation:'admin.read'}),false);
   assert.equal(await delegates.canAdmin({employeeId:'903',operation:'admin.read'}),false);
   const reason='Owner delegated onboarding and approved tool administration';
+  await assert.rejects(
+   delegates.changeAdminGrant({context,targetEmployeeId:'999',operation:'admin.read',enabled:true,reason}),
+   e=>e.status===403,'unknown or inactive Timeclock employee cannot be granted admin rights'
+  );
   for(const permission of ['admin.read','employees.onboard','tools.settings.read','tools.settings.manage','permissions.read','permissions.manage']){
    await delegates.changeAdminGrant({context,targetEmployeeId:'902',operation:permission,enabled:true,reason});
   }
