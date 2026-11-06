@@ -26,7 +26,7 @@
      method:'GET',cache:'no-store',mode:'same-origin',credentials:'omit',
      headers:{
        Authorization:'Bearer '+proof.baseToken,
-       'x-hc-mfa-session':proof.factorToken
+       [proof.factorType==='passkey'?'x-hc-passkey-proof':'x-hc-mfa-session']:proof.factorToken
      }
    });
    if(!response.ok)throw Error(response.status===403
@@ -41,7 +41,7 @@
      method:'POST',cache:'no-store',mode:'same-origin',credentials:'omit',
      headers:{
        Authorization:'Bearer '+proof.baseToken,
-       'x-hc-mfa-session':proof.factorToken,
+       [proof.factorType==='passkey'?'x-hc-passkey-proof':'x-hc-mfa-session']:proof.factorToken,
        'Content-Type':'application/json'
      },
      body:JSON.stringify(body)
@@ -113,6 +113,7 @@
        ' · '+overview.authMethod;
      $('gate').hidden=true;
      $('workspace').hidden=false;
+     $('adminSignOut').hidden=false;
      showCards(overview.sectionAccess);
      $('ownerDelegationPanel').hidden=overview.role!=='owner' ||
        !overview.grantedOperations?.includes('admin.delegation.manage');
@@ -137,5 +138,13 @@
    }
  }
  $('reload').addEventListener('click',load);
+ window.addEventListener('hc-admin-authenticated',load);
+ window.addEventListener('hc-admin-signed-out',()=>{
+   $('gate').hidden=false;
+   $('workspace').hidden=true;
+   $('settingSummary').textContent='';
+   $('settingsList').replaceChildren();
+   $('sections').replaceChildren();
+ });
  if(auth()?.getProof)load();
 })();
