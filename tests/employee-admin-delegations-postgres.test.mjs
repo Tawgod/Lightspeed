@@ -28,7 +28,9 @@ test('Owner delegates onboarding and scoped tools but not private employee data 
   }:null,
   canAdmin:input=>delegates.canAdmin(input),now:fresh
  });
- delegates=createAdminDelegations({pool,adminAccess:access});
+ delegates=createAdminDelegations({pool,adminAccess:access,
+  verifyTargetEmployee:async id=>['901','902','903'].includes(id)?{id,active:true}:null
+ });
  try{
   await pool.query(await readFile(new URL('../db/hc_admin_delegations.sql',import.meta.url),'utf8'));
   // Test-only, offline-simulated commissioning. Production must use
