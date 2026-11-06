@@ -30,6 +30,8 @@
     mfaExpiresAt = 0;
     $('mfaCode').value = '';
     $('mfaState').textContent = 'Not verified';
+    $('checkMfaStatus').disabled = true;
+    $('mfaStatusMessage').textContent = 'No active verification. Enter a fresh code to verify this session.';
   }
   function discardEnrollment() {
     enrollmentVisible = false;
@@ -271,12 +273,72 @@
       mfaToken = result.token;
       mfaExpiresAt = Date.now() + result.expiresIn * 1000;
       $('mfaState').textContent = 'Verified';
+      $('checkMfaStatus').disabled = false;
+      $('mfaStatusMessage').textContent = 'Verification accepted. You can check its current server status.';
       $('mfaHelp').textContent =
         'Additional verification active for up to ' + Math.ceil(result.expiresIn / 60) +
         ' minutes, ending sooner if your employee session is signed out.';
       notice('Authenticator accepted for this session.');
     } catch (error) { notice(error.message); }
     finally { working = false; $('mfaButton').disabled = false; }
+  }
+  async function checkMfaStatus() {
+    if (working) return;
+    if (!mfaToken) {
+      $('mfaState').textContent = 'Not verified';
+      $('mfaStatusMessage').textContent = 'No active verification. Enter a fresh code to verify this session.';
+      return;
+    }
+    // The local expiry is a fast fail-safe, never an authorization decision.
+    // The server must independently verify this exact signed proof.
+    if (Date.now() >= mfaExpiresAt) {
+      discardMfa();
+      $('mfaState').textContent = 'Expired';
+      $('mfaStatusMessage').textContent = 'Verification expired — verify again with a new code.';
+      return;
+    }
+    working = true;
+    $('checkMfaStatus').disabled = true;
+    try {
+      const session = auth()?.readSession?.();
+      if (!session?.token) {
+        discardMfa();
+        $('mfaStatusMessage').textContent = 'Employee session is unavailable. Sign in and verify again.';
+        return;
+      }
+      const response = await fetch('/staff-security/api/mfa/session', {
+        method: 'GET', cache: 'no-store', mode: 'same-origin', credentials: 'omit',
+        headers: {
+          Authorization: 'Bearer ' + session.token,
+          'x-hc-mfa-session': mfaToken
+        }
+      });
+      if (response.status === 401) {
+        discardMfa();
+        $('mfaState').textContent = 'Expired';
+        $('mfaStatusMessage').textContent = 'Verification expired or revoked — verify again with a new code.';
+        return;
+      }
+      if (!response.ok) throw Error('Could not check verification status. Try again.');
+      const result = await response.json();
+      if (result?.verified !== true || result?.method !== 'totp') {
+        discardMfa();
+        throw Error('Verification status was not recognized. Verify again.');
+      }
+      if (Date.now() >= mfaExpiresAt) {
+        discardMfa();
+        $('mfaState').textContent = 'Expired';
+        $('mfaStatusMessage').textContent = 'Verification expired — verify again with a new code.';
+        return;
+      }
+      $('mfaState').textContent = 'Verified';
+      $('mfaStatusMessage').textContent = 'Server confirmed this verification is still active.';
+    } catch (error) {
+      $('mfaStatusMessage').textContent = error.message;
+    } finally {
+      working = false;
+      $('checkMfaStatus').disabled = !mfaToken;
+    }
   }
   $('signInForm').addEventListener('submit', async event => {
     event.preventDefault();
@@ -306,6 +368,7 @@
   $('refreshStatus').addEventListener('click', refresh);
   $('confirmForm').addEventListener('submit', confirmEnrollment);
   $('mfaForm').addEventListener('submit', verifyMfa);
+  $('checkMfaStatus').addEventListener('click', checkMfaStatus);
   $('copyKey').addEventListener('click', async () => {
     if (!enrollmentVisible || !$('setupKey').value) return;
     try {
