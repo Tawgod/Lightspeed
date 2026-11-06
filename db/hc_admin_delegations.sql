@@ -29,6 +29,15 @@ CREATE TABLE IF NOT EXISTS hc_admin_grant_scopes (
  granted_at timestamptz NOT NULL DEFAULT now(),
  PRIMARY KEY(employee_id,tool_operation)
 );
+-- Optional per-setting delegation. Even when a manager can edit tool
+-- settings, each actual tool-setting ID must be explicitly approved by Owner.
+CREATE TABLE IF NOT EXISTS hc_admin_setting_scopes (
+ employee_id bigint NOT NULL REFERENCES hc_admin_principals(employee_id),
+ setting_id text NOT NULL CHECK(length(setting_id) BETWEEN 3 AND 100),
+ granted_by bigint NOT NULL,
+ granted_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY(employee_id,setting_id)
+);
 -- Per-employee tool grants consumed later by the exact operation gateway.
 CREATE TABLE IF NOT EXISTS hc_employee_tool_grants (
  employee_id bigint NOT NULL CHECK(employee_id > 0),
@@ -41,7 +50,7 @@ CREATE TABLE IF NOT EXISTS hc_admin_authorization_events (
  event_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
  actor_id bigint NOT NULL CHECK(actor_id>0),
  target_employee_id bigint NOT NULL CHECK(target_employee_id>0),
- kind text NOT NULL CHECK(kind IN ('admin_grant','admin_revoke','admin_disable','tool_grant','tool_revoke','scope_grant','scope_revoke')),
+ kind text NOT NULL CHECK(kind IN ('admin_grant','admin_revoke','admin_disable','tool_grant','tool_revoke','scope_grant','scope_revoke','setting_scope_grant','setting_scope_revoke')),
  operation text NOT NULL CHECK(length(operation) BETWEEN 3 AND 100),
  reason text NOT NULL CHECK(length(reason) BETWEEN 8 AND 400),
  created_at timestamptz NOT NULL DEFAULT now()
