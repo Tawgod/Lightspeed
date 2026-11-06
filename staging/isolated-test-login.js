@@ -129,6 +129,18 @@ export function createIsolatedTestLoginMount({
       app.use('/staff-passkey',createStaffPasskeyRouter({passkeys}));
     }
     if(enrollment){
+      // Explicit, test-only adapter for the settings page's existing auth UI.
+      // Never mount this route in production or when enrollment is disabled.
+      app.get('/shared-ui/staff-auth.js',(_req,res)=>{
+        res.set({
+          'Content-Security-Policy':"default-src 'none'",
+          'Cache-Control':'no-store, max-age=0',
+          'X-Content-Type-Options':'nosniff'
+        });
+        res.type('application/javascript').sendFile(
+          fileURLToPath(new URL('./isolated-staff-auth-client.js',import.meta.url))
+        );
+      });
       app.use('/staff-security',enrollment.settingsRouter);
       app.use('/staff-enrollment-invites',enrollment.invitationRouter);
     }
