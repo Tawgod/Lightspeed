@@ -64,6 +64,7 @@ on:
       - 'tests/shared-staff-settings.test.mjs'
       - 'tests/shared-staff-settings-client.test.mjs'
       - 'tests/shared-staff-mfa-status-button.test.mjs'
+      - 'tests/shared-staff-session-status-controls.test.mjs'
       - 'tests/shared-staff-binding.test.mjs'
       - 'tests/shared-staff-bridge.test.mjs'
       - 'tests/shared-staff-workstations-postgres.test.mjs'
@@ -141,6 +142,8 @@ jobs:
         run: node --test tests/shared-security-totp-expiry-replay-session.test.mjs
       - name: Server-checked MFA status button regression
         run: node --test tests/shared-staff-mfa-status-button.test.mjs
+      - name: Combined employee and MFA session controls regression
+        run: node --test tests/shared-staff-session-status-controls.test.mjs
       - name: Employee invitation sign-in browser regression
         run: node --test tests/shared-staff-invitation-client.test.mjs
       - name: Isolated security-only staging gate
