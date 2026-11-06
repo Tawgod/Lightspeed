@@ -127,3 +127,31 @@ test('isolated enrollment migration validates credentials before private databas
  for(const name of ['hc_staff_factor_approvals','hc_staff_totp','hc_staff_security_invitations'])
    assert.ok(sql.some(x=>x.includes(name)));
 });
+
+
+test('approval page is mounted only with independent passkey and exact enrollment configuration',async()=>{
+ const {createIsolatedTestLoginMount}=await import('../staging/isolated-test-login.js');
+ const {createSecurityStagingApp}=await import('../staging/staff-security-server.js');
+ async function htmlFor(config){
+  const mounted=createIsolatedTestLoginMount({environment:config,pool:fakePool().pool});
+  const app=createSecurityStagingApp({environment:config,mountSecurity:mounted.mount});
+  const server=await new Promise(resolve=>{const s=app.listen(0,'127.0.0.1',()=>resolve(s))});
+  try{
+   const response=await fetch('http://127.0.0.1:'+server.address().port+'/test-owner-passkey');
+   assert.equal(response.status,200);
+   return response.text();
+  }finally{await new Promise(resolve=>server.close(resolve))}
+ }
+ const approved=await htmlFor(environment);
+ assert.match(approved,/Approve test Authenticator enrollment/);
+ assert.match(approved,/<button id="managerApproval" type="button" disabled>/);
+ assert.match(approved,/data-owner-pilot-mode="verify-only"/);
+ assert.doesNotMatch(approved,/id="bootstrapKey"/);
+ assert.match(approved,/<button id="registerPasskey" type="button" disabled>/);
+ const closed=await htmlFor({...environment,
+  HC_STAGING_OWNER_APPROVAL_ENABLED:'false',HC_STAGING_OWNER_ENROLLMENT_ENABLED:'false'
+ });
+ assert.doesNotMatch(closed,/Approve test Authenticator enrollment/);
+ assert.match(closed,/Manager approval disabled/);
+ assert.doesNotMatch(closed,/id="bootstrapKey"/);
+});
