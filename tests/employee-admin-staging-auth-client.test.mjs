@@ -38,7 +38,7 @@ function setup(){
   Event:class {constructor(type){this.type=type}},
   navigator:{},console
  },{timeout:1000});
- return {element,handlers,requests,docEvents,window:fakeWindow,setMode:m=>mode=m};
+ return {element,handlers,requests,docEvents,document,window:fakeWindow,setMode:m=>mode=m};
 }
 test('isolated admin login never grants PIN-only access; TOTP proof stays memory-only',async()=>{
  const h=setup();
@@ -74,7 +74,9 @@ test('hidden page and sign-out clear verified proof, failed factor never authori
  assert.ok(h.window.HCAdminAuth.getProof());
  const documentHiddenEvent=h.docEvents.get('visibilitychange');
  // Visibility changes clear elevated proof, not the base synthetic identity.
+ h.document.hidden=true;
  documentHiddenEvent();
+ assert.equal(h.window.HCAdminAuth.getProof(),null);
  h.handlers.get('adminSignOut:click')();
  assert.equal(h.window.HCAdminAuth.getProof(),null);
 });
