@@ -1,3 +1,4 @@
+import {findAdminSettingDescriptor} from './adminSettingsRegistry.js';
 import {ADMIN_OPERATIONS,TOOL_OPERATIONS,isKnownPermission,isAdminPermission,
  isOwnerOnlyPermission} from './adminPermissionCatalog.js';
 
@@ -86,10 +87,13 @@ export function createAdminDelegations({pool,adminAccess=null}={}){
     'SELECT operation FROM hc_admin_grants WHERE employee_id=$1 ORDER BY operation',[id]);
    const scope=await db.query(
     'SELECT tool_operation FROM hc_admin_grant_scopes WHERE employee_id=$1 ORDER BY tool_operation',[id]);
+   const settingScopes=await db.query(
+    'SELECT setting_id FROM hc_admin_setting_scopes WHERE employee_id=$1 ORDER BY setting_id',[id]);
    const target=await readRole(db,id);
    return Object.freeze({
     employeeId:id,role:target?.role||null,active:target?.active===true,
-    grants:result.rows.map(x=>x.operation),grantScopes:scope.rows.map(x=>x.tool_operation)
+    grants:result.rows.map(x=>x.operation),grantScopes:scope.rows.map(x=>x.tool_operation),
+    settingScopes:settingScopes.rows.map(x=>x.setting_id)
    });
   });
  }
@@ -123,6 +127,7 @@ export function createAdminDelegations({pool,adminAccess=null}={}){
      // Stop leftover operation grants from implying access if entry is revoked.
      await db.query('DELETE FROM hc_admin_grants WHERE employee_id=$1',[target]);
      await db.query('DELETE FROM hc_admin_grant_scopes WHERE employee_id=$1',[target]);
+     await db.query('DELETE FROM hc_admin_setting_scopes WHERE employee_id=$1',[target]);
     }
    }
    await db.query(
@@ -152,6 +157,45 @@ export function createAdminDelegations({pool,adminAccess=null}={}){
     [actor.employeeId,target,enabled?'scope_grant':'scope_revoke',toolOperation,reason.trim()]);
    return Object.freeze({employeeId:target,toolOperation,enabled});
   });
+ }
+ async function changeSettingScope({context,targetEmployeeId,settingId,enabled,reason}={}){
+  if(!adminAccess)throw unavailable();
+  const actor=await adminAccess.authorize({context,operation:'admin.delegation.manage',requireStrong:true});
+  const target=employeeId(targetEmployeeId),setting=findAdminSettingDescriptor(settingId);
+  if(!target||target===actor.employeeId||setting?.section!=='Tool Settings'||
+    typeof enabled!=='boolean'||!reasonValid(reason))throw denied();
+  return transaction(async db=>{
+   const owner=await readRole(db,actor.employeeId),manager=await readRole(db,target);
+   if(owner?.role!=='owner'||owner.active!==true||
+     manager?.role!=='delegated_admin'||manager.active!==true)throw denied();
+   if(enabled)await db.query(
+    'INSERT INTO hc_admin_setting_scopes(employee_id,setting_id,granted_by) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',
+    [target,settingId,actor.employeeId]);
+   else await db.query('DELETE FROM hc_admin_setting_scopes WHERE employee_id=$1 AND setting_id=$2',
+    [target,settingId]);
+   await db.query(
+    `INSERT INTO hc_admin_authorization_events(actor_id,target_employee_id,kind,operation,reason)
+     VALUES($1,$2,$3,$4,$5)`,
+    [actor.employeeId,target,enabled?'setting_scope_grant':'setting_scope_revoke',settingId,reason.trim()]);
+   return Object.freeze({employeeId:target,settingId,enabled});
+  });
+ }
+ async function canManageSetting({employeeId:id,settingId}={}){
+  const staff=employeeId(id),setting=findAdminSettingDescriptor(settingId);
+  if(!staff||setting?.section!=='Tool Settings')return false;
+  try{return await transaction(async db=>{
+   const person=await readRole(db,staff);
+   if(!person||person.active!==true)return false;
+   if(person.role==='owner')return true;
+   if(person.role!=='delegated_admin')return false;
+   const access=await db.query(
+    "SELECT operation FROM hc_admin_grants WHERE employee_id=$1 AND operation IN ('admin.read','tools.settings.manage')",
+    [staff]);
+   if(access.rowCount!==2)return false;
+   const scope=await db.query(
+    'SELECT 1 FROM hc_admin_setting_scopes WHERE employee_id=$1 AND setting_id=$2',[staff,settingId]);
+   return scope.rowCount===1;
+  });}catch{return false;}
  }
  // A manager can grant ONLY the specific tool operations the Owner scoped.
  // Neither admin access nor private employee records can be granted through this route.
@@ -185,5 +229,5 @@ export function createAdminDelegations({pool,adminAccess=null}={}){
    return Object.freeze({employeeId:target,toolOperation,enabled});
   });
  }
- return Object.freeze({canAdmin,capabilitiesForVerifiedEmployee,getRole,listGrants,changeAdminGrant,changeGrantScope,changeEmployeeToolGrant});
+ return Object.freeze({canAdmin,capabilitiesForVerifiedEmployee,getRole,listGrants,changeAdminGrant,changeGrantScope,changeSettingScope,canManageSetting,changeEmployeeToolGrant});
 }
