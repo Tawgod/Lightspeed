@@ -65,14 +65,21 @@ export function createEmployeeAdminRouter({adminAccess,delegations=null}={}){
  router.get('/api/settings',async(req,res)=>{
    try{
      const actor=await adminAccess.authorize({context:req,operation:'tools.settings.read'});
-     if(delegations) await delegations.capabilitiesForVerifiedEmployee(actor.employeeId);
-     return res.json({items:listAdminSettingDescriptors(),readOnly:true});
+     const caps=delegations?await delegations.capabilitiesForVerifiedEmployee(actor.employeeId):null;
+     // Avoid exposing employee/security/Timeclock admin metadata to
+     // managers who can change only non-sensitive tool configurations.
+     const items=caps?.role==='owner'
+       ?listAdminSettingDescriptors()
+       :listAdminSettingDescriptors({section:'Tool Settings'});
+     return res.json({items,readOnly:true});
    }catch(e){return error(res,e);}
  });
  router.get('/api/settings/:id',async(req,res)=>{
    try{
-     await adminAccess.authorize({context:req,operation:'tools.settings.read'});
+     const actor=await adminAccess.authorize({context:req,operation:'tools.settings.read'});
+     const caps=delegations?await delegations.capabilitiesForVerifiedEmployee(actor.employeeId):null;
      const entry=findAdminSettingDescriptor(req.params.id);
+     if(entry && caps?.role!=='owner' && entry.section!=='Tool Settings')return res.sendStatus(404);
      if(!entry)return res.sendStatus(404);
      return res.json({item:{...entry},readOnly:true});
    }catch(e){return error(res,e);}
