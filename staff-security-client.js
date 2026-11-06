@@ -53,6 +53,11 @@
     $('employeeName').textContent = yes
       ? 'Signed in as ' + String(session.employee.name || 'employee') : '';
     $('refreshStatus').disabled = !yes;
+    $('checkEmployeeSession').disabled = !yes;
+    $('checkAllSessions').disabled = !yes;
+    $('employeeSessionMessage').textContent = yes
+      ? 'Employee session signed in. Use Check employee session to confirm with the server.'
+      : 'Not signed in. Sign in with your staging PIN to start another session test.';
     $('startEnrollment').disabled = true;
     $('requestApproval').disabled = !yes;
     $('checkApproval').disabled = !yes;
@@ -282,6 +287,70 @@
     } catch (error) { notice(error.message); }
     finally { working = false; $('mfaButton').disabled = false; }
   }
+  async function checkEmployeeStatus() {
+    if (working) return false;
+    const session = auth()?.readSession?.();
+    if (!session?.token) {
+      setSignedIn(null);
+      return false;
+    }
+    working = true;
+    $('checkEmployeeSession').disabled = true;
+    $('checkAllSessions').disabled = true;
+    try {
+      const response = await fetch('/api/staff-auth/session', {
+        method:'GET',cache:'no-store',mode:'same-origin',credentials:'omit',
+        headers:{Authorization:'Bearer '+session.token}
+      });
+      if (response.status === 401 || response.status === 403) {
+        auth()?.signOut?.();
+        setSignedIn(null);
+        $('sessionState').textContent = 'Expired';
+        $('employeeSessionMessage').textContent =
+          'Employee session expired or revoked. Sign in again with the staging PIN.';
+        return false;
+      }
+      if (!response.ok) throw Error('Employee session status could not be checked. Try again.');
+      const result = await response.json();
+      if (result?.ok !== true ||
+          String(result?.employee?.id) !== String(session.employee?.id) ||
+          result?.employee?.permissionSource !== session.employee?.permissionSource) {
+        auth()?.signOut?.();
+        setSignedIn(null);
+        $('sessionState').textContent = 'Not verified';
+        $('employeeSessionMessage').textContent =
+          'Employee identity did not match. Sign in again.';
+        return false;
+      }
+      if (auth()?.readSession?.()?.token !== session.token) {
+        $('employeeSessionMessage').textContent = 'Employee session changed. Check again.';
+        return false;
+      }
+      $('sessionState').textContent = 'Active';
+      $('employeeSessionMessage').textContent =
+        'Server confirmed the employee session is active. Status checking does not extend its expiry.';
+      return true;
+    } catch (error) {
+      $('employeeSessionMessage').textContent = error.message;
+      return false;
+    } finally {
+      working = false;
+      const signedIn = Boolean(auth()?.readSession?.()?.token);
+      $('checkEmployeeSession').disabled = !signedIn;
+      $('checkAllSessions').disabled = !signedIn;
+    }
+  }
+  async function checkAllStatuses() {
+    if (working) return;
+    const active = await checkEmployeeStatus();
+    if (!active) return;
+    if (mfaToken) await checkMfaStatus();
+    else {
+      $('mfaState').textContent = 'Not verified';
+      $('mfaStatusMessage').textContent =
+        'No active Authenticator proof. Enter a fresh code to test this status.';
+    }
+  }
   async function checkMfaStatus() {
     if (working) return;
     if (!mfaToken) {
@@ -368,6 +437,8 @@
   $('refreshStatus').addEventListener('click', refresh);
   $('confirmForm').addEventListener('submit', confirmEnrollment);
   $('mfaForm').addEventListener('submit', verifyMfa);
+  $('checkEmployeeSession').addEventListener('click', checkEmployeeStatus);
+  $('checkAllSessions').addEventListener('click', checkAllStatuses);
   $('checkMfaStatus').addEventListener('click', checkMfaStatus);
   $('copyKey').addEventListener('click', async () => {
     if (!enrollmentVisible || !$('setupKey').value) return;
