@@ -7,6 +7,7 @@ import {createPostgresStaffPasskeys} from '../services/security/staffPasskeysPos
 import {createStaffPasskeyRouter} from '../routes/staffPasskey.js';
 import {createIsolatedFirstOwnerPasskeyGrant} from './isolated-owner-passkey-grant.js';
 import {createIsolatedOwnerEnrollmentMount} from './isolated-owner-enrollment.js';
+import {createIsolatedAdminReadonlyMount} from './isolated-admin-readonly.js';
 
 // Explicitly mounts ONLY signed PIN sessions. Not invitations, manager
 // approvals, TOTP QR seeds, or production Lightspeed/Timeclock routes.
@@ -85,6 +86,15 @@ export function createIsolatedTestLoginMount({
       environment,pool,staffAuthGateway:gateway,identity,passkeys
     });
   }
+  // Optional isolated read-only admin preview; never appoints a real Owner,
+  // runs admin migrations, or mounts employee/tool mutation endpoints.
+  let adminPreview=null;
+  if(environment.HC_STAGING_ADMIN_READONLY_ENABLED==='true'){
+    if(!passkeys||!enrollment)throw new Error('Staging admin requires independent passkey and enrolled TOTP.');
+    adminPreview=createIsolatedAdminReadonlyMount({
+      environment,gateway,passkeys,enrollment
+    });
+  }
   function mount(app){
     // Staging-only, same-origin browser sign-in. No local/session storage
     // and no client-side authorization of enrollment or approvals.
@@ -143,6 +153,20 @@ export function createIsolatedTestLoginMount({
       });
       app.use('/staff-security',enrollment.settingsRouter);
       app.use('/staff-enrollment-invites',enrollment.invitationRouter);
+    }
+    if(adminPreview){
+      app.get('/employee-admin/auth.js',(_req,res)=>{
+        res.set({
+          'Content-Security-Policy':"default-src 'none'",
+          'Cache-Control':'no-store, max-age=0',
+          'X-Content-Type-Options':'nosniff'
+        });
+        res.type('application/javascript').sendFile(
+          fileURLToPath(new URL('./isolated-admin-auth-client.js',import.meta.url))
+        );
+      });
+      // This router is read-only and has no mutation adapter.
+      app.use('/employee-admin',adminPreview.router);
     }
     app.use('/api/staff-auth',gateway.router);
     app.use((_req,res)=>res.status(503).json({
