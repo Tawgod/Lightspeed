@@ -142,6 +142,23 @@ test('approval page is mounted only with independent passkey and exact enrollmen
    return response.text();
   }finally{await new Promise(resolve=>server.close(resolve))}
  }
+ // The enrollment page must load the staging-only session provider before
+ // its enrollment client; without it sign-in silently fails.
+ {
+  const mounted=createIsolatedTestLoginMount({environment,pool:fakePool().pool});
+  const app=createSecurityStagingApp({environment,mountSecurity:mounted.mount});
+  const server=await new Promise(ok=>{const s=app.listen(0,'127.0.0.1',()=>ok(s))});
+  try {
+   const base='http://127.0.0.1:'+server.address().port;
+   const page=await fetch(base+'/staff-security/');
+   assert.equal(page.status,200);
+   assert.match(await page.text(),/src="\\/shared-ui\\/staff-auth.js"/);
+   const script=await fetch(base+'/shared-ui/staff-auth.js');
+   assert.equal(script.status,200);
+   assert.match(await script.text(),/window.HCStaffAuth=Object.freeze/);
+   assert.match(script.headers.get('content-type'),/javascript/);
+  } finally {await new Promise(ok=>server.close(ok))}
+ }
  const approved=await htmlFor(environment);
  assert.match(approved,/Approve test Authenticator enrollment/);
  assert.match(approved,/<button id="managerApproval" type="button" disabled>/);
