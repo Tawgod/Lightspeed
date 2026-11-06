@@ -10,6 +10,9 @@ on:
       - 'routes/staffPasskey.js'
       - 'routes/employeeAdmin.js'
       - 'admin/**'
+      - 'staging/isolated-admin-*.js'
+      - 'staging/isolated-test-login.js'
+      - 'staging/isolated-owner-enrollment.js'
       - 'db/hc_admin_session_policies.sql'
       - 'db/hc_admin_delegations.sql'
       - 'tests/employee-admin-*.test.mjs'
@@ -185,6 +188,8 @@ jobs:
         run: node --test --test-concurrency=1 tests/employee-admin-delegations-postgres.test.mjs
       - name: Owner commissioning requires independent bound passkey proof
         run: node --test --test-concurrency=1 tests/employee-admin-owner-commissioning.test.mjs
+      - name: Isolated admin preview strong factor and no-write HTTP regression
+        run: node --test tests/employee-admin-staging-readonly.test.mjs
       - name: Existing backend parse check
         run: node --check server.js
       - name: Staff settings browser script parse check
