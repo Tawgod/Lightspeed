@@ -58,7 +58,8 @@ export function createEmployeeAdminRouter({adminAccess,delegations=null}={}){
        status:'development',
        settingCount:0,
        connectedEmployeeData:false,
-       configurationWritesEnabled:false
+       configurationWritesEnabled:false,
+       delegatedGrantManagementEnabled:Boolean(delegations)
      });
    }catch(e){error(res,e);}
  });
