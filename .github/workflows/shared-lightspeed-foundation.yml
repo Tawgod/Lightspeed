@@ -47,6 +47,7 @@ on:
       - 'routes/staffEnrollmentInvitations.js'
       - 'tests/shared-staff-approval-postgres.test.mjs'
       - 'tests/shared-staff-mfa.test.mjs'
+      - 'tests/shared-security-totp-expiry-replay-session.test.mjs'
       - 'db/hc_staff_factor_approvals.sql'
       - 'routes/staffMfaSession.js'
       - 'staff-security.html'
@@ -135,6 +136,8 @@ jobs:
         run: node --test tests/shared-staff-passkey-client.test.mjs
       - name: Run Bot invitation sign-in to live QR and six-digit TOTP
         run: node --test --test-concurrency=1 tests/shared-staff-discord-invitation-postgres.test.mjs
+      - name: TOTP expiry replay and bound session boundary regression
+        run: node --test tests/shared-security-totp-expiry-replay-session.test.mjs
       - name: Employee invitation sign-in browser regression
         run: node --test tests/shared-staff-invitation-client.test.mjs
       - name: Isolated security-only staging gate
