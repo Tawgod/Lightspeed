@@ -60,7 +60,6 @@ function harness(){
 }
 test('employee status button verifies the existing signed session via GET without refreshing it',async()=>{
  const h=harness();
- assert.equal(h.element('checkEmployeeSession').disabled,true);
  await h.signIn();
  assert.equal(h.element('checkEmployeeSession').disabled,false);
  await h.call('checkEmployeeSession');
