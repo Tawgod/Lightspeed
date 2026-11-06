@@ -34,6 +34,55 @@
      : 'Administrator settings are temporarily unavailable.');
    return response.json();
  }
+ async function updateGrant(url,body){
+   const proof=auth()?.getProof?.();
+   if(!proof?.baseToken || !proof?.factorToken)throw Error('Administrator verification required.');
+   const response=await fetch(url,{
+     method:'POST',cache:'no-store',mode:'same-origin',credentials:'omit',
+     headers:{
+       Authorization:'Bearer '+proof.baseToken,
+       'x-hc-mfa-session':proof.factorToken,
+       'Content-Type':'application/json'
+     },
+     body:JSON.stringify(body)
+   });
+   if(!response.ok)throw Error(response.status===403
+     ? 'Not authorized for this change. A fresh passkey and specific permission are required.'
+     : 'Permission change was not applied. Recheck employee and connection.');
+   return response.json();
+ }
+ function bindPermissionEditor(formId,url,extract){
+   $(formId).addEventListener('submit',async event=>{
+     event.preventDefault();
+     const payload=extract();
+     if(!/^[1-9][0-9]{0,17}$/.test(payload.targetEmployeeId)||
+        typeof payload.reason!=='string'||payload.reason.trim().length<8){
+       $('notification').textContent='Enter a valid employee ID and a reason of at least eight characters.';
+       return;
+     }
+     const label=payload.operation||payload.toolOperation;
+     const action=payload.enabled?'grant':'revoke';
+     if(typeof window.confirm==='function' &&
+        !window.confirm('Confirm '+action+' '+label+' for employee '+payload.targetEmployeeId+'?'))return;
+     $('notification').textContent='Submitting permission update…';
+     try{
+       await updateGrant(url,payload);
+       $('notification').textContent='Permission update accepted by server. Changes are audited.';
+     }catch(error){$('notification').textContent=error.message;}
+   });
+ }
+ bindPermissionEditor('delegationForm','/employee-admin/api/admin-grants',()=>({
+   targetEmployeeId:$('delegationEmployee').value.trim(),
+   operation:$('delegationOperation').value,
+   enabled:$('delegationEnabled').value==='true',
+   reason:$('delegationReason').value.trim()
+ }));
+ bindPermissionEditor('toolGrantForm','/employee-admin/api/employee-tool-grants',()=>({
+   targetEmployeeId:$('toolEmployee').value.trim(),
+   toolOperation:$('toolOperation').value,
+   enabled:$('toolEnabled').value==='true',
+   reason:$('toolReason').value.trim()
+ }));
  function showCards(sectionAccess){
    const container=$('sections');
    container.replaceChildren();
@@ -59,6 +108,9 @@
      $('gate').hidden=true;
      $('workspace').hidden=false;
      showCards(overview.sectionAccess);
+     $('ownerDelegationPanel').hidden=overview.role!=='owner' ||
+       !overview.grantedOperations?.includes('admin.delegation.manage');
+     $('toolGrantPanel').hidden=!overview.grantedOperations?.includes('permissions.manage');
      const list=$('settingsList');list.replaceChildren();
      for(const item of registry.items){
        if(!item || typeof item.label!=='string' || typeof item.owner!=='string' ||
