@@ -183,6 +183,8 @@ jobs:
         run: node --test --test-concurrency=1 tests/employee-admin-session-policy-postgres.test.mjs
       - name: Owner and scoped delegated admin permissions PostgreSQL integration
         run: node --test --test-concurrency=1 tests/employee-admin-delegations-postgres.test.mjs
+      - name: Owner commissioning requires independent bound passkey proof
+        run: node --test --test-concurrency=1 tests/employee-admin-owner-commissioning.test.mjs
       - name: Existing backend parse check
         run: node --check server.js
       - name: Staff settings browser script parse check
