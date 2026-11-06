@@ -60,7 +60,7 @@
        $('notification').textContent='Enter a valid employee ID and a reason of at least eight characters.';
        return;
      }
-     const label=payload.operation||payload.toolOperation;
+     const label=payload.operation||payload.toolOperation||payload.settingId;
      const action=payload.enabled?'grant':'revoke';
      if(typeof window.confirm==='function' &&
         !window.confirm('Confirm '+action+' '+label+' for employee '+payload.targetEmployeeId+'?'))return;
@@ -76,6 +76,12 @@
    operation:$('delegationOperation').value,
    enabled:$('delegationEnabled').value==='true',
    reason:$('delegationReason').value.trim()
+ }));
+ bindPermissionEditor('settingScopeForm','/employee-admin/api/setting-scopes',()=>({
+   targetEmployeeId:$('settingScopeEmployee').value.trim(),
+   settingId:$('settingScopeId').value,
+   enabled:$('settingScopeEnabled').value==='true',
+   reason:$('settingScopeReason').value.trim()
  }));
  bindPermissionEditor('toolGrantForm','/employee-admin/api/employee-tool-grants',()=>({
    targetEmployeeId:$('toolEmployee').value.trim(),
