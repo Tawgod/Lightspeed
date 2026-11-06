@@ -22,7 +22,8 @@ function totp(secret,step){
 function encrypted(secret,key,id){
  const nonce=randomBytes(12),c=createCipheriv('aes-256-gcm',key,nonce);
  c.setAAD(Buffer.from('hc:staff:totp:'+id));
- return Buffer.concat([nonce,c.getAuthTag(),c.update(secret,'utf8'),c.final()]);
+ const cipher=Buffer.concat([c.update(secret,'utf8'),c.final()]);
+ return Buffer.concat([nonce,c.getAuthTag(),cipher]);
 }
 test('TOTP accepts adjacent time steps but rejects a code after its clock tolerance expires',()=>{
  const secret=generateStaffTotpSecret(),step=2000000;
