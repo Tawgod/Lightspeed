@@ -1,4 +1,6 @@
 import express from 'express';
+import {readFile} from 'node:fs/promises';
+import {fileURLToPath} from 'node:url';
 import {listAdminSettingDescriptors,findAdminSettingDescriptor} from '../services/security/adminSettingsRegistry.js';
 
 // Candidate only. Never mount without trusted Timeclock identity, real enrolled
@@ -16,6 +18,23 @@ export function createEmployeeAdminRouter({adminAccess}={}){
      'X-Frame-Options':'DENY'
    });
    next();
+ });
+ // Static shell reveals no staff data, secrets or mutable configuration;
+ // all API data independently requires an enrolled factor and admin grant.
+ const assets=Object.freeze({
+  '/':{name:'employee-admin.html',type:'text/html; charset=utf-8'},
+  '/client.js':{name:'employee-admin-client.js',type:'application/javascript'},
+  '/styles.css':{name:'employee-admin.css',type:'text/css'}
+ });
+ router.get(['/', '/client.js', '/styles.css'],async(req,res)=>{
+  const asset=assets[req.path];
+  if(!asset)return res.sendStatus(404);
+  if(req.path==='/')res.set('Content-Security-Policy',
+   "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; form-action 'none'; frame-ancestors 'none'; base-uri 'none'");
+  try{
+   const bytes=await readFile(fileURLToPath(new URL('../admin/'+asset.name,import.meta.url)));
+   return res.type(asset.type).send(bytes);
+  }catch{return res.sendStatus(503);}
  });
  const error=(res,e)=>res.status(e?.status===503?503:403).json({
    error:e?.status===503?'Administrator authorization temporarily unavailable.':
