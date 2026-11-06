@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Hobby Corner | Employee Administration</title>
+<link rel="stylesheet" href="/employee-admin/styles.css">
+<script src="/employee-admin/client.js" defer></script>
+</head>
+<body>
+<header class="top">
+ <div class="brand"><div class="mark" aria-hidden="true">HC</div><div><strong>Hobby Corner</strong><span>Administration & Security</span></div></div>
+ <span class="flag">Development • Read only</span>
+</header>
+<main>
+ <div class="intro"><div class="eyebrow">EMPLOYEE ADMINISTRATION</div>
+ <h1>One place to manage your team's tools.</h1>
+ <p>Employee security, approved computers, Timeclock, permissions and tool settings. Changes remain disabled until their verified management workflows are ready.</p></div>
+ <div id="gate" class="panel">
+  <h2>Administrator verification required</h2>
+  <p>This panel requires an active employee session, a registered passkey or Authenticator verification, and explicit administrator permission. A trusted store computer or PIN alone is not enough.</p>
+  <p class="help">Open this panel through the approved staff sign-in flow once the admin integration is enabled. Authentication tokens are never entered into or stored by this preview.</p>
+ </div>
+ <section id="workspace" hidden>
+  <div class="toolbar"><span id="identity"></span><button id="reload" type="button">Refresh settings</button></div>
+  <div id="notification" role="status" aria-live="polite"></div>
+  <div class="grid" id="sections"></div>
+  <section class="panel"><h2>Available settings</h2><p id="settingSummary">Loading…</p>
+   <div id="settingsList" class="settings"></div>
+  </section>
+ </section>
+</main>
+<footer>Nothing on this page can change production employee, Timeclock, Lightspeed or tool data.</footer>
+</body>
+</html>
