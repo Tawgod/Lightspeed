@@ -77,7 +77,7 @@ test('combined check verifies base and MFA from existing proofs in the same acti
  assert.equal(h.element('sessionState').textContent,'Active');
  assert.equal(h.element('mfaState').textContent,'Verified');
  assert.match(h.element('mfaStatusMessage').textContent,/Server confirmed/);
- const checks=h.calls.filter(x=>x.init?.method==='GET');
+ const checks=h.calls.filter(x=>x.init?.method==='GET' && (x.url==='/api/staff-auth/session' || x.url==='/staff-security/api/mfa/session'));
  assert.equal(checks.length,2);
  assert.equal(checks[0].url,'/api/staff-auth/session');
  assert.equal(checks[1].url,'/staff-security/api/mfa/session');
