@@ -8,6 +8,9 @@ on:
       - 'routes/staffSecuritySettings.js'
       - 'routes/staffStationProof.js'
       - 'routes/staffPasskey.js'
+      - 'routes/employeeAdmin.js'
+      - 'admin/**'
+      - 'tests/employee-admin-*.test.mjs'
       - 'tests/shared-staff-discord-invitation-postgres.test.mjs'
       - 'tests/shared-staff-invitation-client.test.mjs'
       - 'tests/shared-staff-malcor-owner-invite.test.mjs'
@@ -172,6 +175,8 @@ jobs:
         run: node --test --test-concurrency=1 tests/shared-security-isolated-owner-approval-postgres.test.mjs
       - name: Isolated synthetic Owner invitation and Authenticator composition preflight
         run: node --test tests/shared-security-isolated-owner-enrollment.test.mjs
+      - name: Employee admin security, setting registry and session policy tests
+        run: node --test tests/employee-admin-access.test.mjs tests/employee-admin-router.test.mjs tests/employee-admin-client.test.mjs tests/employee-admin-session-policy.test.mjs
       - name: Existing backend parse check
         run: node --check server.js
       - name: Staff settings browser script parse check
