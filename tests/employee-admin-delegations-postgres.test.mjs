@@ -54,6 +54,12 @@ test('Owner delegates onboarding and scoped tools but not private employee data 
   await delegates.changeGrantScope({
    context,targetEmployeeId:'902',toolOperation:'products.draft',enabled:true,reason
   });
+  await delegates.changeSettingScope({
+   context,targetEmployeeId:'902',settingId:'productManager.defaults',enabled:true,reason
+  });
+  assert.equal(await delegates.canManageSetting({employeeId:'902',settingId:'productManager.defaults'}),true);
+  assert.equal(await delegates.canManageSetting({employeeId:'902',settingId:'scanner.review'}),false);
+  assert.equal(await delegates.canManageSetting({employeeId:'902',settingId:'employees.pin'}),false);
   actor='902';factor='totp';
   assert.equal((await access.authorize({context,operation:'admin.read'})).method,'totp');
   await assert.rejects(
@@ -85,6 +91,7 @@ test('Owner delegates onboarding and scoped tools but not private employee data 
    context,targetEmployeeId:'902',operation:'admin.read',enabled:false,reason:'Owner revoked delegated admin access'
   });
   assert.equal(await delegates.canAdmin({employeeId:'902',operation:'tools.settings.manage'}),false);
+  assert.equal(await delegates.canManageSetting({employeeId:'902',settingId:'productManager.defaults'}),false);
   actor='902';factor='passkey';
   await assert.rejects(access.authorize({context,operation:'admin.read'}),e=>e.status===403);
   const events=await pool.query('SELECT kind FROM hc_admin_authorization_events');
