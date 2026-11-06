@@ -1,0 +1,21 @@
+name: PO Companion read-only regression
+on:
+  pull_request:
+    paths:
+      - 'routes/poCompanionRead.js'
+      - 'services/scannerTimeclockGateway.js'
+      - 'server.js'
+      - 'extension/po-companion/**'
+      - 'extension/popup.*'
+      - 'tests/po-companion-*.test.mjs'
+  workflow_dispatch:
+jobs:
+  po-readonly:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-audit --no-fund
+      - run: node --test tests/po-companion-read.test.mjs tests/po-companion-consolidated.test.mjs

@@ -1,3 +1,4 @@
+import {installHobbyCornerNavigation} from './shared-ui/navigation.mjs';
 import {captureSupplierProductPage} from './product-scanner/page-capture.js';
 const BACKEND = 'https://lightspeed-api-production-c087.up.railway.app';
 
@@ -182,4 +183,29 @@ document.getElementById('scan-page').addEventListener('click', async () => {
     await chrome.windows.create({url:chrome.runtime.getURL('product-scanner/review.html'),type:'popup',width:1400,height:850});
     window.close();
   } catch(e){setStatus('Scanner unavailable: '+e.message);}
+});
+
+installHobbyCornerNavigation(document.getElementById('hc-shared-navigation'),{current:'toolkit'});
+
+document.getElementById('po-select').addEventListener('click',async()=>{
+ try{
+  const tab=await resolveLightspeedTab();
+  if(!tab?.id)throw new Error('Open a Lightspeed purchase order first.');
+  const context=await chrome.tabs.sendMessage(tab.id,{type:'HCT_GET_CONTEXT'});
+  const poId=context?.purchaseOrderId;
+  if(!poId || !/^[a-z0-9_-]{1,100}$/i.test(poId))throw new Error('No recognized PO on the Lightspeed tab.');
+  await chrome.storage.local.set({poCompanionContext:{poId,selectedAt:new Date().toISOString(),supplierId:null}});
+  setStatus('Selected PO '+poId+'. Open the supplier website to view the development panel.');
+ }catch(e){setStatus('PO selection: '+e.message);}
+});
+document.getElementById('po-launch').addEventListener('click',async()=>{
+ try{
+  const {poCompanionContext:context}=await chrome.storage.local.get('poCompanionContext');
+  if(!context?.poId)throw new Error('Select a Lightspeed purchase order first.');
+  const [tab]=await chrome.tabs.query({active:true,currentWindow:true});
+  const url=new URL(tab?.url||'');
+  if(url.protocol!=='https:'||url.hostname.endsWith('.retail.lightspeed.app'))throw new Error('Open an HTTPS supplier website first.');
+  await chrome.scripting.executeScript({target:{tabId:tab.id},files:['po-companion/panel.js']});
+  window.close();
+ }catch(e){setStatus('PO Companion: '+e.message);}
 });

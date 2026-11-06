@@ -33,5 +33,9 @@
   "optional_host_permissions": [
     "https://*/*",
     "http://*/*"
-  ]
+  ],
+  "background": {
+    "service_worker": "po-companion/background.js",
+    "type": "module"
+  }
 }
