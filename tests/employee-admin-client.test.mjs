@@ -7,7 +7,7 @@ test('admin screen is inert without trusted factor provider and does not expose 
  const code=await readFile(new URL('../admin/employee-admin-client.js',import.meta.url),'utf8');
  const page=await readFile(new URL('../admin/employee-admin.html',import.meta.url),'utf8');
  assert.match(page,/Administrator verification required/);
- assert.match(page,/Development.*Read only/);
+ assert.match(page,/Development.*Not released/);
  assert.doesNotMatch(page,/type="password"/);
  let network=0;
  const callbacks=new Map();
