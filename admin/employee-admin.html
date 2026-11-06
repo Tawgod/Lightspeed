@@ -26,6 +26,52 @@
   <div class="toolbar"><span id="identity"></span><button id="reload" type="button">Refresh settings</button></div>
   <div id="notification" role="status" aria-live="polite"></div>
   <div class="grid" id="sections"></div>
+  <section id="ownerDelegationPanel" class="panel" hidden aria-labelledby="delegationTitle">
+    <h2 id="delegationTitle">Owner — delegate administration</h2>
+    <p>Choose exactly what another employee can do. Granting access to this portal does not grant private employee records, PIN resets, payroll, or other sensitive permissions.</p>
+    <form id="delegationForm" class="permission-form">
+      <label for="delegationEmployee">Timeclock employee ID</label>
+      <input id="delegationEmployee" inputmode="numeric" pattern="[1-9][0-9]{0,17}" required placeholder="Verified employee ID">
+      <label for="delegationOperation">Admin permission</label>
+      <select id="delegationOperation" required>
+        <option value="admin.read">Open admin portal</option>
+        <option value="employees.onboard">Onboard new employees</option>
+        <option value="tools.settings.read">Read tool setting names</option>
+        <option value="tools.settings.manage">Manage approved tool settings</option>
+        <option value="permissions.read">Read tool permissions</option>
+        <option value="permissions.manage">Manage scoped tool permissions</option>
+      </select>
+      <label for="delegationEnabled">Action</label>
+      <select id="delegationEnabled"><option value="true">Grant</option><option value="false">Revoke</option></select>
+      <label for="delegationReason">Reason for change</label>
+      <input id="delegationReason" maxlength="400" minlength="8" required placeholder="Reason (at least 8 characters)">
+      <button type="submit">Review and apply delegated permission</button>
+    </form>
+    <p class="help">Only an enrolled, freshly verified stronger factor can authorize these changes. You cannot grant your own account additional rights here.</p>
+  </section>
+  <section id="toolGrantPanel" class="panel" hidden aria-labelledby="toolGrantTitle">
+    <h2 id="toolGrantTitle">Employee tool permissions</h2>
+    <p>Grant a specific tool operation only if you have permission and it is within your Owner-approved delegation scope.</p>
+    <form id="toolGrantForm" class="permission-form">
+      <label for="toolEmployee">Target Timeclock employee ID</label>
+      <input id="toolEmployee" inputmode="numeric" pattern="[1-9][0-9]{0,17}" required placeholder="Verified employee ID">
+      <label for="toolOperation">Tool operation</label>
+      <select id="toolOperation" required>
+        <option value="products.read">View items</option>
+        <option value="products.draft">Draft items</option>
+        <option value="products.create">Create items</option>
+        <option value="products.edit">Edit items</option>
+        <option value="scanner.lookup">Scanner lookup</option>
+        <option value="scanner.stage">Scanner staging</option>
+      </select>
+      <label for="toolEnabled">Action</label>
+      <select id="toolEnabled"><option value="true">Grant</option><option value="false">Revoke</option></select>
+      <label for="toolReason">Reason for change</label>
+      <input id="toolReason" maxlength="400" minlength="8" required placeholder="Reason (at least 8 characters)">
+      <button type="submit">Review and apply tool permission</button>
+    </form>
+    <p class="help">Only approved operations are listed in this preview. Live Lightspeed tool enforcement remains separately gated until integrated.</p>
+  </section>
   <section class="panel"><h2>Available settings</h2><p id="settingSummary">Loading…</p>
    <div id="settingsList" class="settings"></div>
   </section>
