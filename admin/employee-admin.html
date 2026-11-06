@@ -48,6 +48,26 @@
       <button type="submit">Review and apply delegated permission</button>
     </form>
     <p class="help">Only an enrolled, freshly verified stronger factor can authorize these changes. You cannot grant your own account additional rights here.</p>
+    <h3>Limit which tool settings a manager can change</h3>
+    <form id="settingScopeForm" class="permission-form">
+      <label for="settingScopeEmployee">Manager Timeclock employee ID</label>
+      <input id="settingScopeEmployee" inputmode="numeric" pattern="[1-9][0-9]{0,17}" required placeholder="Verified manager ID">
+      <label for="settingScopeId">Tool settings area</label>
+      <select id="settingScopeId" required>
+        <option value="scanner.review">Product Scanner</option>
+        <option value="productManager.defaults">Product Manager</option>
+        <option value="ordering.defaults">Ordering</option>
+        <option value="specialOrders.defaults">Special Orders</option>
+        <option value="consignment.defaults">Consignment</option>
+      </select>
+      <label for="settingScopeEnabled">Action</label>
+      <select id="settingScopeEnabled"><option value="true">Allow</option><option value="false">Revoke</option></select>
+      <label for="settingScopeReason">Reason for change</label>
+      <input id="settingScopeReason" minlength="8" maxlength="400" required placeholder="Reason for delegation">
+      <button type="submit">Review and apply setting scope</button>
+    </form>
+    <p class="help">A scope does not enable an unfinished setting. The owning tool must still implement and verify a dedicated change workflow.</p>
+
   </section>
   <section id="toolGrantPanel" class="panel" hidden aria-labelledby="toolGrantTitle">
     <h2 id="toolGrantTitle">Employee tool permissions</h2>
