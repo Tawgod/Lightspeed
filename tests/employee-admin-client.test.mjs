@@ -8,7 +8,9 @@ test('admin screen is inert without trusted factor provider and does not expose 
  const page=await readFile(new URL('../admin/employee-admin.html',import.meta.url),'utf8');
  assert.match(page,/Administrator verification required/);
  assert.match(page,/Development.*Not released/);
- assert.doesNotMatch(page,/type="password"/);
+ assert.match(page,/<form id="adminTestSignIn" hidden>/);
+ assert.match(page,/type="password"/);
+ assert.doesNotMatch(page,/value="\d{4}"/);
  let network=0;
  const callbacks=new Map();
  const elements=new Map();
@@ -21,7 +23,7 @@ test('admin screen is inert without trusted factor provider and does not expose 
   return elements.get(id);
  };
  const context={
-  window:{},
+  window:{addEventListener(){}},
   document:{getElementById:el,createElement:tag=>({
    tagName:tag,textContent:'',append(){},className:''
   })},
