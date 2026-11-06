@@ -6,6 +6,7 @@
 <meta name="referrer" content="no-referrer">
 <title>Hobby Corner | Employee Administration</title>
 <link rel="stylesheet" href="/employee-admin/styles.css">
+<script src="/employee-admin/auth.js" defer></script>
 <script src="/employee-admin/client.js" defer></script>
 </head>
 <body>
@@ -20,10 +21,22 @@
  <div id="gate" class="panel">
   <h2>Administrator verification required</h2>
   <p>This panel requires an active employee session, a registered passkey or Authenticator verification, and explicit administrator permission. A trusted store computer or PIN alone is not enough.</p>
-  <p class="help">Open this panel through the approved staff sign-in flow once the admin integration is enabled. Authentication tokens are never entered into or stored by this preview.</p>
+  <p class="help">Access is allowed only after independent verification and an explicit administrator grant. Staging uses a synthetic test employee; production Owner has not been commissioned.</p>
+  <form id="adminTestSignIn" hidden>
+    <label for="adminTestPin">Synthetic staging employee PIN</label>
+    <input id="adminTestPin" inputmode="numeric" type="password" autocomplete="off" pattern="[0-9]{4}" maxlength="4" required>
+    <button type="submit">Sign in to staging</button>
+  </form>
+  <form id="adminTestTotp" hidden>
+    <label for="adminTestCode">Authenticator six-digit code</label>
+    <input id="adminTestCode" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required>
+    <button type="submit">Verify Authenticator and open admin</button>
+  </form>
+  <button id="adminTestPasskey" type="button" hidden>Verify passkey and open admin</button>
+  <p id="adminAuthMessage" role="status" aria-live="polite"></p>
  </div>
  <section id="workspace" hidden>
-  <div class="toolbar"><span id="identity"></span><button id="reload" type="button">Refresh settings</button></div>
+  <div class="toolbar"><span id="identity"></span><div><button id="reload" type="button">Refresh settings</button><button id="adminSignOut" type="button" hidden>Sign out</button></div></div>
   <div id="notification" role="status" aria-live="polite"></div>
   <div class="grid" id="sections"></div>
   <section id="ownerDelegationPanel" class="panel" hidden aria-labelledby="delegationTitle">
