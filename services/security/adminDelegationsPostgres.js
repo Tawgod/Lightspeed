@@ -13,9 +13,17 @@ const readRole=async(db,id)=>{
  const result=await db.query('SELECT role,active,version FROM hc_admin_principals WHERE employee_id=$1',[id]);
  return result.rows?.[0]||null;
 };
-export function createAdminDelegations({pool,adminAccess=null}={}){
- if(typeof pool?.connect!=='function' ||(adminAccess!==null&&typeof adminAccess.authorize!=='function'))
+export function createAdminDelegations({pool,adminAccess=null,verifyTargetEmployee}={}){
+ if(typeof pool?.connect!=='function'||typeof verifyTargetEmployee!=='function' ||
+    (adminAccess!==null&&typeof adminAccess.authorize!=='function'))
   throw new TypeError('Durable admin permissions require PostgreSQL and verified manager access.');
+ async function targetIsActive(targetEmployeeId){
+  try{
+   const candidate=await verifyTargetEmployee(targetEmployeeId);
+   return candidate?.active===true &&
+     String(candidate.id||candidate.employeeId)===targetEmployeeId;
+  }catch{return false;}
+ }
  async function transaction(work){
   let db;
   try{
@@ -104,6 +112,7 @@ export function createAdminDelegations({pool,adminAccess=null}={}){
   const target=employeeId(targetEmployeeId);
   if(!target||target===actor.employeeId||!isAdminPermission(operation)||
      isOwnerOnlyPermission(operation)||typeof enabled!=='boolean'||!reasonValid(reason))throw denied();
+  if(!(await targetIsActive(target)))throw denied();
   return transaction(async db=>{
    const issuer=await readRole(db,actor.employeeId);
    if(issuer?.role!=='owner'||issuer.active!==true)throw denied();
@@ -143,6 +152,7 @@ export function createAdminDelegations({pool,adminAccess=null}={}){
   const target=employeeId(targetEmployeeId);
   if(!target||target===actor.employeeId||!allowedTools.has(toolOperation)||
     typeof enabled!=='boolean'||!reasonValid(reason))throw denied();
+  if(!(await targetIsActive(target)))throw denied();
   return transaction(async db=>{
    const issuer=await readRole(db,actor.employeeId),manager=await readRole(db,target);
    if(issuer?.role!=='owner'||issuer.active!==true ||
@@ -164,6 +174,7 @@ export function createAdminDelegations({pool,adminAccess=null}={}){
   const target=employeeId(targetEmployeeId),setting=findAdminSettingDescriptor(settingId);
   if(!target||target===actor.employeeId||setting?.section!=='Tool Settings'||
     typeof enabled!=='boolean'||!reasonValid(reason))throw denied();
+  if(!(await targetIsActive(target)))throw denied();
   return transaction(async db=>{
    const owner=await readRole(db,actor.employeeId),manager=await readRole(db,target);
    if(owner?.role!=='owner'||owner.active!==true||
@@ -205,6 +216,7 @@ export function createAdminDelegations({pool,adminAccess=null}={}){
   const target=employeeId(targetEmployeeId);
   if(!target||target===actor.employeeId||!allowedTools.has(toolOperation)||
     typeof enabled!=='boolean'||!reasonValid(reason))throw denied();
+  if(!(await targetIsActive(target)))throw denied();
   return transaction(async db=>{
    const manager=await readRole(db,actor.employeeId);
    if(!manager||manager.active!==true)throw denied();
