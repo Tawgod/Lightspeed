@@ -14,6 +14,8 @@ test('Owner commissioning binds the explicitly configured active employee and is
  const base={};
  try{
   await pool.query(await readFile(new URL('../db/hc_admin_delegations.sql',import.meta.url),'utf8'));
+  // This is a disposable hc_test database, never a production connection.
+  await pool.query('TRUNCATE hc_admin_grants,hc_admin_grant_scopes,hc_admin_setting_scopes,hc_employee_tool_grants,hc_admin_principals');
   const make=expectedOwnerEmployeeId=>createAdminOwnerCommissioning({
    pool,expectedOwnerEmployeeId,now:()=>instant,
    verifyEmployee:async()=>({employeeId:id,active:true}),
