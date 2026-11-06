@@ -2,7 +2,12 @@
  'use strict';
  const $=id=>document.getElementById(id);
  const auth=()=>window.HCAdminAuth;
- const sections=['Employees','Security','Verified Computers','Timeclock','Tool Permissions','Tool Settings','Audit'];
+ const sections=Object.freeze([
+  {key:'employees',label:'Employees'},{key:'security',label:'Security'},
+  {key:'devices',label:'Verified Computers'},{key:'timeclock',label:'Timeclock'},
+  {key:'permissions',label:'Tool Permissions'},{key:'settings',label:'Tool Settings'},
+  {key:'audit',label:'Audit'}
+ ]);
  const make=(tag,text,cls='')=>{
    const node=document.createElement(tag);
    if(cls)node.className=cls;
@@ -29,12 +34,13 @@
      : 'Administrator settings are temporarily unavailable.');
    return response.json();
  }
- function showCards(){
+ function showCards(sectionAccess){
    const container=$('sections');
    container.replaceChildren();
-   for(const name of sections){
+   for(const section of sections){
+     if(sectionAccess?.[section.key]!==true)continue;
      const card=make('article','', 'tile');
-     card.append(make('h3',name));
+     card.append(make('h3',section.label));
      card.append(make('p','Read-only overview; sensitive actions require fresh approval.'));
      container.append(card);
    }
@@ -47,10 +53,12 @@
      if(!overview||typeof overview.employeeId!=='string' ||
         !Array.isArray(registry.items)||registry.readOnly!==true ||
         overview.configurationWritesEnabled!==false)throw Error('Unexpected administration service response.');
-     $('identity').textContent='Verified administrator · '+overview.authMethod;
+     if(!['owner','delegated_admin'].includes(overview.role))throw Error('Administrator role is unavailable.');
+     $('identity').textContent=(overview.role==='owner'?'Owner':'Delegated administrator')+
+       ' · '+overview.authMethod;
      $('gate').hidden=true;
      $('workspace').hidden=false;
-     showCards();
+     showCards(overview.sectionAccess);
      const list=$('settingsList');list.replaceChildren();
      for(const item of registry.items){
        if(!item || typeof item.label!=='string' || typeof item.owner!=='string' ||
