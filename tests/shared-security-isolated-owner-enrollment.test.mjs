@@ -152,7 +152,7 @@ test('approval page is mounted only with independent passkey and exact enrollmen
    const base='http://127.0.0.1:'+server.address().port;
    const page=await fetch(base+'/staff-security/');
    assert.equal(page.status,200);
-   assert.match(await page.text(),/src="\\/shared-ui\\/staff-auth.js"/);
+   assert.ok((await page.text()).includes('src="/shared-ui/staff-auth.js"'));
    const script=await fetch(base+'/shared-ui/staff-auth.js');
    assert.equal(script.status,200);
    assert.match(await script.text(),/window.HCStaffAuth=Object.freeze/);
