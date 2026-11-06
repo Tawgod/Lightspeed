@@ -39,6 +39,26 @@ export function createStaffAuthGateway({
     return employee;
   }
 
+  // New trusted adapter for enrollment/MFA: the session's unique binding
+  // is recovered from the verified server-signed token, NEVER supplied from
+  // client JSON or headers. Timeclock is queried again for active status.
+  async function verifyBoundEmployee(req) {
+    const bearer = String(req.get('authorization') || '');
+    if (!bearer.startsWith('Bearer ')) {
+      throw Object.assign(new Error('Employee session required.'), { status: 401 });
+    }
+    const bound = sessions.verifyBound(bearer.slice(7));
+    const employee = await identity.authorize(bound.employeeId);
+    if (!employee?.id || String(employee.id) !== String(bound.employeeId)) {
+      throw Object.assign(new Error('Employee access denied.'), { status: 403 });
+    }
+    return Object.freeze({
+      id: String(employee.id), employeeId: String(employee.id), active: true,
+      name: employee.name, binding: bound.sessionId,
+      expiresAtMs: bound.expiresAtMs
+    });
+  }
+
   const router = express.Router();
   router.use((_req, res, next) => {
     res.set('Cache-Control', 'no-store');
@@ -97,5 +117,5 @@ export function createStaffAuthGateway({
     }
   });
 
-  return { router, verifyEmployee, ttlSeconds: sessions.ttlSeconds };
+  return { router, verifyEmployee, verifyBoundEmployee, ttlSeconds: sessions.ttlSeconds };
 }

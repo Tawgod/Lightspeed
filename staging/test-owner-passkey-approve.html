@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Hobby Corner · Approve Test Authenticator Enrollment</title>
+<link rel="stylesheet" href="/staff-passkey/styles.css">
+<script defer src="/staff-passkey/client.js"></script>
+</head>
+<body data-owner-pilot-mode="verify-only">
+<main>
+<header>
+<p class="eyebrow">HOBBY CORNER / ISOLATED TEST ONLY</p>
+<h1>Verify your Owner passkey to approve Authenticator setup</h1>
+<p>Your one-time bootstrap credential has been retired. This page can verify
+a passkey already registered for the synthetic test account, but it cannot
+create, reset, or recover a passkey.</p>
+</header>
+<section>
+<h2>1. Sign in with your test PIN</h2>
+<form id="login" autocomplete="off">
+<label for="pin">Four-digit synthetic test PIN (not a real Timeclock PIN)</label>
+<input id="pin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" required>
+<button type="submit">Sign in</button>
+</form>
+<p id="identity" role="status">Not signed in</p>
+<button id="signout" type="button" disabled>Sign out</button>
+</section>
+<section>
+<h2>2. Verify your existing passkey</h2>
+<p>Your device will ask you to verify with a passkey already registered on this test account. No one-time setup key is needed.</p>
+<button id="verifyPasskey" type="button" disabled>Verify existing Owner passkey</button>
+<p id="proof" role="status">Not verified</p>
+</section>
+<section>
+<h2>3. Approve a pending test Authenticator request</h2>
+<label for="requestId">Enrollment request ID from your private staging setup page</label>
+<input id="requestId" type="text" maxlength="36" spellcheck="false" autocomplete="off">
+<button id="managerApproval" type="button" disabled>Approve test Authenticator enrollment</button>
+<p>A fresh passkey proof and the exact pending request are required. This does not grant Lightspeed write permissions.</p>
+</section>
+<section hidden aria-hidden="true">
+<button id="registerPasskey" type="button" disabled>First passkey registration closed</button>
+</section>
+<p id="message" role="status" aria-live="polite"></p>
+<footer>Isolated test-only manager approval. First passkey registration remains closed. No production Timeclock permissions, recovery, or credential resets.</footer>
+</main>
+</body></html>

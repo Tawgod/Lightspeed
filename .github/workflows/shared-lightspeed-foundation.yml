@@ -1,0 +1,188 @@
+name: Shared Lightspeed foundation
+on:
+  pull_request:
+    branches: [integration/hobby-corner-consolidation, feature/shared-lightspeed-services-phase1-20261029]
+    paths:
+      - 'services/lightspeed/**'
+      - 'services/security/**'
+      - 'routes/staffSecuritySettings.js'
+      - 'routes/staffStationProof.js'
+      - 'routes/staffPasskey.js'
+      - 'tests/shared-staff-discord-invitation-postgres.test.mjs'
+      - 'tests/shared-staff-invitation-client.test.mjs'
+      - 'tests/shared-staff-malcor-owner-invite.test.mjs'
+      - 'staging/isolated-test-identity.js'
+      - 'tests/shared-security-isolated-identity.test.mjs'
+      - 'staging/isolated-test-login.js'
+      - 'tests/shared-security-isolated-login.test.mjs'
+      - 'tests/shared-security-isolated-migration.test.mjs'
+      - 'tests/shared-security-isolated-startup.test.mjs'
+      - 'staging/migrate-isolated-test-login.js'
+      - 'staging/test-login.html'
+      - 'staging/test-login.js'
+      - 'staging/test-login.css'
+      - 'staging/isolated-pin-setup.js'
+      - 'staging/test-pin-setup.html'
+      - 'staging/test-pin-setup.js'
+      - 'db/hc_staging_pin_setup.sql'
+      - 'tests/shared-security-pin-setup.test.mjs'
+      - 'staging/isolated-owner-passkey-grant.js'
+      - 'staging/isolated-owner-approval-policy.js'
+      - 'staging/isolated-owner-enrollment.js'
+      - 'tests/shared-security-isolated-owner-enrollment.test.mjs'
+      - 'tests/shared-security-isolated-owner-approval.test.mjs'
+      - 'tests/shared-security-isolated-owner-approval-postgres.test.mjs'
+      - 'db/hc_staging_owner_passkey_bootstrap.sql'
+      - 'staging/test-owner-passkey.html'
+      - 'staging/test-owner-passkey-verify.html'
+      - 'tests/shared-security-owner-bootstrap.test.mjs'
+      - 'tests/shared-security-owner-bootstrap-browser.test.mjs'
+      - 'tests/shared-security-staging-flag-matrix.test.mjs'
+      - 'tests/shared-security-owner-bootstrap-postgres.test.mjs'
+      - 'tests/shared-security-owner-passkey-routing.test.mjs'
+      - 'staging/staff-security-server.js'
+      - 'tests/shared-security-staging-entry.test.mjs'
+      - 'db/hc_staff_security_invitations.sql'
+      - 'services/security/staffEnrollmentInvitations.js'
+      - 'routes/staffEnrollmentInvitations.js'
+      - 'tests/shared-staff-approval-postgres.test.mjs'
+      - 'tests/shared-staff-mfa.test.mjs'
+      - 'tests/shared-security-totp-expiry-replay-session.test.mjs'
+      - 'db/hc_staff_factor_approvals.sql'
+      - 'routes/staffMfaSession.js'
+      - 'staff-security.html'
+      - 'staff-security-client.js'
+      - 'staff-passkey-client.js'
+      - 'staff-passkey.html'
+      - 'staff-passkey.css'
+      - 'staff-security.css'
+      - 'tests/shared-lightspeed-*.test.mjs'
+      - 'tests/shared-staff-security.test.mjs'
+      - 'tests/shared-staff-throttle-postgres.test.mjs'
+      - 'tests/shared-staff-totp.test.mjs'
+      - 'tests/shared-staff-totp-postgres.test.mjs'
+      - 'tests/shared-staff-settings.test.mjs'
+      - 'tests/shared-staff-settings-client.test.mjs'
+      - 'tests/shared-staff-mfa-status-button.test.mjs'
+      - 'tests/shared-staff-session-status-controls.test.mjs'
+      - 'tests/shared-staff-binding.test.mjs'
+      - 'tests/shared-staff-bridge.test.mjs'
+      - 'tests/shared-staff-workstations-postgres.test.mjs'
+      - 'tests/shared-staff-station-http.test.mjs'
+      - 'tests/shared-staff-passkeys-postgres.test.mjs'
+      - 'tests/shared-staff-passkey-client.test.mjs'
+      - 'tests/shared-staff-subsystem-postgres.test.mjs'
+      - 'db/hc_staff_auth_throttle.sql'
+      - 'db/hc_staff_totp.sql'
+      - 'db/hc_staff_stations.sql'
+      - 'db/hc_staff_passkeys.sql'
+      - 'db/lightspeed_shared_foundation.sql'
+      - 'scripts/audit-lightspeed-consumers.mjs'
+      - '.github/workflows/shared-lightspeed-foundation.yml'
+  push:
+    branches: [feature/shared-lightspeed-services-phase1-20261029]
+permissions:
+  contents: read
+jobs:
+  foundation:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: hc_test
+          POSTGRES_PASSWORD: hc_test
+          POSTGRES_DB: hc_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hc_test -d hc_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      HC_TEST_DATABASE_URL: postgres://hc_test:hc_test@127.0.0.1:5432/hc_test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install regression dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Read-only staging production-dependency audit summary
+        run: |
+          npm audit --omit=dev --json > /tmp/hc-staging-audit.json || true
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          let report;
+          try {report=JSON.parse(readFileSync('/tmp/hc-staging-audit.json','utf8'));}
+          catch {console.log('Dependency audit unavailable');process.exit(0);}
+          console.log('Audit counts:',JSON.stringify(report.metadata?.vulnerabilities||{}));
+          for(const [name,details] of Object.entries(report.vulnerabilities||{})){
+            if(['high','critical'].includes(details.severity))
+              console.log('Review required:',name,'severity:',details.severity,
+                'advisories:',(details.via||[]).map(v=>typeof v==='string'?v:String(v.title||v.name||'unknown')).join('; '));
+          }
+          NODE
+      - name: Foundation, adapter and disposable Postgres integration tests
+        # These tests share an intentionally disposable schema; concurrent DDL
+        # caused occasional pg_type_typname_nsp_index races on CREATE IF NOT EXISTS.
+        run: node --test --test-concurrency=1 tests/shared-lightspeed-foundation.test.mjs tests/shared-lightspeed-adapters.test.mjs tests/shared-lightspeed-postgres.test.mjs tests/shared-staff-security.test.mjs tests/shared-staff-throttle-postgres.test.mjs tests/shared-staff-totp.test.mjs tests/shared-staff-totp-postgres.test.mjs tests/shared-staff-settings.test.mjs tests/shared-staff-mfa.test.mjs tests/shared-staff-approval-postgres.test.mjs tests/shared-staff-binding.test.mjs tests/shared-staff-bridge.test.mjs tests/shared-staff-subsystem-postgres.test.mjs tests/shared-staff-settings-client.test.mjs
+      - name: Real Ed25519 station challenge, revocation and access integration tests
+        run: node --test --test-concurrency=1 tests/shared-staff-workstations-postgres.test.mjs tests/shared-staff-station-http.test.mjs
+      - name: Passkey WebAuthn ceremony and signed ES256 verification test
+        run: node --test --test-concurrency=1 tests/shared-staff-passkeys-postgres.test.mjs
+      - name: Passkey native browser client regression
+        run: node --test tests/shared-staff-passkey-client.test.mjs
+      - name: Run Bot invitation sign-in to live QR and six-digit TOTP
+        run: node --test --test-concurrency=1 tests/shared-staff-discord-invitation-postgres.test.mjs
+      - name: TOTP expiry replay and bound session boundary regression
+        run: node --test tests/shared-security-totp-expiry-replay-session.test.mjs
+      - name: Server-checked MFA status button regression
+        run: node --test tests/shared-staff-mfa-status-button.test.mjs
+      - name: Combined employee and MFA session controls regression
+        run: node --test tests/shared-staff-session-status-controls.test.mjs
+      - name: Employee invitation sign-in browser regression
+        run: node --test tests/shared-staff-invitation-client.test.mjs
+      - name: Isolated security-only staging gate
+        run: node --test tests/shared-security-staging-entry.test.mjs
+      - name: Malcor owner-only test staging permission regression
+        run: node --test tests/shared-staff-malcor-owner-invite.test.mjs
+      - name: Synthetic owner-only staging identity regression
+        run: node --test tests/shared-security-isolated-identity.test.mjs
+      - name: Signed isolated staging PIN-only login and throttle regression
+        run: node --test tests/shared-security-isolated-login.test.mjs
+      - name: Isolated private database migration and startup
+        run: node --test tests/shared-security-isolated-migration.test.mjs tests/shared-security-isolated-startup.test.mjs
+      - name: Isolated one-time PIN setup, replay and login regression
+        run: node --test tests/shared-security-pin-setup.test.mjs
+      - name: Isolated first Owner passkey bootstrap and route safeguards
+        run: node --test tests/shared-security-owner-bootstrap.test.mjs tests/shared-security-owner-passkey-routing.test.mjs
+      - name: Staging passkey, approval and enrollment flag matrix
+        run: node --test tests/shared-security-staging-flag-matrix.test.mjs
+      - name: Owner bootstrap browser secret clearing on cancel and denial
+        run: node --test tests/shared-security-owner-bootstrap-browser.test.mjs
+      - name: Verified Owner bootstrap atomicity on disposable Postgres
+        run: node --test --test-concurrency=1 tests/shared-security-owner-bootstrap-postgres.test.mjs
+      - name: Exact isolated Owner WebAuthn approval policy denial tests
+        run: node --test tests/shared-security-isolated-owner-approval.test.mjs
+      - name: Test Owner's real PostgreSQL independent passkey approval gate
+        run: node --test --test-concurrency=1 tests/shared-security-isolated-owner-approval-postgres.test.mjs
+      - name: Isolated synthetic Owner invitation and Authenticator composition preflight
+        run: node --test tests/shared-security-isolated-owner-enrollment.test.mjs
+      - name: Existing backend parse check
+        run: node --check server.js
+      - name: Staff settings browser script parse check
+        run: node --check staff-security-client.js
+      - name: Passkey pilot browser parse check
+        run: node --check staff-passkey-client.js
+      - name: Scanner and Core Operations regressions
+        run: |
+          node --test tests/scanner*.test.js
+          node --test tests/core-ops-navigation.test.mjs tests/core-ops-auth-session.test.mjs
+      - name: Source inventory
+        run: node scripts/audit-lightspeed-consumers.mjs
+      - name: Reject newly introduced direct production Lightspeed clients
+        run: node scripts/audit-lightspeed-consumers.mjs --check-new

@@ -1,0 +1,37 @@
+name: Isolated staff security dependency audit
+on:
+  push:
+    branches: [feature/shared-lightspeed-services-phase1-20261029]
+    paths:
+      - 'package.json'
+      - '.github/workflows/staging-security-audit.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Resolve dependency graph without running install scripts
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Read-only production dependency vulnerability inventory
+        run: |
+          npm audit --omit=dev --json > /tmp/hc-audit.json || true
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const report=JSON.parse(readFileSync('/tmp/hc-audit.json','utf8'));
+          const vulns=Object.entries(report.vulnerabilities||{});
+          console.log('Hobby Corner staging dependency audit (no fixes applied)');
+          console.log('Counts:',JSON.stringify(report.metadata?.vulnerabilities||{}));
+          for(const [name,details] of vulns){
+            const causes=(details.via||[]).map(x=>
+              typeof x==='string'?x:String(x.title||x.name||'advisory')).slice(0,6);
+            console.log(name,'|',details.severity,'|',causes.join('; '));
+          }
+          if(report.error){console.log('Audit registry unavailable:',String(report.error.code||'unknown'));}
+          NODE

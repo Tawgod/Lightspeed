@@ -1,0 +1,50 @@
+# Hobby Corner — isolated test PIN sign-in
+
+**Current status (verified 2026-11-04):** Synthetic test PIN setup **Deployed and user accepted**. Owner confirmed successful setup and browser sign-in; isolated Railway security API and Postgres are online. Production Timeclock is untouched. Historical stages below are retained.
+
+**Next staged change (not live):** Railway test patch `679a3524-f460-45ce-84fe-f451127a851b` pins source `49c81533fe2c6bbeb3189319afc039299b95be96`, sets `HC_STAGING_PIN_STORE_MODE=database`, disables `HC_STAGING_PIN_SETUP_ENABLED` and blanks the spent `HC_STAGING_PIN_SETUP_KEY`. Database PIN storage remains active after closing the one-time page. Foundation CI `41863666385` and Scanner `41863666368` passed for that source. **Do not accept the patch without explicit test deployment authorization and a planned user sign-in retest.**
+
+Never point this service at production Timeclock or Lightspeed data.
+
+## Components
+- `staging/staff-security-server.js` starts only under `NODE_ENV=test` and `HC_SECURITY_ENV=isolated-staging`; without the opt-in flag all non-health routes respond 503.
+- `staging/isolated-test-identity.js` models one synthetic employee, ID `901`, linked to Discord owner `115626919134887940` in guild `1485804234753573066`. Its test PIN is stored **only as a salted scrypt hash**. No Timeclock admin secret or real employee information is read.
+- `staging/isolated-test-login.js` mounts only `/api/staff-auth/session` using signed short-lived sessions and PostgreSQL-backed per-account/per-source throttling. Invitations, MFA enrollment, strong manager approval and QR are **not mounted** by this component.
+- The matching invitation service separately verifies exact owner, test guild and test channel, active linked employee and operation-level permission. No Discord role check required in the test environment; production role checks unchanged.
+
+## Railway service configuration (test environment only)
+
+The following **non-secret** values are staged on `Hobby Corner Integration Test / test / staff-security-staging`:
+
+```text
+NODE_ENV=test
+HC_SECURITY_ENV=isolated-staging
+HC_STAGING_TEST_OWNER_DISCORD_ID=115626919134887940
+HC_STAGING_TEST_GUILD_ID=1485804234753573066
+HC_STAGING_TEST_LOGIN_ENABLED=false
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+```
+
+**Before enabling sign-in:**
+
+1. Provision the isolated PostgreSQL database, apply `db/hc_staff_auth_throttle.sql` only in the **test** database and verify the database connection. The separate invitation, approval and TOTP schemas are **not** needed to test PIN sign-in.
+2. Generate a new random 4-digit *test-only* PIN; do not reuse a real Timeclock PIN. Generate a fresh 16-byte random salt, then use `hashIsolatedTestPin(pin,salt)` locally to create the salted scrypt string. Store **only the hash** in `HC_STAGING_TEST_PIN_HASH`; deliver the actual test PIN privately to the tester, outside GitHub/chat. Four-digit PIN entropy is limited; the persistent throttle is mandatory.
+3. Generate two independent random 32+ byte secrets in Railway or a secure vault, and set `HC_STAGING_SESSION_SECRET` and `HC_STAGING_THROTTLE_SECRET` on this service only. Never copy production secrets or expose them in GitHub.
+4. Confirm `DATABASE_URL` is a private Railway reference to the **test** Postgres and `HC_STAGING_TEST_LOGIN_ENABLED=true`. Review staged changes, then explicitly approve the test environment deployment. Ensure the superseded empty bot placeholders in the Hobby Corner test environment are excluded before committing the entire staged patch.
+5. After deployment, check `GET /health` and `POST /api/staff-auth/session` with the test PIN, then `GET /api/staff-auth/session` with the signed Bearer token. Wrong PIN, unknown token, wrong owner/guild settings and all enrollment endpoints must fail.
+
+**Important:** This sign-in path is *not* a second-factor bootstrap. Activating employee Authenticator signup requires independent first Owner passkey verification, database approval/seed migrations, the separate HTTPS security frontend and a securely configured Malcor backend key.
+
+## Verification
+
+Run `node --test tests/shared-security-isolated-identity.test.mjs tests/shared-security-isolated-login.test.mjs tests/shared-security-staging-entry.test.mjs`. Those are integration tests with synthetic accounts and simulated Postgres throttle; confirm end-to-end operation on an actual isolated Railway PostgreSQL instance separately.
+
+## 2026-11-04 staging activation checkpoint
+
+- **Code verified:** GitHub Actions foundation `41844243506`, scanner `41844243658`, Core Ops `41844243509` all passed at commit `d0d0be4b349c45c00285be3609c60418f38f6d06`.
+- **Browser test UI:** `GET /test-login` serves a same-origin PIN form with Content Security Policy; signed session stays only in browser memory. There are no QR or manager approval routes on this staging mount.
+- **Automatic startup migration:** `staging/migrate-isolated-test-login.js` verifies an exact test identity/guild plus an internal `*.railway.internal` PostgreSQL URL and applies only `db/hc_staff_auth_throttle.sql`, transactionally and idempotently. `launchSecurityStaging` retries private DB readiness before opening the HTTP listener. Do not run the migration on a production database.
+- **Railway ready but NOT deployed:** `Hobby Corner Integration Test/test` patch `ae35bd65-381a-4b33-804c-a7bbdfb4853d` contains only the new test Postgres + volume and the `staff-security-staging` service. The old `malcor` and `hobby-bot-security-test` staging placeholders were removed without impacting any running service. The new API is pinned to the tested commit.
+- **Non-production credentials staged:** random synthetic PIN's scrypt hash, separate random signed-session and throttle secrets, and `HC_STAGING_TEST_LOGIN_ENABLED=true`. No production credential has been reused. Do not copy or log the secret values or PIN in GitHub. Rate limiting is persisted in the new isolated PostgreSQL.
+- **Remaining operator approval:** commit the staged Railway test-environment patch (creates running services and incurs Railway resource usage), then request a Railway-generated HTTPS domain for the security API, verify `/health`, `/test-login`, correct/incorrect PIN sign-in and denied enrollment routes.
+- **Not part of this step:** Malcor invitation API activation and the real first Owner passkey. Those still require independent strong proof and separately reviewed factor enrollment schema and migration.
