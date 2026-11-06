@@ -121,7 +121,9 @@ export function createIsolatedTestLoginMount({
           'Cache-Control':'no-store, max-age=0'
         });
         const page=environment.HC_STAGING_OWNER_BOOTSTRAP_ENABLED==='true'
-          ?'./test-owner-passkey.html':'./test-owner-passkey-verify.html';
+          ?'./test-owner-passkey.html'
+          :enrollment?'./test-owner-passkey-approve.html'
+          :'./test-owner-passkey-verify.html';
         res.type('html').sendFile(fileURLToPath(new URL(page,import.meta.url)));
       });
       app.use('/staff-passkey',createStaffPasskeyRouter({passkeys}));
