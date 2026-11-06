@@ -11,6 +11,7 @@ on:
       - 'routes/employeeAdmin.js'
       - 'admin/**'
       - 'db/hc_admin_session_policies.sql'
+      - 'db/hc_admin_delegations.sql'
       - 'tests/employee-admin-*.test.mjs'
       - 'tests/shared-staff-discord-invitation-postgres.test.mjs'
       - 'tests/shared-staff-invitation-client.test.mjs'
@@ -180,6 +181,8 @@ jobs:
         run: node --test tests/employee-admin-access.test.mjs tests/employee-admin-router.test.mjs tests/employee-admin-client.test.mjs tests/employee-admin-session-policy.test.mjs
       - name: Audited employee admin session policy disposable PostgreSQL integration
         run: node --test --test-concurrency=1 tests/employee-admin-session-policy-postgres.test.mjs
+      - name: Owner and scoped delegated admin permissions PostgreSQL integration
+        run: node --test --test-concurrency=1 tests/employee-admin-delegations-postgres.test.mjs
       - name: Existing backend parse check
         run: node --check server.js
       - name: Staff settings browser script parse check
