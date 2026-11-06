@@ -25,6 +25,9 @@
         <div class="formrow"><input id="employeePin" type="password" inputmode="numeric" autocomplete="off" pattern="[0-9]{4}" maxlength="4" minlength="4" required placeholder="Four digits"><button type="submit" id="signIn">Sign in</button></div>
       </form>
       <div id="signedInRow" class="signed-in" hidden><span id="employeeName"></span><button type="button" id="signOut" class="quiet">Sign out</button></div>
+      <div class="actions"><button type="button" id="checkEmployeeSession" class="quiet" disabled>Check employee session</button><button type="button" id="checkAllSessions" class="quiet" disabled>Check all session statuses</button></div>
+      <p id="employeeSessionMessage" class="hint" role="status" aria-live="polite">Sign in to test the employee session. Status checks never extend its expiry.</p>
+      <p class="hint">For timed tests, sign in and verify your Authenticator, then use Check all session statuses to check both separately. No code is needed just to check.</p>
     </section>
     <section class="panel" aria-labelledby="approvalTitle">
       <div class="section-top"><div><h2 id="approvalTitle">Enrollment approval</h2><p>Request approval from an authorized manager before adding an authenticator. Your manager must verify their own stronger sign-in, not another four-digit PIN.</p></div><span class="status" id="approvalState">Not requested</span></div>
