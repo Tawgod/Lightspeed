@@ -46,6 +46,27 @@ export function createAdminDelegations({pool,adminAccess=null}={}){
    return result.rowCount===1&&entry.rowCount===1;
   });}catch{return false;}
  }
+ async function capabilitiesForVerifiedEmployee(employeeIdValue){
+  const id=employeeId(employeeIdValue);
+  if(!id)throw denied();
+  return transaction(async db=>{
+   const person=await readRole(db,id);
+   if(!person||person.active!==true)throw denied();
+   const granted=person.role==='owner'
+    ?Object.keys(ADMIN_OPERATIONS)
+    :(await db.query(
+     'SELECT operation FROM hc_admin_grants WHERE employee_id=$1 ORDER BY operation',[id])).rows.map(x=>x.operation);
+   if(!granted.includes('admin.read'))throw denied();
+   const tools=person.role==='owner'
+    ?TOOL_OPERATIONS
+    :(await db.query(
+     'SELECT tool_operation FROM hc_admin_grant_scopes WHERE employee_id=$1 ORDER BY tool_operation',[id])).rows.map(x=>x.tool_operation);
+   return Object.freeze({
+    employeeId:id,role:person.role,operations:Object.freeze(granted.filter(x=>isAdminPermission(x))),
+    grantScopes:Object.freeze(tools.filter(x=>allowedTools.has(x)))
+   });
+  });
+ }
  async function getRole({context}={}){
   if(!adminAccess)throw unavailable();
   const access=await adminAccess.authorize({context,operation:'admin.read'});
@@ -164,5 +185,5 @@ export function createAdminDelegations({pool,adminAccess=null}={}){
    return Object.freeze({employeeId:target,toolOperation,enabled});
   });
  }
- return Object.freeze({canAdmin,getRole,listGrants,changeAdminGrant,changeGrantScope,changeEmployeeToolGrant});
+ return Object.freeze({canAdmin,capabilitiesForVerifiedEmployee,getRole,listGrants,changeAdminGrant,changeGrantScope,changeEmployeeToolGrant});
 }
