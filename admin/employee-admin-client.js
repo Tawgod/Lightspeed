@@ -131,10 +131,13 @@
      }
      $('settingSummary').textContent=String(registry.items.length)+' registered settings and configuration areas. Read-only until owners connect approved validators and audit flows.';
      $('notification').textContent='Settings metadata loaded. No employee information or configuration values were changed.';
-   }catch{
+   }catch(error){
      $('gate').hidden=false;
      $('workspace').hidden=true;
      $('notification').textContent='';
+     const message=$('adminAuthMessage');
+     if(message && auth()?.getProof?.())message.textContent=
+       error?.message||'Administrator access could not be verified.';
    }
  }
  $('reload').addEventListener('click',load);
