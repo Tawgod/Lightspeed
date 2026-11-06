@@ -64,6 +64,8 @@
         <label for="mfaCode">Six-digit authenticator code</label>
         <div class="formrow"><input id="mfaCode" type="text" inputmode="numeric" autocomplete="one-time-code" minlength="6" maxlength="6" pattern="[0-9]{6}" required placeholder="000000"><button type="submit" id="mfaButton" disabled>Verify this session</button></div>
       </form>
+      <div class="actions"><button id="checkMfaStatus" type="button" class="quiet" disabled>Check verification status</button></div>
+      <p id="mfaStatusMessage" class="hint" role="status" aria-live="polite">Verify using a fresh code to check the session.</p>
       <p id="mfaHelp" class="hint">Authenticator setup and employee sign-in are required before mobile verification.</p>
     </section>
     <section class="panel two-col" aria-label="Other account security options">
