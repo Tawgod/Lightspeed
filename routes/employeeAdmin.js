@@ -7,7 +7,9 @@ import {visibleAdminSections} from '../services/security/adminPermissionCatalog.
 // Candidate only. Never mount without trusted Timeclock identity, real enrolled
 // passkey/TOTP verification and a reviewed backend admin permission checker.
 // No employee records or configuration writes exist in this router.
-export function createEmployeeAdminRouter({adminAccess,delegations=null}={}){
+export function createEmployeeAdminRouter({adminAccess,delegations=null,resolveCapabilities=null}={}){
+ if(resolveCapabilities!==null && typeof resolveCapabilities!=='function')
+   throw new TypeError('Read-only administrator capability resolver must be a function.');
  if(delegations!==null && ['capabilitiesForVerifiedEmployee','listGrants','changeAdminGrant','changeGrantScope','changeSettingScope','changeEmployeeToolGrant'].some(x=>typeof delegations?.[x]!=='function'))
    throw new TypeError('Trusted server-side delegated permissions adapter required.');
  if(typeof adminAccess?.authorize!=='function')
@@ -46,7 +48,8 @@ export function createEmployeeAdminRouter({adminAccess,delegations=null}={}){
  router.get('/api/overview',async(req,res)=>{
    try{
      const authorized=await adminAccess.authorize({context:req,operation:'admin.read'});
-     const caps=delegations?await delegations.capabilitiesForVerifiedEmployee(authorized.employeeId):null;
+     const caps=delegations?await delegations.capabilitiesForVerifiedEmployee(authorized.employeeId):
+       resolveCapabilities?await resolveCapabilities(authorized.employeeId):null;
      const sections=caps?visibleAdminSections(caps.operations,caps.role):{};
      res.json({
        employeeId:authorized.employeeId,
@@ -66,7 +69,8 @@ export function createEmployeeAdminRouter({adminAccess,delegations=null}={}){
  router.get('/api/settings',async(req,res)=>{
    try{
      const actor=await adminAccess.authorize({context:req,operation:'tools.settings.read'});
-     const caps=delegations?await delegations.capabilitiesForVerifiedEmployee(actor.employeeId):null;
+     const caps=delegations?await delegations.capabilitiesForVerifiedEmployee(actor.employeeId):
+       resolveCapabilities?await resolveCapabilities(actor.employeeId):null;
      // Avoid exposing employee/security/Timeclock admin metadata to
      // managers who can change only non-sensitive tool configurations.
      const items=caps?.role==='owner'
