@@ -33,6 +33,8 @@ test('Owner delegates onboarding and scoped tools but not private employee data 
  });
  try{
   await pool.query(await readFile(new URL('../db/hc_admin_delegations.sql',import.meta.url),'utf8'));
+  // This is a disposable hc_test database, never a production connection.
+  await pool.query('TRUNCATE hc_admin_grants,hc_admin_grant_scopes,hc_admin_setting_scopes,hc_employee_tool_grants,hc_admin_principals');
   // Test-only, offline-simulated commissioning. Production must use
   // independent strong owner identity proof and reviewed migration.
   await pool.query("INSERT INTO hc_admin_principals(employee_id,role) VALUES(901,'owner')");
