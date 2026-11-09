@@ -29,6 +29,9 @@ test('Home page preserves original logo, staff sign-in, navigation and review st
  assert.match(source,/\/api\/special-orders\/priority-review/);
  assert.match(source,/credentials:'omit'/);
  assert.match(source,/verifiedCounts/);
+ assert.match(source,/Never leave numbers from an earlier successful request/);
+ assert.match(source,/setText\('statsCoverage','Unavailable'\)/);
+ assert.match(source,/setText\('prioritySummary','Review unavailable'\)/);
  assert.match(source,/window\.HCStaffAuth\?\.signOut/);
  assert.doesNotMatch(source,/innerHTML\s*=/);
  assert.doesNotMatch(source,/localStorage/);
