@@ -190,6 +190,8 @@ jobs:
         run: node --test --test-concurrency=1 tests/employee-admin-owner-commissioning.test.mjs
       - name: Isolated admin preview strong factor and no-write HTTP regression
         run: node --test tests/employee-admin-staging-readonly.test.mjs tests/employee-admin-staging-auth-client.test.mjs
+      - name: Admin visibility reentry and late network response regression
+        run: node --test tests/employee-admin-visibility-race.test.mjs
       - name: Existing backend parse check
         run: node --check server.js
       - name: Staff settings browser script parse check
