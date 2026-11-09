@@ -8,6 +8,16 @@ on:
       - 'routes/staffSecuritySettings.js'
       - 'routes/staffStationProof.js'
       - 'routes/staffPasskey.js'
+      - 'routes/employeeAdmin.js'
+      - 'admin/**'
+      - 'staging/isolated-admin-*.js'
+      - 'staging/isolated-test-login.js'
+      - 'timeclock/server.js'
+      - 'staging/isolated-owner-enrollment.js'
+      - 'db/hc_admin_session_policies.sql'
+      - 'db/hc_admin_delegations.sql'
+      - 'db/hc_admin_onboarding_requests.sql'
+      - 'tests/employee-admin-*.test.mjs'
       - 'tests/shared-staff-discord-invitation-postgres.test.mjs'
       - 'tests/shared-staff-invitation-client.test.mjs'
       - 'tests/shared-staff-malcor-owner-invite.test.mjs'
@@ -80,7 +90,8 @@ on:
       - 'scripts/audit-lightspeed-consumers.mjs'
       - '.github/workflows/shared-lightspeed-foundation.yml'
   push:
-    branches: [feature/shared-lightspeed-services-phase1-20261029]
+    branches: [feature/shared-lightspeed-services-phase1-20261029, feature/employee-admin-security-foundation-20261106]
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
@@ -172,6 +183,28 @@ jobs:
         run: node --test --test-concurrency=1 tests/shared-security-isolated-owner-approval-postgres.test.mjs
       - name: Isolated synthetic Owner invitation and Authenticator composition preflight
         run: node --test tests/shared-security-isolated-owner-enrollment.test.mjs
+      - name: Employee admin security, setting registry and session policy tests
+        run: node --test tests/employee-admin-access.test.mjs tests/employee-admin-router.test.mjs tests/employee-admin-client.test.mjs tests/employee-admin-session-policy.test.mjs
+      - name: Audited employee admin session policy disposable PostgreSQL integration
+        run: node --test --test-concurrency=1 tests/employee-admin-session-policy-postgres.test.mjs
+      - name: Owner and scoped delegated admin permissions PostgreSQL integration
+        run: node --test --test-concurrency=1 tests/employee-admin-delegations-postgres.test.mjs
+      - name: Owner commissioning requires independent bound passkey proof
+        run: node --test --test-concurrency=1 tests/employee-admin-owner-commissioning.test.mjs
+      - name: Isolated admin preview strong factor and no-write HTTP regression
+        run: node --test tests/employee-admin-staging-readonly.test.mjs tests/employee-admin-staging-auth-client.test.mjs
+      - name: Admin visibility reentry and late network response regression
+        run: node --test tests/employee-admin-visibility-race.test.mjs
+      - name: Employee roster privacy and no-sync Timeclock adapter
+        run: node --test tests/employee-admin-directory.test.mjs tests/employee-admin-timeclock-directory-reader.test.mjs tests/employee-admin-directory-client.test.mjs
+      - name: Restricted employee onboarding request and private audit integration
+        run: node --test --test-concurrency=1 tests/employee-admin-onboarding.test.mjs
+      - name: Admin read-only session-policy preview HTTP safety
+        run: node --test tests/employee-admin-policy-preview-http.test.mjs
+      - name: Cross-tool integration metadata and admin navigation authorization
+        run: node --test tests/employee-admin-integrations.test.mjs
+      - name: Guarded isolated Admin schema target and rollback verification
+        run: node --test tests/admin-schema-isolated-once.test.mjs tests/admin-nav-reader-isolated-once.test.mjs
       - name: Existing backend parse check
         run: node --check server.js
       - name: Staff settings browser script parse check

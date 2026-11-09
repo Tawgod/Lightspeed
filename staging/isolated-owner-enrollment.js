@@ -80,6 +80,7 @@ export function createIsolatedOwnerEnrollmentMount({
    throw new TypeError('Expected verified test-only settings and invitation routers.');
  return Object.freeze({
    settingsRouter:subsystem.settingsRouter,
-   invitationRouter:subsystem.invitationRouter
+   invitationRouter:subsystem.invitationRouter,
+   verifyTotpStepUp:subsystem.verifyTotpStepUp
  });
 }

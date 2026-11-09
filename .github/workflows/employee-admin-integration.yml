@@ -1,0 +1,30 @@
+name: Employee Admin integration contract
+on:
+  push:
+    branches:
+      - feature/employee-admin-security-foundation-20261106
+  pull_request:
+    paths:
+      - 'services/security/adminIntegrationCatalog.js'
+      - 'routes/employeeAdmin.js'
+      - 'tests/employee-admin-integrations.test.mjs'
+      - '.github/workflows/employee-admin-integration.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  integration-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install existing backend dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Admin integration operation and routing regression
+        run: node --test tests/employee-admin-integrations.test.mjs
+      - name: Syntax checks
+        run: |
+          node --check services/security/adminIntegrationCatalog.js
+          node --check routes/employeeAdmin.js
