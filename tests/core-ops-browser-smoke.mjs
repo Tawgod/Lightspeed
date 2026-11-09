@@ -4,20 +4,21 @@ import { readFileSync } from 'node:fs';
 const css =
   readFileSync(new URL('../shared-ui/hc.css', import.meta.url), 'utf8') +
   '\n' +
-  readFileSync(new URL('../shared-ui/core-ops-compat.css', import.meta.url), 'utf8');
+  readFileSync(new URL('../shared-ui/core-ops-compat.css', import.meta.url), 'utf8') + '\n' +
+  readFileSync(new URL('../shared-ui/store-operations.css', import.meta.url), 'utf8');
 
 // setContent strips external scripts, so inject the same audited navigation source.
 const navigationSource=readFileSync(new URL('../shared-ui/operations-nav.mjs',import.meta.url),'utf8')
   .replace(/^export /gm,'');
 
-const routes = ['special-orders', 'ordering', 'preorders', 'gw-preorders'];
+const routes = ['home', 'special-orders', 'ordering', 'preorders', 'gw-preorders'];
 const zooms = [1, 1.25, 2];
 
 const browser = await chromium.launch({ headless: true });
 
 try {
   for (const route of routes) {
-    let html = readFileSync(new URL('../' + route + '.html', import.meta.url), 'utf8');
+    let html = readFileSync(new URL('../' + (route==='home'?'store-operations':route) + '.html', import.meta.url), 'utf8');
     html = html
       .replace(/<link[^>]+rel="stylesheet"[^>]*>/g, '')
       .replace('</head>', '<style>' + css + '</style></head>')
