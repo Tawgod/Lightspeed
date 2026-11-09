@@ -3,6 +3,7 @@ import {readFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {listAdminSettingDescriptors,findAdminSettingDescriptor} from '../services/security/adminSettingsRegistry.js';
 import {visibleAdminSections} from '../services/security/adminPermissionCatalog.js';
+import {listAdminIntegrations,ADMIN_INTEGRATION_NAVIGATION} from '../services/security/adminIntegrationCatalog.js';
 
 // Candidate only. Never mount without trusted Timeclock identity, real enrolled
 // passkey/TOTP verification and a reviewed backend admin permission checker.
@@ -71,6 +72,25 @@ export function createEmployeeAdminRouter({adminAccess,delegations=null,resolveC
        delegatedGrantManagementEnabled:Boolean(delegations)
      });
    }catch(e){error(res,e);}
+ });
+ // Read-only reconciliation metadata. This does not authorize any tool or
+ // claim deployment of a candidate; owner services still enforce all grants.
+ router.get('/api/integrations',async(req,res)=>{
+   try{
+     const authorized=await adminAccess.authorize({context:req,operation:'admin.read'});
+     const caps=delegations?await delegations.capabilitiesForVerifiedEmployee(authorized.employeeId):
+       resolveCapabilities?await resolveCapabilities(authorized.employeeId):null;
+     if(!caps||!['owner','delegated_admin'].includes(caps.role)||
+        !Array.isArray(caps.operations)||!caps.operations.includes('admin.read'))
+       return res.sendStatus(403);
+     return res.json({
+       items:listAdminIntegrations({
+         role:caps.role,grantedOperations:caps.operations
+       }),
+       navigation:ADMIN_INTEGRATION_NAVIGATION,
+       readOnly:true,configurationWritesEnabled:false
+     });
+   }catch(e){return error(res,e);}
  });
  router.get('/api/settings',async(req,res)=>{
    try{
