@@ -12,6 +12,8 @@ on:
       - 'tests/admin-navigation-postgres.test.mjs'
       - 'tests/fixtures/admin-navigation-grants-ci.sql'
       - 'services/security/adminNavigationAccess.js'
+      - 'scripts/admin-nav-isolated-bridge.mjs'
+      - 'tests/admin-nav-isolated-bridge.test.mjs'
       - 'server.js'
       - '.github/workflows/navigation-admin-contract.yml'
   workflow_dispatch:
@@ -49,6 +51,8 @@ jobs:
           node --check shared-ui/staff-auth.js
       - name: Nested routes and secure conditional Admin navigation
         run: node --test tests/hierarchical-navigation-admin.test.mjs tests/admin-navigation-access.test.mjs tests/hierarchical-navigation.test.mjs tests/core-ops-navigation.test.mjs
+      - name: Isolated signed staff plus Timeclock and admin grants HTTP bridge
+        run: node --test tests/admin-nav-isolated-bridge.test.mjs
       - name: Read-only isolated Railway connection smoke safeguards
         run: node --test tests/admin-nav-db-isolated-smoke.test.mjs
       - name: Real disposable PostgreSQL owner, manager, staff and revocation
