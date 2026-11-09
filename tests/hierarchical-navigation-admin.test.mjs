@@ -17,23 +17,30 @@ test('approved hierarchy is Special Orders > preorders > GW, with purchasing nes
 });
 test('admin link requires independently verified same-origin exact admin.read',async()=>{
  const calls=[];
+ const staffAuth={
+  readSession:()=>({token:'signed.fixture'}),
+  headers:extra=>({...extra,Authorization:'Bearer signed.fixture'})
+ };
  const fetchImpl=async (url,init)=>{
   calls.push({url,init});
   return {ok:true,json:async()=>({allowed:true,authenticated:true,operation:'admin.read'})};
  };
- assert.equal(await canShowAdminNavigation(fetchImpl),true);
+ assert.equal(await canShowAdminNavigation(fetchImpl,staffAuth),true);
  assert.equal(calls[0].url,'/api/admin/navigation-access');
  assert.equal(calls[0].init.cache,'no-store');
- assert.equal(calls[0].init.credentials,'same-origin');
+ assert.equal(calls[0].init.credentials,'omit');
+ assert.equal(calls[0].init.headers.Authorization,'Bearer signed.fixture');
  for(const data of [
   {allowed:true,authenticated:false,operation:'admin.read'},
   {allowed:true,authenticated:true,operation:'products.read'},
   {allowed:'true',authenticated:true,operation:'admin.read'},
   {allowed:false,authenticated:true,operation:'admin.read'}
- ])assert.equal(await canShowAdminNavigation(async()=>({ok:true,json:async()=>data})),false);
- assert.equal(await canShowAdminNavigation(async()=>({ok:false})),false);
- assert.equal(await canShowAdminNavigation(async()=>{throw Error('unreachable');}),false);
- assert.equal(await canShowAdminNavigation(null),false);
+ ])assert.equal(await canShowAdminNavigation(async()=>({ok:true,json:async()=>data}),staffAuth),false);
+ assert.equal(await canShowAdminNavigation(async()=>({ok:false}),staffAuth),false);
+ assert.equal(await canShowAdminNavigation(async()=>{throw Error('unreachable');},staffAuth),false);
+ assert.equal(await canShowAdminNavigation(null,staffAuth),false);
+ assert.equal(await canShowAdminNavigation(fetchImpl,{...staffAuth,readSession:()=>null}),false);
+ assert.equal(await canShowAdminNavigation(fetchImpl,{...staffAuth,headers:()=>({'x-employee-id':'901'})}),false);
  assert.equal(adminDestination.href,'/employee-admin/');
 });
 test('admin link appears after permission proof and disappears on revocation',async()=>{
@@ -51,6 +58,8 @@ test('admin link appears after permission proof and disappears on revocation',as
  };
  const root={hidden:false,createElement:elem,querySelector:()=>nav};
  globalThis.document={createElement:elem};
+ const previousWindow=globalThis.window;
+ globalThis.window={HCStaffAuth:{readSession:()=>({token:'fixture'}),headers:extra=>({...extra,Authorization:'Bearer fixture'})}};
  try{
   assert.equal(await refreshAdminNavigation(root,async()=>({
    ok:true,json:async()=>({allowed:true,authenticated:true,operation:'admin.read'})
@@ -59,7 +68,7 @@ test('admin link appears after permission proof and disappears on revocation',as
   assert.equal(nodes[0].children[1].children[0].href,'/employee-admin/');
   assert.equal(await refreshAdminNavigation(root,async()=>({ok:false})),false);
   assert.equal(nodes.length,0);
- }finally{globalThis.document=previous}
+ }finally{globalThis.document=previous;globalThis.window=previousWindow}
 });
 test('staff sign-out/in refresh signal exists, no browser role shortcut',()=>{
  const source=readFileSync(new URL('../shared-ui/staff-auth.js',import.meta.url),'utf8');
