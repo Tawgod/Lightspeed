@@ -12,6 +12,7 @@ on:
       - 'admin/**'
       - 'staging/isolated-admin-*.js'
       - 'staging/isolated-test-login.js'
+      - 'timeclock/server.js'
       - 'staging/isolated-owner-enrollment.js'
       - 'db/hc_admin_session_policies.sql'
       - 'db/hc_admin_delegations.sql'
@@ -192,6 +193,8 @@ jobs:
         run: node --test tests/employee-admin-staging-readonly.test.mjs tests/employee-admin-staging-auth-client.test.mjs
       - name: Admin visibility reentry and late network response regression
         run: node --test tests/employee-admin-visibility-race.test.mjs
+      - name: Employee roster privacy and no-sync Timeclock adapter
+        run: node --test tests/employee-admin-directory.test.mjs tests/employee-admin-timeclock-directory-reader.test.mjs
       - name: Existing backend parse check
         run: node --check server.js
       - name: Staff settings browser script parse check
