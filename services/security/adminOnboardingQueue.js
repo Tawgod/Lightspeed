@@ -8,7 +8,8 @@ const statusResult=row=>Object.freeze({
  requestId:String(row.id),name:row.employee_name,
  requestedRole:row.requested_role,status:row.status,submittedBy:String(row.requested_by)
 });
-export function createAdminOnboardingQueue({pool,adminAccess}={}){
+export function createAdminOnboardingQueue({pool,adminAccess,verifyOwner=null}={}){
+ if(verifyOwner!==null&&typeof verifyOwner!=='function')throw new TypeError('Owner reviewer must be backend verified.');
  if(typeof pool?.connect!=='function'||typeof adminAccess?.authorize!=='function')
   throw new TypeError('Onboarding requires a verified administrator and private DB.');
  async function transaction(work){
@@ -82,7 +83,47 @@ export function createAdminOnboardingQueue({pool,adminAccess}={}){
    });
   });
  }
+ async function pendingReview({context}={}){
+  if(typeof verifyOwner!=='function')throw deny();
+  const actor=await adminAccess.authorize({
+   context,operation:'employees.onboard.review',requireStrong:true
+  });
+  if(!(await verifyOwner(actor.employeeId)))throw deny();
+  return transaction(async db=>{
+   const result=await db.query(
+    `SELECT * FROM hc_admin_onboarding_requests WHERE status='pending_review'
+       ORDER BY created_at ASC LIMIT 100`);
+   return Object.freeze({
+    items:Object.freeze(result.rows.map(statusResult)),reviewOnly:true,readOnly:true
+   });
+  });
+ }
+ async function review({context,requestId,decision,reason}={}){
+  if(typeof verifyOwner!=='function')throw deny();
+  const actor=await adminAccess.authorize({
+   context,operation:'employees.onboard.review',requireStrong:true
+  });
+  if(!(await verifyOwner(actor.employeeId)))throw deny();
+  if(!uuid.test(requestId||'')||!['approve','reject'].includes(decision)||
+     typeof reason!=='string'||reason.trim().length<8||reason.trim().length>400)throw bad();
+  return transaction(async db=>{
+   const result=await db.query(
+    'SELECT * FROM hc_admin_onboarding_requests WHERE id=$1 FOR UPDATE',[requestId]);
+   if(result.rowCount!==1)throw bad();
+   const row=result.rows[0];
+   if(row.status!=='pending_review')throw bad();
+   const newStatus=decision==='approve'?'approved_pending_creation':'rejected';
+   const updated=await db.query(
+    'UPDATE hc_admin_onboarding_requests SET status=$1,updated_at=now() WHERE id=$2 RETURNING *',
+    [newStatus,requestId]);
+   await db.query(
+    `INSERT INTO hc_admin_onboarding_events
+      (request_id,actor_employee_id,action,reason) VALUES($1,$2,$3,$4)`,
+    [requestId,actor.employeeId,decision==='approve'?'approved':'rejected',reason.trim()]);
+   return Object.freeze({...statusResult(updated.rows[0]),accountCreated:false});
+  });
+ }
  // Onboarding requests DO NOT create Timeclock employee identities.
  // A separate future reviewed enrollment adapter is required for that.
- return Object.freeze({request,ownRequests});
+ return Object.freeze({request,ownRequests,pendingReview,review});
 }
