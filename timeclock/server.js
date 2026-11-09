@@ -1226,6 +1226,29 @@ app.get('/api/timeclock/admin/entries', async (req,res) => {
   }
 });
 
+// Non-mutating server-to-server roster read for future shared admin portal.
+// Unlike the legacy /admin/employees route, this does NOT trigger Lightspeed sync.
+// Requires the existing backend-only Timeclock administrator secret.
+app.get('/api/timeclock/admin/employees/readonly', async (req,res) => {
+  res.set('Cache-Control','no-store, max-age=0');
+  try {
+    if (!ADMIN_SECRET || req.get('x-timeclock-admin-secret') !== ADMIN_SECRET) {
+      return res.status(403).json({error:'Forbidden.'});
+    }
+    const employees=(await listEmployees()).map(row=>({
+      id:row.id,name:row.name,active:row.active,
+      has_pin:row.has_pin,pto_eligible:row.pto_eligible,
+      scanner_can_lookup:row.scanner_can_lookup,
+      scanner_can_approve:row.scanner_can_approve,
+      lightspeed_user_id:row.lightspeed_user_id,
+      discord_user_id:row.discord_user_id
+    }));
+    return res.json({employees,count:employees.length,source:'timeclock',readOnly:true});
+  }catch{
+    return res.status(503).json({error:'Employee directory unavailable.'});
+  }
+});
+
 app.get('/api/timeclock/admin/employees', async (req,res) => {
   try {
     if (!ADMIN_SECRET || req.get('x-timeclock-admin-secret') !== ADMIN_SECRET) {
