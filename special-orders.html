@@ -34,6 +34,26 @@
   <div class="card"><div class="value" id="preorder">—</div><div class="label">Preorders</div></div>
   <div class="card"><div class="value" id="ready_or_held">—</div><div class="label">Received / held</div></div>
 </div>
+<section class="hc-priority-review panel" aria-labelledby="hc-priority-title">
+  <div class="hc-priority-heading">
+    <div><h2 id="hc-priority-title">Priority Review</h2><p class="hc-muted">Items requiring staff follow-up. Only verified information is counted.</p></div>
+    <span id="hc-priority-total" class="hc-priority-count" aria-live="polite">Awaiting data</span>
+  </div>
+  <div class="hc-priority-items" role="list">
+    <div role="listitem" class="hc-priority-item">
+      <div><strong>Orders waiting over 7 days</strong><p>Previously ordered items that may need supplier follow-up.</p></div>
+      <div class="hc-priority-action"><strong id="hc-priority-aging" aria-live="polite">—</strong><a href="#orders">Review orders</a></div>
+    </div>
+    <div role="listitem" class="hc-priority-item">
+      <div><strong>Old Special Orders (30+ days)</strong><p>Individual aging-order review requires a verified open-order age feed.</p></div>
+      <span class="hc-priority-unavailable">Not connected</span>
+    </div>
+    <div role="listitem" class="hc-priority-item">
+      <div><strong>Bugs &amp; system errors</strong><p>Requires an authenticated, sanitized operational incident source.</p></div>
+      <span class="hc-priority-unavailable">Not connected</span>
+    </div>
+  </div>
+</section>
 <div class="panel">
   <h2>New Special Order</h2>
 
