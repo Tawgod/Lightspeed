@@ -101,6 +101,26 @@
      container.append(card);
    }
  }
+ async function loadDirectory(epoch){
+   const response=await fetchAdmin('/employee-admin/api/employees');
+   if(epoch!==viewEpoch||document.hidden||!auth()?.getProof?.())return;
+   if(response?.source!=='timeclock'||response?.readOnly!==true||
+      response?.scope!=='directory'||!Array.isArray(response.employees)||
+      response.employees.length>5000)throw Error('Employee directory response was not recognized.');
+   const list=$('employeeDirectoryList');list.replaceChildren();
+   for(const employee of response.employees){
+     if(!employee||typeof employee.id!=='string'||
+        !/^[1-9][0-9]{0,17}$/.test(employee.id)||
+        typeof employee.name!=='string'||typeof employee.active!=='boolean')continue;
+     const row=make('div','','setting');
+     const details=make('div','');
+     details.append(make('strong',employee.name));
+     details.append(make('small','Timeclock employee '+employee.id));
+     row.append(details,make('span',employee.active?'Active':'Inactive','status'));
+     list.append(row);
+   }
+   $('employeeDirectoryStatus').textContent=response.employees.length+' employee records available (minimum directory only).';
+ }
  async function load(){
    const epoch=++viewEpoch;
    $('notification').textContent='Checking administrator access…';
@@ -121,6 +141,17 @@
      $('ownerDelegationPanel').hidden=overview.role!=='owner' ||
        !overview.grantedOperations?.includes('admin.delegation.manage');
      $('toolGrantPanel').hidden=!overview.grantedOperations?.includes('permissions.manage');
+     const directoryAllowed=overview.grantedOperations?.includes('employees.directory.read');
+     $('employeeDirectoryPanel').hidden=!directoryAllowed;
+     if(directoryAllowed){
+       $('employeeDirectoryStatus').textContent='Loading permitted directory…';
+       try{await loadDirectory(epoch);}
+       catch(error){
+         if(epoch!==viewEpoch)return;
+         $('employeeDirectoryList').replaceChildren();
+         $('employeeDirectoryStatus').textContent='Employee directory is unavailable. No records were loaded.';
+       }
+     }
      const list=$('settingsList');list.replaceChildren();
      for(const item of registry.items){
        if(!item || typeof item.label!=='string' || typeof item.owner!=='string' ||
@@ -156,6 +187,9 @@
    $('identity').textContent='';
    $('ownerDelegationPanel').hidden=true;
    $('toolGrantPanel').hidden=true;
+   $('employeeDirectoryPanel').hidden=true;
+   $('employeeDirectoryList').replaceChildren();
+   $('employeeDirectoryStatus').textContent='Not connected.';
    $('notification').textContent='';
  }
  window.addEventListener('hc-admin-suspended',hideProtectedView);
