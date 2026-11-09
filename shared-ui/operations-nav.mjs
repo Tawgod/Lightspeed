@@ -110,7 +110,10 @@ export function renderOperationsNav(root=document) {
   target.dataset.navInitialized='true';
   target.addEventListener('click',closeOtherMenus);
   if(root.addEventListener){
-    root.addEventListener('hc-staff-auth-changed',()=>{void refreshAdminNavigation(root);});
+    // HCStaffAuth emits on window, not document. Listen on the same target
+    // so explicit sign-out immediately revokes the navigation link.
+    if(typeof window!=='undefined'&&typeof window.addEventListener==='function')
+      window.addEventListener('hc-staff-auth-changed',()=>{void refreshAdminNavigation(root);});
     root.addEventListener('visibilitychange',()=>{
       if(root.hidden){
         for(const node of Array.from(target.querySelectorAll('[data-hc-admin-group]')))node.remove();
