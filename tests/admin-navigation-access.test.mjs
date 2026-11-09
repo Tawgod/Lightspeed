@@ -82,6 +82,13 @@ test('same-origin navigation route denies PIN-only spoof, inactive/invalid ident
   assert.equal((await fetch(uri,{method:'POST'})).status,404);
  }finally{await new Promise(resolve=>server.close(resolve));}
 });
+test('isolated DB setup review never appoints Owner or embeds a login secret',()=>{
+ const source=readFileSync(new URL('../db/admin_navigation_reader_isolated_review.sql',import.meta.url),'utf8');
+ assert.match(source,/CREATE ROLE hc_admin_nav_reader NOLOGIN/);
+ assert.match(source,/GRANT SELECT ON TABLE/);
+ assert.match(source,/REVOKE CREATE ON SCHEMA public FROM PUBLIC/);
+ assert.doesNotMatch(source,/INSERT INTO hc_admin_principals|ALTER ROLE hc_admin_nav_reader LOGIN|PASSWORD\s+'/i);
+});
 test('feature gate does not attach Admin route unless separately enabled and dedicated database configured',()=>{
  const server=readFileSync(new URL('../server.js',import.meta.url),'utf8');
  assert.match(server,/HC_ADMIN_NAV_ENABLED==='true'/);
