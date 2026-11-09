@@ -1,0 +1,29 @@
+name: Primary Timeclock verification wiring
+on:
+  pull_request:
+    branches:
+      - feature/primary-employee-identity-discovery-20261109
+    paths:
+      - 'services/security/primaryTimeclockVerificationWiring.js'
+      - 'tests/primary-timeclock-verification-wiring.test.mjs'
+      - 'services/security/primaryEmployeeIdentityDiscovery.js'
+      - 'services/security/primaryTimeclockCanonicalReader.js'
+      - 'routes/primaryEmployeeIdentity.js'
+      - '.github/workflows/primary-timeclock-verification-wiring.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test-wiring:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install test dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Verify wired route and underlying read-only contracts
+        run: node --test tests/primary-timeclock-verification-wiring.test.mjs tests/primary-employee-identity-discovery.test.mjs tests/primary-timeclock-canonical-reader.test.mjs tests/primary-employee-identity-http.test.mjs tests/primary-employee-security-readiness.test.mjs
+      - name: Parse verification composition
+        run: node --check services/security/primaryTimeclockVerificationWiring.js
