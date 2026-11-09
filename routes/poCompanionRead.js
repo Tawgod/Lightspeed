@@ -3,23 +3,44 @@ import express from 'express';
 const idOk=value=>typeof value==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(value);
 const rows=data=>Array.isArray(data?.data)?data.data:Array.isArray(data)?data:null;
 const safeString=x=>x==null?'':String(x);
-export function createPoCompanionReadRouter({verifyEmployee,readLightspeed,pool}={}){
+export function createPoCompanionReadRouter({verifyEmployee,readLightspeed,sharedPurchaseOrders,pool}={}){
  const router=express.Router();
  router.get('/purchase-orders/:id',async(req,res)=>{
   res.set('Cache-Control','no-store');
   try{
-   if(typeof verifyEmployee!=='function'||typeof readLightspeed!=='function'||!pool)return res.status(503).json({error:'PO lookup not configured.'});
+   if(typeof verifyEmployee!=='function'||(!sharedPurchaseOrders&&typeof readLightspeed!=='function')||!pool)return res.status(503).json({error:'PO lookup not configured.'});
    const employee=await verifyEmployee(req);
    if(!employee?.id||!employee.canLookup)return res.status(403).json({error:'Employee PO lookup not allowed.'});
    const id=req.params.id;
    if(!idOk(id))return res.status(400).json({error:'Invalid purchase order ID.'});
-   // Use the same current 2026-04 endpoints as Ordering; no product/order writes.
-   const listed=rows(await readLightspeed('/purchase_orders?page_size=1000'));
-   if(!listed)return res.status(502).json({error:'Unrecognized purchase order response.'});
-   const po=listed.find(p=>safeString(p?.id)===id);
-   if(!po)return res.status(404).json({error:'Purchase order not found in current Lightspeed list.'});
-   const lineResponse=rows(await readLightspeed('/purchase_orders/'+encodeURIComponent(id)+'/line_items?page_size=1000'));
-   if(!lineResponse)return res.status(502).json({error:'Unrecognized PO line response.'});
+   // Shared read contract can be injected after Phase 2 is independently accepted.
+   // Existing 2026-04 read path is retained for backwards-compatible, opt-in rollout.
+   // Mapping/review remain PO Companion-owned; never accept partial shared reads.
+   let po, lineResponse;
+   if(sharedPurchaseOrders){
+    if(typeof sharedPurchaseOrders.get!=='function')return res.status(503).json({error:'Shared PO lookup not configured.'});
+    const verified=await sharedPurchaseOrders.get(id);
+    if(!verified||safeString(verified.id)!==id||!Array.isArray(verified.lines))
+     return res.status(502).json({error:'Unrecognized shared purchase order response.'});
+    po={...(verified.raw&&typeof verified.raw==='object'?verified.raw:{}),
+     id:verified.id,status:verified.status,
+     supplier_id:verified.supplier?.id,supplier:verified.supplier};
+    lineResponse=verified.lines.map((line,index)=>{
+     if(!line||typeof line!=='object')throw Object.assign(new Error('Invalid shared PO line.'),{status:502});
+     return {...(line.raw&&typeof line.raw==='object'?line.raw:{}),
+      id:line.id||'line-'+index,
+      product_id:line.productId,quantity:line.quantity,
+      supplier_sku:line.supplierSku,sku:line.sku,upc:line.upc,
+      product:{...(line.raw?.product||{}),name:line.productName}};
+    });
+   }else{
+    const listed=rows(await readLightspeed('/purchase_orders?page_size=1000'));
+    if(!listed)return res.status(502).json({error:'Unrecognized purchase order response.'});
+    po=listed.find(p=>safeString(p?.id)===id);
+    if(!po)return res.status(404).json({error:'Purchase order not found in current Lightspeed list.'});
+    lineResponse=rows(await readLightspeed('/purchase_orders/'+encodeURIComponent(id)+'/line_items?page_size=1000'));
+    if(!lineResponse)return res.status(502).json({error:'Unrecognized PO line response.'});
+   }
    const supplierLS=safeString(po.supplier_id||po.supplier?.id);
    let supplier=null;
    if(supplierLS){
