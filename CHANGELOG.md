@@ -86,3 +86,11 @@
 - Added `services/security/primaryTimeclockTotpSubsystem.js`: **test-only, unmounted** wiring into the existing separately approved PostgreSQL enrollment, encrypted TOTP and signed MFA session subsystem. Requires independently verified fresh manager passkey/security key/approved IdP proof and exact approval/recovery grants; no Owner auto-commission, test-factor transfer, employee write route or PIN reset.
 - Added focused tests, dedicated CI and `docs/PRIMARY_EMPLOYEE_AUTHENTICATOR_ROLLOUT.md` outlining secure real-account commissioning, key custody, migration review, live-device acceptance, recovery and approval gates. GitHub Actions `42709757349` **SUCCESS** on functional/test commit `22dc405f02c4e6a4ebca5a258c1f256ec428c986`.
 - No real primary Timeclock user record queried, credentials read, QR issued, production/isolated Railway patch applied, DB schema migrated, branch merged or Chrome extension released. Existing synthetic employee 901 remains separate.
+
+
+## 2026-11-09 — Independent approver enforcement and first-Owner readiness
+
+- Draft PR #43 based on primary TOTP candidate PR #42 adds `services/security/independentPrimaryEnrollmentApproval.js`. It requires verified, current, independently enrolled passkey/security-key/managed MFA, authoritative active Timeclock records for actor **and** target, exact `staff.authenticator.enroll` permission, and different actor/target employees. PINs, TOTP-only approvals, synthetic staging roles and self-approval fail closed.
+- `primaryTimeclockTotpSubsystem.js` now actually binds its existing PostgreSQL approval hooks through the independent approver gate. New read-only `preflight` reports whether an authorized distinct approver exists without creating an Owner, enrolling a factor or issuing a QR.
+- GitHub Actions `42711042161` **SUCCESS** at functional SHA `2603ef4facdcd3cfc9bab43ca09119bff46e82b2` with the new policy tests and inherited candidate composition regressions.
+- **First Owner commissioning remains blocked:** no real primary employee verification, audited independent Owner identification, authorized external approver, production factor credential or recovery decision exists. Do not bypass this with the isolated synthetic Owner's self-enrollment exception. Code remains unmounted; no production deployment, live DB/employee/credential change or Chrome release.

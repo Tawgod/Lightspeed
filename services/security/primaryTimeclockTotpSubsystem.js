@@ -1,6 +1,8 @@
 import {createCanonicalStaffFactorSession,
   createCanonicalStaffFactorApprovalPolicy} from './primaryLiveTotpEnrollmentGate.js';
 import {createStaffSecuritySubsystem} from './staffSecuritySubsystem.js';
+import {createPrimaryTimeclockCanonicalReader} from './primaryTimeclockCanonicalReader.js';
+import {createIndependentPrimaryEnrollmentApproval} from './independentPrimaryEnrollmentApproval.js';
 
 // UNMOUNTED composition of existing Timeclock + durable staff enrollment/TOTP.
 // Only build a test candidate with reviewed, independently provisioned secrets.
@@ -18,8 +20,15 @@ export function createPrimaryTimeclockTotpSubsystem({
   const canonical=createCanonicalStaffFactorSession({
     staffAuthGateway,timeclockIdentity,now
   });
+  const canonicalReader=createPrimaryTimeclockCanonicalReader({timeclockIdentity});
+  const independent=createIndependentPrimaryEnrollmentApproval({
+    verifyCanonicalTimeclockEmployee:canonicalReader.verifyCanonicalTimeclockEmployee,
+    verifyStrongApprover,canApproveEnrollment,now
+  });
   const approval=createCanonicalStaffFactorApprovalPolicy({
-    verifyStrongApprover,canApproveEnrollment,canRecoverFactor,now
+    verifyStrongApprover:independent.verifyApprover,
+    canApproveEnrollment:independent.canApprove,
+    canRecoverFactor,now
   });
   const subsystem=createSubsystem({
     staffAuthGateway:canonical,pool,totpEncryptionKey,throttleHmacSecret,

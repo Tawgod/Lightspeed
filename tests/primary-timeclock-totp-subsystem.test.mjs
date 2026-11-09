@@ -14,7 +14,7 @@ const opts=(overrides={})=>({
   staffAuthGateway:{verifyBoundEmployee:async req=>{
     if(req!==context)throw Error('unsigned');return session();
   }},
-  timeclockIdentity:{authorize:async()=>canonical},
+  timeclockIdentity:{authorize:async id=>({...canonical,id})},
   pool:{connect:async()=>({})},
   totpEncryptionKey:'not-read-by-injected-subsystem',
   throttleHmacSecret:'unused-in-test',
@@ -40,7 +40,8 @@ test('composes existing security subsystem with exact canonical Timeclock bound 
   binding:'signed-real-employee-session-01',expiresAtMs:NOW+60000
  });
  assert.deepEqual(await verified.verifyStrongManager(context),manager);
- assert.equal(await verified.canApproveEnrollment({employeeId:'42'}),true);
+ assert.equal(await verified.canApproveEnrollment({context,approverId:'7',employeeId:'42',operation:'staff.authenticator.enroll'}),true);
+ assert.equal(await verified.canApproveEnrollment({context,approverId:'7',employeeId:'7',operation:'staff.authenticator.enroll'}),false);
  assert.equal(await verified.canRecoverFactor({employeeId:'42'}),false);
  assert.equal(verified.enrollmentInvitations,undefined);
  assert.deepEqual(Object.keys(subsystem),['settingsRouter','verifyTotpStepUp']);
