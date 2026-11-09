@@ -53,7 +53,7 @@
     !Number.isSafeInteger(result.expiresIn)||
     result.expiresIn<1||result.expiresIn>300)
    throw Error('Unrecognized verification proof.');
-  if(epoch!==verificationEpoch||document.hidden)throw Error('Verification was cleared when the page was left.');
+  if(epoch!==verificationEpoch)throw Error('Verification was cancelled.');
   factor=result.token;
   expiry=Date.now()+result.expiresIn*1000;
   mode=type;
@@ -128,15 +128,21 @@
  $('adminSignOut').addEventListener('click',()=>{clear();status('Signed out.');});
  document.addEventListener('visibilitychange',()=>{
   if(document.hidden){
-   const wasVerified=Boolean(factor);
-   clearFactor();
+   // Hide privileged UI immediately, but do not revoke a five-minute factor
+   // merely because an employee briefly switches browser tabs.
    $('adminTestCode').value='';
-   status(wasVerified
-    ?'Admin verification cleared when you left the page. Verify your Authenticator or passkey again.'
-    :'Admin verification is not active. Verify again to open the dashboard.');
+   window.dispatchEvent(new Event('hc-admin-suspended'));
+   return;
+  }
+  if(!base?.token)return;
+  if(getProof()){
+   // Every resume must recheck the *server*. A locally unexpired proof is
+   // not itself authority to display admin information.
+   status('Checking current administrator verification…');
+   window.dispatchEvent(new Event('hc-admin-authenticated'));
+  }else{
+   status('Administrator verification expired. Verify with Authenticator or passkey to continue.');
    window.dispatchEvent(new Event('hc-admin-signed-out'));
-  } else if(base?.token&&!factor){
-   status('Admin verification is not active. Use your Authenticator or passkey to return to the dashboard.');
   }
  });
  window.addEventListener('pagehide',clear);
