@@ -149,6 +149,50 @@
      container.append(card);
    }
  }
+ async function loadSessionPolicy(epoch){
+   const data=await fetchAdmin('/employee-admin/api/session-policy');
+   if(epoch!==viewEpoch||document.hidden||!auth()?.getProof?.())return;
+   if(!data?.policy||!Number.isSafeInteger(data.version))throw Error('No policy read available.');
+   $('localIdle').value=String(data.policy['approved-workstation'].idleSeconds/60);
+   $('localAbsolute').value=String(data.policy['approved-workstation'].absoluteSeconds/60);
+   $('remoteIdle').value=String(data.policy.remote.idleSeconds/60);
+   $('remoteAbsolute').value=String(data.policy.remote.absoluteSeconds/60);
+   $('sessionPolicyStatus').textContent='Policy version '+data.version+
+     '. No live session settings can be changed from this preview.';
+ }
+ $('sessionPolicyForm').addEventListener('submit',async event=>{
+   event.preventDefault();
+   if($('sessionPolicyPanel').hidden)return;
+   const n=id=>Number($(id).value);
+   const minutes=['localIdle','localAbsolute','remoteIdle','remoteAbsolute'].map(n);
+   if(minutes.some(value=>!Number.isSafeInteger(value)||value<1)){
+     $('sessionPolicyStatus').textContent='Use whole-number minutes within the displayed limits.';
+     return;
+   }
+   const [li,la,ri,ra]=minutes;
+   const policy={
+     'approved-workstation':{idleSeconds:li*60,absoluteSeconds:la*60},
+     remote:{idleSeconds:ri*60,absoluteSeconds:ra*60}
+   };
+   $('sessionPolicyStatus').textContent='Checking policy against server limits…';
+   try{
+     const result=await updateGrant('/employee-admin/api/session-policy/preview',{policy});
+     if(result?.applied!==false||result?.readOnly!==true||!Array.isArray(result.changes))
+       throw Error('Unexpected server preview.');
+     const list=$('sessionPolicyPreview');list.replaceChildren();
+     for(const item of result.changes){
+       const row=make('div','','setting');
+       const target=item.class==='approved-workstation'?'Store computers':'Remote devices';
+       row.append(make('strong',target),
+         make('span',item.changed?'Proposed change':'Unchanged','status'));
+       list.append(row);
+     }
+     $('sessionPolicyStatus').textContent='Preview ready. No changes applied or saved.';
+   }catch{
+     $('sessionPolicyPreview').replaceChildren();
+     $('sessionPolicyStatus').textContent='Preview unavailable or outside allowed limits. Nothing was changed.';
+   }
+ });
  async function loadOnboardingReview(epoch){
    const response=await fetchAdmin('/employee-admin/api/onboarding/review');
    if(epoch!==viewEpoch||document.hidden||!auth()?.getProof?.())return;
@@ -235,6 +279,15 @@
      $('ownerDelegationPanel').hidden=overview.role!=='owner' ||
        !overview.grantedOperations?.includes('admin.delegation.manage');
      $('toolGrantPanel').hidden=!overview.grantedOperations?.includes('permissions.manage');
+     const canPreviewPolicy=overview.grantedOperations?.includes('sessions.policy.read');
+     $('sessionPolicyPanel').hidden=!canPreviewPolicy;
+     if(canPreviewPolicy){
+       try{await loadSessionPolicy(epoch);}
+       catch{
+         if(epoch!==viewEpoch)return;
+         $('sessionPolicyStatus').textContent='Login policy store is not connected.';
+       }
+     }
      const canReview=overview.role==='owner'&&
        overview.grantedOperations?.includes('employees.onboard.review');
      $('onboardingReviewPanel').hidden=!canReview;
@@ -300,6 +353,9 @@
    $('identity').textContent='';
    $('ownerDelegationPanel').hidden=true;
    $('toolGrantPanel').hidden=true;
+   $('sessionPolicyPanel').hidden=true;
+   $('sessionPolicyPreview').replaceChildren();
+   $('sessionPolicyStatus').textContent='No policy loaded.';
    $('onboardingReviewPanel').hidden=true;
    $('onboardingReviewList').replaceChildren();
    $('onboardingReviewStatus').textContent='Requests are not connected.';
