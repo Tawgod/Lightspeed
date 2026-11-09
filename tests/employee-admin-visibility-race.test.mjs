@@ -43,8 +43,8 @@ test('late settings response after tab leave cannot reopen protected owner dashb
  vm.runInNewContext(client,{document,window,fetch,console},{timeout:1000});
  for(let i=0;i<20&&!resolveSettings;i++)await Promise.resolve();
  assert.equal(typeof resolveSettings,'function');
- verified=false;
- actions.get('hc-admin-signed-out')();
+ document.hidden=true;
+ actions.get('hc-admin-suspended')();
  resolveSettings({ok:true,json:async()=>({items:[],readOnly:true})});
  for(let i=0;i<20;i++)await Promise.resolve();
  assert.equal(element('gate').hidden,false);
@@ -53,4 +53,5 @@ test('late settings response after tab leave cannot reopen protected owner dashb
  assert.equal(element('ownerDelegationPanel').hidden,true);
  assert.equal(element('toolGrantPanel').hidden,true);
  assert.equal(requests,2);
+ assert.equal(verified,true,'tab switch preserves the unexpired proof in memory');
 });
