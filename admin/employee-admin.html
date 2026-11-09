@@ -39,6 +39,21 @@
   <div class="toolbar"><span id="identity"></span><div><button id="reload" type="button">Refresh settings</button><button id="adminSignOut" type="button" hidden>Sign out</button></div></div>
   <div id="notification" role="status" aria-live="polite"></div>
   <div class="grid" id="sections"></div>
+  <section id="onboardingPanel" class="panel" hidden aria-labelledby="onboardingTitle">
+    <h2 id="onboardingTitle">Request a new employee</h2>
+    <p>Submit the minimum details for review. This does not create a Timeclock identity, issue a PIN, or give access to any tool.</p>
+    <form id="onboardingForm" class="permission-form">
+      <label for="onboardingName">Employee name</label>
+      <input id="onboardingName" maxlength="120" required autocomplete="off" placeholder="New employee name">
+      <label for="onboardingRole">Proposed role</label>
+      <select id="onboardingRole"><option value="staff">Staff</option><option value="manager">Manager</option></select>
+      <label for="onboardingReason">Reason for request</label>
+      <input id="onboardingReason" minlength="8" maxlength="400" required placeholder="New hire / replacement">
+      <button type="submit">Request employee review</button>
+    </form>
+    <p id="onboardingMessage" role="status" aria-live="polite"></p>
+    <div id="onboardingRequestList" class="settings"></div>
+  </section>
   <section id="employeeDirectoryPanel" class="panel" hidden aria-labelledby="employeeDirectoryTitle">
     <h2 id="employeeDirectoryTitle">Employee directory</h2>
     <p>Minimum Timeclock identity details only. Private employee information requires a separate permission.</p>
