@@ -52,3 +52,10 @@
 - Expanded disposable PostgreSQL security test for signed-session binding and spoofed employee-ID denial.
 - Shared foundation CI `42669190828` and Scanner regression `42669190918` both SUCCESS at functional commit `81a78d933711836b395c0d50e2dabcb118165ee0`.
 - No deployment or production permission change.
+
+## 2026-11-09 — Actual isolated Admin schema and restricted reader provisioning
+
+- Added target-verified one-time schema migrator `scripts/admin-schema-isolated-once.mjs` with transaction, advisory lock, canonical Admin tables and empty principal/grant safeguards; isolated Railway deployment `d39bee4b-14cf-4c8a-ad8b-889c4301362b` **SUCCESS**.
+- Added one-time `scripts/admin-nav-reader-isolated-once.mjs` provisioning an independently credentialed `hc_admin_nav_reader` LOGIN with SELECT-only table privileges; isolated deployment `b62b8f3b-6c5c-437c-989e-cd09a02cfd40` **SUCCESS**. Credential in Railway variables, not repository.
+- Added unit/rollback tests; Shared foundation Actions `42681876995` and `42682795631`, Scanner `42681877056` and `42682795628`, Admin integration `42681876845` and `42682795964` SUCCESS.
+- Separate read-only Railway smoke `2c1384c3-7080-4921-bad7-674572ed17d0` SUCCESS after elevated migration URL disabled. No Owner, manager, employee record or production grant was created; browser Admin navigation not deployed.
