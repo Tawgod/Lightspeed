@@ -77,6 +77,10 @@ test('hidden page and sign-out clear verified proof, failed factor never authori
  h.document.hidden=true;
  documentHiddenEvent();
  assert.equal(h.window.HCAdminAuth.getProof(),null);
+ assert.match(h.element('adminAuthMessage').textContent,/verification cleared.*page/i);
+ h.document.hidden=false;
+ h.docEvents.get('visibilitychange')();
+ assert.match(h.element('adminAuthMessage').textContent,/use your Authenticator or passkey/i);
  h.handlers.get('adminSignOut:click')();
  assert.equal(h.window.HCAdminAuth.getProof(),null);
 });
