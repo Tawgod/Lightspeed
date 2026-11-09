@@ -44,3 +44,11 @@
 - Added opt-in/capability-gated admin UI panels and disposable PostgreSQL/HTTP tests to the Shared Lightspeed foundation workflow.
 - Automated Shared Lightspeed foundation `42668508441` and Scanner regression `42668509091` **SUCCESS** at final functional/test commit `ef2776400451ce219b8d93d856ced302bde77436`. Later commits are documentation-only.
 - No production or staging deployment, real Owner commissioning, live PIN/employee/permissions change, Timeclock API rollout or Chrome extension release.
+
+## 2026-11-09 — Signed-session binding for operation authorization
+
+- Removed any dependency on request-supplied employee ID for prospective exact tool-grant enforcement.
+- Require a trusted signed-session verifier callback to resolve employee identity before evaluating the Timeclock active state and exact tool permission. Deny if unavailable.
+- Expanded disposable PostgreSQL security test for signed-session binding and spoofed employee-ID denial.
+- Shared foundation CI `42669190828` and Scanner regression `42669190918` both SUCCESS at functional commit `81a78d933711836b395c0d50e2dabcb118165ee0`.
+- No deployment or production permission change.
