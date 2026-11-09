@@ -16,6 +16,7 @@ on:
       - 'staging/isolated-owner-enrollment.js'
       - 'db/hc_admin_session_policies.sql'
       - 'db/hc_admin_delegations.sql'
+      - 'db/hc_admin_onboarding_requests.sql'
       - 'tests/employee-admin-*.test.mjs'
       - 'tests/shared-staff-discord-invitation-postgres.test.mjs'
       - 'tests/shared-staff-invitation-client.test.mjs'
@@ -195,6 +196,8 @@ jobs:
         run: node --test tests/employee-admin-visibility-race.test.mjs
       - name: Employee roster privacy and no-sync Timeclock adapter
         run: node --test tests/employee-admin-directory.test.mjs tests/employee-admin-timeclock-directory-reader.test.mjs tests/employee-admin-directory-client.test.mjs
+      - name: Restricted employee onboarding request and private audit integration
+        run: node --test --test-concurrency=1 tests/employee-admin-onboarding.test.mjs
       - name: Existing backend parse check
         run: node --check server.js
       - name: Staff settings browser script parse check
