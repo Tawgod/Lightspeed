@@ -7,7 +7,9 @@ import {visibleAdminSections} from '../services/security/adminPermissionCatalog.
 // Candidate only. Never mount without trusted Timeclock identity, real enrolled
 // passkey/TOTP verification and a reviewed backend admin permission checker.
 // No employee records or configuration writes exist in this router.
-export function createEmployeeAdminRouter({adminAccess,delegations=null,resolveCapabilities=null,employeeDirectory=null,onboardingQueue=null}={}){
+export function createEmployeeAdminRouter({adminAccess,delegations=null,resolveCapabilities=null,employeeDirectory=null,onboardingQueue=null,sessionPolicyStore=null}={}){
+ if(sessionPolicyStore!==null && (typeof sessionPolicyStore?.current!=='function'||typeof sessionPolicyStore?.preview!=='function'))
+  throw new TypeError('Verified session-policy preview adapter required.');
  if(onboardingQueue!==null && (typeof onboardingQueue?.request!=='function'||typeof onboardingQueue?.ownRequests!=='function'))
   throw new TypeError('Verified onboarding workflow is required.');
  if(employeeDirectory!==null && typeof employeeDirectory?.list!=='function')
@@ -142,6 +144,24 @@ export function createEmployeeAdminRouter({adminAccess,delegations=null,resolveC
     return res.status(created.replayed?200:202).json(created);
    }catch(e){
     if(e?.status===400)return res.status(400).json({error:'Invalid onboarding intake.'});
+    return error(res,e);
+   }
+  });
+ }
+ // An optional read-only policy preview. Actual policy application is
+ // separately guarded and never exposed through this route.
+ if(sessionPolicyStore){
+  router.get('/api/session-policy',async(req,res)=>{
+   try{return res.json(await sessionPolicyStore.current({context:req}));}
+   catch(e){return error(res,e);}
+  });
+  router.post('/api/session-policy/preview',express.json({limit:'2kb',strict:true}),async(req,res)=>{
+   const body=req.body;
+   if(!body||Object.keys(body).sort().join(',')!=='policy')
+    return res.status(400).json({error:'Invalid session policy preview.'});
+   try{return res.json(await sessionPolicyStore.preview({context:req,policy:body.policy}));}
+   catch(e){
+    if(e instanceof TypeError)return res.status(400).json({error:'Session policy outside allowed limits.'});
     return error(res,e);
    }
   });
