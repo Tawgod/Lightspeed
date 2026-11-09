@@ -6,6 +6,10 @@ const css =
   '\n' +
   readFileSync(new URL('../shared-ui/core-ops-compat.css', import.meta.url), 'utf8');
 
+// setContent strips external scripts, so inject the same audited navigation source.
+const navigationSource=readFileSync(new URL('../shared-ui/operations-nav.mjs',import.meta.url),'utf8')
+  .replace(/^export /gm,'');
+
 const routes = ['special-orders', 'ordering', 'preorders', 'gw-preorders'];
 const zooms = [1, 1.25, 2];
 
@@ -21,6 +25,7 @@ try {
 
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
     await page.setContent(html, { waitUntil: 'domcontentloaded' });
+    await page.addScriptTag({content:navigationSource});
 
     for (const zoom of zooms) {
       await page.evaluate((value) => {
