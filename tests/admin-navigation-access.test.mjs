@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import {readFileSync} from 'node:fs';
-import {createAdminNavigationAccessRouter,createAdminNavigationGrantReader} from '../services/security/adminNavigationAccess.js';
+import {createAdminNavigationAccessRouter,createAdminNavigationGrantReader,verifyAdminNavigationReadOnlyDatabase} from '../services/security/adminNavigationAccess.js';
 
 test('exact admin.read grant reader is read-only, default-deny and never commissions Owner',async()=>{
  const queries=[];
@@ -23,6 +23,26 @@ test('exact admin.read grant reader is read-only, default-deny and never commiss
  assert.deepEqual(queries[0].values,['901']);
  const unavailable=createAdminNavigationGrantReader({pool:{query:async()=>{throw Error('table missing')}}});
  assert.equal(await unavailable({employeeId:'901',operation:'admin.read'}),false);
+});
+test('admin grant database preflight rejects write-capable and missing-schema credentials',async()=>{
+ const good={
+  principals_exists:true,grants_exists:true,principals_read:true,grants_read:true,
+  principals_write:false,grants_write:false,schema_write:false
+ };
+ let query;
+ const check=async values=>verifyAdminNavigationReadOnlyDatabase({pool:{query:async sql=>{
+  query=sql;return {rowCount:1,rows:[values]};
+ }}});
+ assert.equal(await check(good),true);
+ assert.match(query,/has_table_privilege/);
+ assert.match(query,/has_schema_privilege/);
+ for(const change of [
+  {principals_write:true},{grants_write:true},{schema_write:true},
+  {principals_exists:false},{grants_exists:false},
+  {principals_read:false},{grants_read:false}
+ ])assert.equal(await check({...good,...change}),false);
+ assert.equal(await verifyAdminNavigationReadOnlyDatabase({pool:{query:async()=>{throw Error('no schema')}}}),false);
+ assert.equal(await verifyAdminNavigationReadOnlyDatabase({}),false);
 });
 test('same-origin navigation route denies PIN-only spoof, inactive/invalid identity and ungranted staff',async()=>{
  let active='901',signed=true,granted=false,queries=0;
@@ -68,5 +88,6 @@ test('feature gate does not attach Admin route unless separately enabled and ded
  assert.match(server,/HC_ADMIN_GRANTS_DATABASE_URL/);
  assert.match(server,/verifyEmployee:staffAuth\.verifyEmployee/);
  assert.match(server,/hasAdminRead:createAdminNavigationGrantReader/);
+ assert.match(server,/await verifyAdminNavigationReadOnlyDatabase/);
  assert.doesNotMatch(server,/HC_ADMIN_GRANTS_DATABASE_URL\s*\|\|\s*process\.env\.DATABASE_URL/);
 });
