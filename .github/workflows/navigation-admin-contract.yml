@@ -1,0 +1,28 @@
+name: Navigation admin permission contract
+on:
+  push:
+    branches:
+      - feature/unified-hierarchical-navigation-20261109
+  pull_request:
+    paths:
+      - 'shared-ui/operations-nav.mjs'
+      - 'shared-ui/staff-auth.js'
+      - 'tests/hierarchical-navigation-admin.test.mjs'
+      - '.github/workflows/navigation-admin-contract.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify-navigation-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check JavaScript syntax
+        run: |
+          node --check shared-ui/operations-nav.mjs
+          node --check shared-ui/staff-auth.js
+      - name: Nested routes and secure conditional Admin navigation
+        run: node --test tests/hierarchical-navigation-admin.test.mjs tests/hierarchical-navigation.test.mjs tests/core-ops-navigation.test.mjs
