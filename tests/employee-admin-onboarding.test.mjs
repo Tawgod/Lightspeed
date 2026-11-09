@@ -13,11 +13,13 @@ test('delegated manager onboarding is request-only, strong-gated, private and id
  const pool=new pg.Pool({connectionString:url});
  let employeeId='902',strong=true,permitted=true;
  const gate={authorize:async({operation,requireStrong})=>{
-  if(operation!=='employees.onboard'||!permitted||(requireStrong&&!strong))
+  if((operation!=='employees.onboard'&&operation!=='employees.onboard.review')||
+      !permitted||(requireStrong&&!strong)||
+      (operation==='employees.onboard.review'&&employeeId!=='901'))
    throw Object.assign(new Error('denied'),{status:403});
   return {employeeId,method:strong?'passkey':'totp'};
  }};
- const queue=createAdminOnboardingQueue({pool,adminAccess:gate});
+ const queue=createAdminOnboardingQueue({pool,adminAccess:gate,verifyOwner:async id=>id==='901'});
  try{
   await pool.query(await readFile(new URL('../db/hc_admin_onboarding_requests.sql',import.meta.url),'utf8'));
   await pool.query('DELETE FROM hc_admin_onboarding_requests');
@@ -47,6 +49,22 @@ test('delegated manager onboarding is request-only, strong-gated, private and id
   assert.equal(mine.items[0].ownOnly,undefined);
   employeeId='903';
   assert.equal((await queue.ownRequests({context:{}})).items.length,0);
+  await assert.rejects(queue.pendingReview({context:{}}),e=>e.status===403,
+   'delegated manager cannot see all incoming onboarding requests');
+  employeeId='901';
+  const reviewQueue=await queue.pendingReview({context:{}});
+  assert.equal(reviewQueue.reviewOnly,true);
+  assert.equal(reviewQueue.items.length,1);
+  const reviewed=await queue.review({context:{},requestId:first.requestId,decision:'approve',
+   reason:'Owner approved request for separate identity provisioning'});
+  assert.equal(reviewed.status,'approved_pending_creation');
+  assert.equal(reviewed.accountCreated,false);
+  await assert.rejects(queue.review({context:{},requestId:first.requestId,decision:'approve',
+   reason:'Try duplicating review'}),e=>e.status===400);
+  assert.equal((await queue.pendingReview({context:{}})).items.length,0);
+  const totalEvents=await pool.query('SELECT count(*) AS n FROM hc_admin_onboarding_events');
+  assert.equal(Number(totalEvents.rows[0].n),2);
+  employeeId='902';
   permitted=false;
   await assert.rejects(queue.ownRequests({context:{}}),e=>e.status===403);
   await assert.rejects(pool.query('DELETE FROM hc_admin_onboarding_events'),/append-only/);
