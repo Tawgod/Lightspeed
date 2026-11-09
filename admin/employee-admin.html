@@ -39,6 +39,23 @@
   <div class="toolbar"><span id="identity"></span><div><button id="reload" type="button">Refresh settings</button><button id="adminSignOut" type="button" hidden>Sign out</button></div></div>
   <div id="notification" role="status" aria-live="polite"></div>
   <div class="grid" id="sections"></div>
+  <section id="sessionPolicyPanel" class="panel" hidden aria-labelledby="sessionPolicyTitle">
+    <h2 id="sessionPolicyTitle">Login windows — preview only</h2>
+    <p>Compare approved-computer and remote login windows. Previewing never changes a current employee session or any production setting.</p>
+    <form id="sessionPolicyForm" class="permission-form">
+      <label for="localIdle">Approved computer inactivity (minutes)</label>
+      <input id="localIdle" type="number" min="5" max="120" step="1" required>
+      <label for="localAbsolute">Approved computer maximum login (minutes)</label>
+      <input id="localAbsolute" type="number" min="15" max="720" step="1" required>
+      <label for="remoteIdle">Remote inactivity (minutes)</label>
+      <input id="remoteIdle" type="number" min="5" max="60" step="1" required>
+      <label for="remoteAbsolute">Remote maximum login (minutes)</label>
+      <input id="remoteAbsolute" type="number" min="15" max="120" step="1" required>
+      <button type="submit">Preview policy impact</button>
+    </form>
+    <p id="sessionPolicyStatus" role="status" aria-live="polite">No policy loaded.</p>
+    <div id="sessionPolicyPreview" class="settings"></div>
+  </section>
   <section id="onboardingPanel" class="panel" hidden aria-labelledby="onboardingTitle">
     <h2 id="onboardingTitle">Request a new employee</h2>
     <p>Submit the minimum details for review. This does not create a Timeclock identity, issue a PIN, or give access to any tool.</p>
