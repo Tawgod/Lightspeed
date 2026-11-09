@@ -18,6 +18,27 @@ export const toolGroups = Object.freeze([
 // Recursively flatten nested tools so any existing page can mark its location.
 const descendants=item=>[item,...(item.children||[]).flatMap(descendants)];
 export const allDestinations = toolGroups.flatMap(g=>g.items.flatMap(descendants));
+
+// Administrator navigation remains absent unless THIS origin's trusted
+// backend independently confirms the exact admin.read grant for the current
+// authenticated employee. Never trust browser sessionStorage/role labels.
+export const adminDestination=Object.freeze({
+ id:'employee-admin',label:'Employee Administration',href:'/employee-admin/'
+});
+export async function canShowAdminNavigation(fetchImpl){
+ if(typeof fetchImpl!=='function')return false;
+ try{
+  const response=await fetchImpl('/api/admin/navigation-access',{
+   method:'GET',cache:'no-store',credentials:'same-origin',
+   headers:{Accept:'application/json'}
+  });
+  if(!response?.ok)return false;
+  const result=await response.json();
+  return result?.allowed===true && result?.authenticated===true &&
+   result?.operation==='admin.read';
+ }catch{return false;}
+}
+
 function makeLink(item,current) {
   const a=document.createElement('a');
   a.href=item.href;
@@ -28,6 +49,29 @@ function makeLink(item,current) {
   if(item.beta){const tag=document.createElement('span');tag.className='hc-nav-beta';tag.textContent='Beta / Test';a.append(' ',tag);}
   return a;
 }
+export async function refreshAdminNavigation(root=document,fetchImpl=typeof fetch==='function'?fetch:null){
+ const nav=root.querySelector('.hc-operations-links');
+ if(!nav)return false;
+ // The previous link is removed before every re-check to avoid stale admin
+ // visibility after sign-out, expiry or a revoked server permission.
+ for(const node of Array.from(nav.querySelectorAll('[data-hc-admin-group]')))node.remove();
+ const epoch=String((Number(nav.dataset.adminCheckEpoch)||0)+1);
+ nav.dataset.adminCheckEpoch=epoch;
+ const allowed=await canShowAdminNavigation(fetchImpl);
+ if(!allowed||nav.dataset.adminCheckEpoch!==epoch||root.hidden)return false;
+ const group=root.createElement('details');
+ group.className='hc-operations-more hc-nav-group';
+ group.dataset.hcAdminGroup='true';
+ const summary=root.createElement('summary');
+ summary.textContent='Administration';
+ const menu=root.createElement('div');
+ menu.className='hc-operations-menu';
+ menu.append(makeLink(adminDestination,nav.dataset.currentTool));
+ group.append(summary,menu);
+ nav.append(group);
+ return true;
+}
+
 export function renderOperationsNav(root=document) {
   const target=root.querySelector('.hc-operations-links');
   if(!target)return false;
@@ -54,6 +98,9 @@ export function renderOperationsNav(root=document) {
   }
   // Every page has the full directory, but dependent tools sit under their parent.
   target.replaceChildren(fragment);
+  // The regular navigation renders immediately; admin is added only after a
+  // fresh same-origin server grant check, never from employee session claims.
+  void refreshAdminNavigation(root);
   const closeOtherMenus=e=>{
     const item=e.target.closest?.('details.hc-nav-group');
     if(!item||!e.target.matches('summary'))return;
@@ -62,6 +109,15 @@ export function renderOperationsNav(root=document) {
   if(target.dataset.navInitialized==='true')return true;
   target.dataset.navInitialized='true';
   target.addEventListener('click',closeOtherMenus);
+  if(root.addEventListener){
+    root.addEventListener('hc-staff-auth-changed',()=>{void refreshAdminNavigation(root);});
+    root.addEventListener('visibilitychange',()=>{
+      if(root.hidden){
+        for(const node of Array.from(target.querySelectorAll('[data-hc-admin-group]')))node.remove();
+        target.dataset.adminCheckEpoch=String((Number(target.dataset.adminCheckEpoch)||0)+1);
+      }else void refreshAdminNavigation(root);
+    });
+  }
   target.addEventListener('keydown',e=>{
     if(e.key==='Escape'){
       const opened=target.querySelector('details[open]');
