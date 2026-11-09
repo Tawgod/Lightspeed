@@ -9,7 +9,10 @@ test('unique verified destinations, nested dependent preorders',()=>{
  assert.equal(new Set(ids).size,ids.length);
  assert.deepEqual(ids,['special-orders','preorders','gw-preorders','ordering','toolkit','consignment']);
  const parent=toolGroups.flatMap(g=>g.items).find(x=>x.id==='special-orders');
- assert.deepEqual(parent.children.map(t=>t.id),['preorders','gw-preorders']);
+ assert.deepEqual(parent.children.map(t=>t.id),['preorders','ordering']);
+ assert.deepEqual(parent.children[0].children.map(t=>t.id),['gw-preorders']);
+ assert.equal(toolGroups.length,2);
+ assert.equal(toolGroups[0].label,'Special Orders');
  for(const t of allDestinations)assert.ok(t.href.startsWith('/')||t.href.startsWith('https://'));
  assert.equal(allDestinations.find(t=>t.id==='consignment').beta,true);
 });
@@ -33,4 +36,17 @@ test('application serves module and keyboard/focus CSS',()=>{
  assert.match(nav,/e\.key==='Escape'/);
  assert.match(nav,/noopener noreferrer/);
  assert.match(nav,/replaceChildren\(fragment\)/);
+});
+
+test('Priority Review only shows verified existing order stats, never invented incident totals',()=>{
+ const html=read('special-orders.html');
+ const client=read('special-orders-client.js');
+ assert.match(html,/id="hc-priority-title"/);
+ assert.match(html,/id="hc-priority-aging"/);
+ assert.match(html,/Old Special Orders \(30\+ days\)/);
+ assert.match(html,/Bugs &amp; system errors/);
+ assert.equal((html.match(/Not connected/g)||[]).length>=2,true);
+ assert.match(client,/s\.ordered_over_7_days/);
+ assert.match(client,/Number\.isSafeInteger\(count\)/);
+ assert.match(client,/Review data unavailable/);
 });
