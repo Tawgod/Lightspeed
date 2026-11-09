@@ -14,7 +14,7 @@ export function createEmployeeAdminRouter({adminAccess,delegations=null,resolveC
    throw new TypeError('Verified Timeclock directory adapter required.');
  if(resolveCapabilities!==null && typeof resolveCapabilities!=='function')
    throw new TypeError('Read-only administrator capability resolver must be a function.');
- if(delegations!==null && ['capabilitiesForVerifiedEmployee','listGrants','changeAdminGrant','changeGrantScope','changeSettingScope','changeEmployeeToolGrant'].some(x=>typeof delegations?.[x]!=='function'))
+ if(delegations!==null && ['capabilitiesForVerifiedEmployee','listGrants','changeAdminGrant','changeGrantScope','changeSettingScope','changeEmployeeToolGrant','listEmployeeToolGrants'].some(x=>typeof delegations?.[x]!=='function'))
    throw new TypeError('Trusted server-side delegated permissions adapter required.');
  if(typeof adminAccess?.authorize!=='function')
    throw new TypeError('Strong administrator authorization required.');
@@ -156,6 +156,12 @@ export function createEmployeeAdminRouter({adminAccess,delegations=null,resolveC
    if(!body||Object.keys(body).sort().join(',')!=='enabled,reason,settingId,targetEmployeeId')
     return res.status(400).json({error:'Invalid settings scope request.'});
    try{return res.json(await delegations.changeSettingScope({context:req,...body}));}
+   catch(e){return error(res,e);}
+  });
+  router.get('/api/employee-tool-grants/:employeeId',async(req,res)=>{
+   try{return res.json(await delegations.listEmployeeToolGrants({
+     context:req,targetEmployeeId:req.params.employeeId
+   }));}
    catch(e){return error(res,e);}
   });
   router.post('/api/employee-tool-grants',express.json({limit:'2kb',strict:true}),async(req,res)=>{
