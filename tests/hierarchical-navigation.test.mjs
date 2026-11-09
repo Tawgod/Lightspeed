@@ -38,15 +38,26 @@ test('application serves module and keyboard/focus CSS',()=>{
  assert.match(nav,/replaceChildren\(fragment\)/);
 });
 
-test('Priority Review only shows verified existing order stats, never invented incident totals',()=>{
+test('Priority Review uses authenticated read-only operational summaries and retains unknown bug coverage',()=>{
  const html=read('special-orders.html');
  const client=read('special-orders-client.js');
- assert.match(html,/id="hc-priority-title"/);
- assert.match(html,/id="hc-priority-aging"/);
- assert.match(html,/Old Special Orders \(30\+ days\)/);
- assert.match(html,/Bugs &amp; system errors/);
- assert.equal((html.match(/Not connected/g)||[]).length>=2,true);
- assert.match(client,/s\.ordered_over_7_days/);
- assert.match(client,/Number\.isSafeInteger\(count\)/);
- assert.match(client,/Review data unavailable/);
+ const backend=read('special-orders.js');
+ for(const id of ['hc-priority-title','hc-priority-old','hc-priority-aging','hc-priority-sync','hc-priority-delivery','hc-priority-source']){
+   assert.ok(html.includes('id="'+id+'"'),id);
+ }
+ assert.match(html,/Other bugs &amp; system errors/);
+ assert.match(html,/Not connected/);
+ assert.match(backend,/router\.get\('\/priority-review', requireDb/);
+ assert.match(backend,/router\.use\(async \(req, res, next\)/);
+ assert.match(backend,/status NOT IN \('COMPLETED','CANCELLED'\)/);
+ assert.match(backend,/interval '30 days'/);
+ assert.match(backend,/lightspeed_sync_status='ERROR'/);
+ assert.match(backend,/status='ERROR' AND channel IN/);
+ assert.match(backend,/application_bugs:false/);
+ assert.doesNotMatch(backend.match(/router\.get\('\/priority-review'[\s\S]*?\n  \}\);/)?.[0]||'',/\b(INSERT|UPDATE|DELETE)\b/);
+ assert.match(client,/getJson\(api\+'\/priority-review'\)/);
+ assert.match(client,/resetPriorityReview\(\)/);
+ assert.match(client,/loadPriorityReview\(\)/);
+ assert.match(client,/General application bugs not monitored here/);
+ assert.match(client,/No flags in 4 checked categories/);
 });
