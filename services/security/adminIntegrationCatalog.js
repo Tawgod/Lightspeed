@@ -5,7 +5,7 @@ import {TOOL_OPERATIONS,ADMIN_OPERATIONS} from './adminPermissionCatalog.js';
 // The owning services must separately register tested, audited adapters.
 const records=Object.freeze([
  {id:'special-orders',name:'Special Orders',navGroup:'special-orders',owner:'special-orders-test',state:'integration-pending',
-  operations:['special-orders.read','special-orders.manage'],children:['preorders','gw-preorders','ordering']},
+  operations:['special-orders.read','special-orders.manage'],children:['preorders','ordering']},
  {id:'ordering',name:'Purchasing',navGroup:'special-orders',owner:'special-orders-test',state:'integration-pending',
   operations:['ordering.read','ordering.manage']},
  {id:'preorders',name:'Preorder Campaigns',navGroup:'special-orders',owner:'special-orders-test',state:'integration-pending',
