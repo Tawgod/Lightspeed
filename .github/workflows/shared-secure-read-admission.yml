@@ -1,0 +1,31 @@
+name: Shared secure read admission contract
+on:
+  pull_request:
+    branches:
+      - feature/shared-lightspeed-services-phase2-reads-20261029
+    paths:
+      - 'services/lightspeed/secureReadPolicy.js'
+      - 'services/lightspeed/permissions.js'
+      - 'services/lightspeed/policy.js'
+      - 'services/security/staffAccessBaseline.js'
+      - 'routes/sharedLightspeedRead.js'
+      - 'tests/shared-lightspeed-secure-read.test.mjs'
+      - '.github/workflows/shared-secure-read-admission.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  secure-read:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Staff assurance and exact-operation shared read tests
+        run: node --test tests/shared-staff-security.test.mjs tests/shared-lightspeed-permissions.test.mjs tests/shared-lightspeed-secure-read.test.mjs tests/shared-lightspeed-reads.test.mjs
+      - name: Parse and direct client audit
+        run: |
+          node --check services/lightspeed/secureReadPolicy.js
+          node scripts/audit-lightspeed-consumers.mjs --check-new
