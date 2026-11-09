@@ -29,3 +29,12 @@ Connect the *existing* canonical Timeclock employee to an independently establis
 **Not implemented:** independently authorized operator/verification provider, safe evidence issuance, production DB role grants/migrations, approved real Timeclock self-verification environment, actual Owner consent/recovery procedure, passkey commissioning browser and live Google Authenticator setup.
 
 **Stop condition:** never issue or consume a commissioning authorization, or represent the real employee as Owner, until independent human verification, trusted backend adapters, secure origin, recovery plan, and explicit rollout approval are completed.
+
+
+## Independent signed attestation contract — 2026-11-09 continuation
+
+Draft PR #45 adds `services/security/firstOwnerAttestation.js` and the required `evidence_signature` database field. The verifier validates an **Ed25519 signature from a separately provisioned and approved operator public key** over the exact approval UUID, canonical Timeclock employee ID, evidence digest, operator reference, issued timestamp and expiration. The message has a fixed domain/version, stable fields and a maximum 30-minute lifetime. Expired, future, malformed, altered-employee, altered-operator and wrong-signing-key proofs fail closed. GitHub Actions [42717728513](https://github.com/Tawgod/Lightspeed/actions/runs/42717728513) **SUCCESS**.
+
+**Critical trust boundary:** A valid cryptographic signature confirms only that a configured private key signed the assertion. It does **not** independently verify human business ownership. Before an operator may issue such a signature or approval row, select a genuine independent authority, verify the owner through an approved separate process, establish custody and revocation of the operator private key, and authorize the issuance. There is deliberately **no private key, signature issuance API or identity-proofing bypass in the app**. No operator has been chosen and no live identity has been verified.
+
+The first Owner transaction still has to be integrated with real WebAuthn registration and tested with disposable PostgreSQL and read-only real Timeclock identity before any deployment. The preexisting synthetic staging environment is not permitted to issue first-real-Owner approvals.
