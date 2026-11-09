@@ -35,6 +35,28 @@ export function createAdminNavigationAccessRouter({verifyEmployee,hasAdminRead}=
  return router;
 }
 
+// Opt-in deployment preflight. The database credential must be SELECT-only:
+// a read-only query in our code is insufficient if the credential can write.
+// Missing schema, broad privileges or unavailable DB keep Admin nav disabled.
+export async function verifyAdminNavigationReadOnlyDatabase({pool}={}){
+ if(typeof pool?.query!=='function')return false;
+ try{
+  const result=await pool.query(`SELECT
+   to_regclass('hc_admin_principals') IS NOT NULL AS principals_exists,
+   to_regclass('hc_admin_grants') IS NOT NULL AS grants_exists,
+   has_table_privilege(current_user,'hc_admin_principals','SELECT') AS principals_read,
+   has_table_privilege(current_user,'hc_admin_grants','SELECT') AS grants_read,
+   has_table_privilege(current_user,'hc_admin_principals','INSERT,UPDATE,DELETE,TRUNCATE') AS principals_write,
+   has_table_privilege(current_user,'hc_admin_grants','INSERT,UPDATE,DELETE,TRUNCATE') AS grants_write,
+   has_schema_privilege(current_user,current_schema(),'CREATE') AS schema_write`);
+  const row=result.rows?.[0];
+  return result.rowCount===1&&row?.principals_exists===true&&
+   row.grants_exists===true&&row.principals_read===true&&
+   row.grants_read===true&&row.principals_write===false&&
+   row.grants_write===false&&row.schema_write===false;
+ }catch{return false;}
+}
+
 // Read-only adapter for the admin schema, which is separately provisioned.
 // Admin read must be an explicit manager grant or an independently
 // commissioned Owner principal. An unprovisioned DB/table fails closed.
