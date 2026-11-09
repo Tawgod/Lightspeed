@@ -21,6 +21,7 @@ import { initializeScannerProductReviewQueue } from './services/scannerProductRe
 import { initializeScannerTestCreation } from './services/scannerTestCreationRouter.js';
 import { createScannerIsolatedTestWriter } from './services/scannerIsolatedTestWriter.js';
 import { createStaffAuthGateway } from './services/staffAuthGateway.js';
+import { createAdminNavigationAccessRouter, createAdminNavigationGrantReader, verifyAdminNavigationReadOnlyDatabase } from './services/security/adminNavigationAccess.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -169,6 +170,19 @@ app.use('/api/work-orders', createWorkOrderCombineRouter({
   token: LIGHTSPEED_TOKEN
 }));
 
+app.get('/store-operations', (req, res) => {
+  res.set('Cache-Control','no-store');
+  res.sendFile(path.join(__dirname, 'store-operations.html'));
+});
+app.get('/shared-ui/store-operations.css', (req, res) => {
+  res.set('Cache-Control','no-store');
+  res.type('text/css').sendFile(path.join(__dirname, 'shared-ui', 'store-operations.css'));
+});
+app.get('/shared-ui/store-operations.mjs', (req, res) => {
+  res.set('Cache-Control','no-store');
+  res.type('application/javascript').sendFile(path.join(__dirname, 'shared-ui', 'store-operations.mjs'));
+});
+
 app.get('/special-orders', (req, res) => {
   res.sendFile(path.join(__dirname, 'special-orders.html'));
 });
@@ -191,6 +205,11 @@ app.get('/shared-ui/assets/hc-wordmark.webp', (req, res) => {
 app.get('/shared-ui/core-ops-compat.css', (req, res) => {
   res.set('Cache-Control','no-store');
   res.type('text/css').sendFile(path.join(__dirname, 'shared-ui', 'core-ops-compat.css'));
+});
+
+app.get('/shared-ui/operations-nav.mjs', (req, res) => {
+  res.set('Cache-Control','no-store');
+  res.type('application/javascript').sendFile(path.join(__dirname, 'shared-ui', 'operations-nav.mjs'));
 });
 
 app.get('/shared-ui/staff-auth.js', (req, res) => {
@@ -909,6 +928,33 @@ async function startServer() {
     verifyStaffEmployee=staffAuth.verifyEmployee;
     app.use('/api/staff-auth', staffAuth.router);
     console.log('[staff-auth] Timeclock PIN employee authentication enabled');
+
+    // Read-only Admin navigation hint, isolated from Admin's stronger login.
+    // Disabled by default: requires a separately provisioned admin grants DB.
+    // Missing tables or revoked grants must leave the nav link hidden.
+    if(process.env.HC_ADMIN_NAV_ENABLED==='true'){
+      const grantsUrl=process.env.HC_ADMIN_GRANTS_DATABASE_URL;
+      if(typeof grantsUrl!=='string'||grantsUrl.length<16){
+        console.warn('[admin-nav] disabled: dedicated admin grants database not configured');
+      }else{
+        const adminGrantsPool=new pg.Pool({
+          connectionString:grantsUrl,
+          ssl:process.env.HC_ADMIN_GRANTS_PGSSL==='true'?{rejectUnauthorized:false}:undefined,
+          max:3,connectionTimeoutMillis:3000,
+          statement_timeout:3000
+        });
+        if(await verifyAdminNavigationReadOnlyDatabase({pool:adminGrantsPool})){
+          app.use('/api/admin',createAdminNavigationAccessRouter({
+            verifyEmployee:staffAuth.verifyEmployee,
+            hasAdminRead:createAdminNavigationGrantReader({pool:adminGrantsPool})
+          }));
+          console.log('[admin-nav] read-only server-verified admin navigation hint enabled');
+        }else{
+          console.warn('[admin-nav] disabled: dedicated grants database must have a SELECT-only role and deployed schema');
+          await adminGrantsPool.end();
+        }
+      }
+    }
 
     const lookup=createSpecialOrdersMatchLookup({
       baseUrl:'http://127.0.0.1:'+PORT,
