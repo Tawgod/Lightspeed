@@ -79,6 +79,16 @@ test('Owner delegates onboarding and scoped tools but not private employee data 
   await delegates.changeEmployeeToolGrant({
    context,targetEmployeeId:'903',toolOperation:'products.draft',enabled:true,reason
   });
+  assert.equal(await delegates.canUseEmployeeTool({employeeId:'903',toolOperation:'products.draft'}),true);
+  assert.equal(await delegates.canUseEmployeeTool({employeeId:'903',toolOperation:'products.create'}),false);
+  assert.equal(await delegates.canUseEmployeeTool({employeeId:'999',toolOperation:'products.draft'}),false);
+  const scoped=await delegates.listEmployeeToolGrants({context,targetEmployeeId:'903'});
+  assert.deepEqual(scoped.operations,['products.draft']);
+  assert.equal(scoped.scoped,true);
+  await assert.rejects(
+   delegates.listEmployeeToolGrants({context,targetEmployeeId:'901'}),e=>e.status===403,
+   'manager cannot read Owner tool grants'
+  );
   const granted=await pool.query(
    'SELECT operation FROM hc_employee_tool_grants WHERE employee_id=903');
   assert.deepEqual(granted.rows.map(x=>x.operation),['products.draft']);
@@ -95,6 +105,9 @@ test('Owner delegates onboarding and scoped tools but not private employee data 
    e=>e.status===403,'cannot change owner permissions'
   );
   actor='901';
+  const ownerView=await delegates.listEmployeeToolGrants({context,targetEmployeeId:'903'});
+  assert.deepEqual(ownerView.operations,['products.draft']);
+  assert.equal(ownerView.scoped,undefined);
   await delegates.changeAdminGrant({
    context,targetEmployeeId:'902',operation:'admin.read',enabled:false,reason:'Owner revoked delegated admin access'
   });
