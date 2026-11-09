@@ -10,6 +10,8 @@ on:
       - 'gw-preorders.html'
       - 'server.js'
       - 'tests/hierarchical-navigation.test.mjs'
+      - 'tests/hierarchical-navigation-admin.test.mjs'
+      - 'shared-ui/staff-auth.js'
       - '.github/workflows/hierarchical-navigation.yml'
   push:
     branches: ['feature/unified-hierarchical-navigation-20261109']
@@ -22,4 +24,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --test tests/hierarchical-navigation.test.mjs tests/core-ops-navigation.test.mjs
+      - run: node --test tests/hierarchical-navigation.test.mjs tests/hierarchical-navigation-admin.test.mjs tests/core-ops-navigation.test.mjs
