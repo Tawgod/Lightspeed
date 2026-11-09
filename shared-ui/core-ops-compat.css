@@ -115,3 +115,29 @@
 .hc-ui .panel>h2:first-child{padding:8px 10px;border-left:4px solid #286fa7;background:#dce9f5;border-radius:5px}
 @media(max-width:980px){.hc-ui .hc-operations-links{order:3;width:100%}.hc-ui .hc-operations-auth{margin-left:0}}
 @media(max-width:760px){.hc-ui .hc-operations-nav{margin:-12px -12px 14px;padding:10px 12px}.hc-ui .hc-operations-brand img{width:130px}.hc-ui .hc-operations-links{gap:5px}.hc-ui .hc-operations-links>a{flex:1 1 auto;justify-content:center}.hc-ui .hc-operations-more{flex:1 1 100%}.hc-ui .hc-operations-more summary{justify-content:center}.hc-ui .hc-operations-menu{left:0;right:0;min-width:0}.hc-ui .hc-operations-auth{width:100%}}
+
+/* One grouped directory on every core-operations page. Dependencies nest under parents. */
+.hc-ui .hc-operations-links .hc-nav-group{position:relative}
+.hc-ui .hc-operations-links .hc-nav-group>summary{border-color:#547696}
+.hc-ui .hc-operations-links .hc-nav-current-group>summary{background:#205786;color:#fff;border-color:#5b8fbe}
+.hc-ui .hc-operations-links .hc-nav-group[open]>summary{background:#21496f}
+.hc-ui .hc-operations-links .hc-nav-group .hc-operations-menu{
+  display:grid;gap:2px;min-width:235px;max-width:min(340px,90vw);
+}
+.hc-ui .hc-operations-links .hc-nav-group .hc-operations-menu a{
+  white-space:normal;min-height:42px;text-align:left;
+}
+.hc-ui .hc-operations-links .hc-nav-child{
+  margin-left:13px;border-left:2px solid #6389b0!important;
+  padding-left:15px!important;font-size:.88rem;
+}
+.hc-ui .hc-operations-links .hc-nav-child::before{content:'↳ ';color:#bcd5f2}
+.hc-ui .hc-operations-links .hc-operations-menu [aria-current="page"]{
+  background:var(--hc-primary);color:#fff;
+}
+.hc-ui .hc-operations-links .hc-operations-menu a:focus-visible{outline-offset:0}
+@media(max-width:760px){
+  .hc-ui .hc-operations-links .hc-nav-group{flex:1 1 100%}
+  .hc-ui .hc-operations-links .hc-nav-group>summary{justify-content:center}
+  .hc-ui .hc-operations-links .hc-nav-group .hc-operations-menu{max-width:none;min-width:0;left:0;right:0}
+}
