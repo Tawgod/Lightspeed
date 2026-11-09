@@ -56,21 +56,21 @@ export function createCanonicalStaffFactorSession({
 // uncommissioned independent approver. Startup must reject missing callbacks
 // rather than falling back to a PIN or browser Owner claim.
 export function createCanonicalStaffFactorApprovalPolicy({
-  verifyStrongApprover,canApproveEnrollment,canRecoverFactor
+  verifyStrongApprover,canApproveEnrollment,canRecoverFactor,now=()=>Date.now()
 }={}) {
-  if([verifyStrongApprover,canApproveEnrollment,canRecoverFactor]
+  if([verifyStrongApprover,canApproveEnrollment,canRecoverFactor,now]
        .some(fn=>typeof fn!=='function'))
     throw new TypeError('Strong independently verified manager and exact approval grants required.');
   return Object.freeze({
     verifyStrongApprover:async context=>{
       let manager;
       try{manager=await verifyStrongApprover(context);}catch{throw forbidden();}
-      const id=String(manager?.id??''),now=Date.now();
-      if(manager?.active!==true||!ID.test(id)||
+      const id=String(manager?.id??''),instant=now();
+      if(!Number.isSafeInteger(instant)||instant<0||manager?.active!==true||!ID.test(id)||
          !['passkey','security-key','oidc-mfa'].includes(manager.method)||
          !Number.isSafeInteger(manager.authenticatedAtMs)||
-         manager.authenticatedAtMs>now||
-         manager.authenticatedAtMs<=now-5*60_000)throw forbidden();
+         manager.authenticatedAtMs>instant||
+         manager.authenticatedAtMs<=instant-5*60_000)throw forbidden();
       return Object.freeze({
         id,active:true,method:manager.method,
         authenticatedAtMs:manager.authenticatedAtMs
