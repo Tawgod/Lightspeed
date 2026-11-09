@@ -41,18 +41,28 @@
   </div>
   <div class="hc-priority-items" role="list">
     <div role="listitem" class="hc-priority-item">
-      <div><strong>Orders waiting over 7 days</strong><p>Previously ordered items that may need supplier follow-up.</p></div>
-      <div class="hc-priority-action"><strong id="hc-priority-aging" aria-live="polite">—</strong><a href="#orders">Review orders</a></div>
+      <div><strong>Old open orders (30+ days)</strong><p>Open items created at least 30 days ago; review outstanding customer requests.</p></div>
+      <div class="hc-priority-action"><strong id="hc-priority-old" aria-live="polite">—</strong><a href="#orders">Review orders</a></div>
     </div>
     <div role="listitem" class="hc-priority-item">
-      <div><strong>Old Special Orders (30+ days)</strong><p>Individual aging-order review requires a verified open-order age feed.</p></div>
-      <span class="hc-priority-unavailable">Not connected</span>
+      <div><strong>Ordered over 7 days</strong><p>Supplier follow-up may be required; excludes items without an ordered timestamp.</p></div>
+      <div class="hc-priority-action"><strong id="hc-priority-aging" aria-live="polite">—</strong><a href="#orders" id="hc-priority-attention-link">Filter orders</a></div>
     </div>
     <div role="listitem" class="hc-priority-item">
-      <div><strong>Bugs &amp; system errors</strong><p>Requires an authenticated, sanitized operational incident source.</p></div>
+      <div><strong>Lightspeed supplier sync failures</strong><p>Supplier orders reporting an error when synchronizing.</p></div>
+      <div class="hc-priority-action"><strong id="hc-priority-sync" aria-live="polite">—</strong><a href="/ordering">Open Ordering</a></div>
+    </div>
+    <div role="listitem" class="hc-priority-item">
+      <div><strong>Customer delivery failures</strong><p>Failed queued notification deliveries; investigate before retrying.</p></div>
+      <div class="hc-priority-action"><strong id="hc-priority-delivery" aria-live="polite">—</strong><a href="/ordering#deliveryQueue">Review delivery queue</a></div>
+    </div>
+    <div role="listitem" class="hc-priority-item">
+      <div><strong>Other bugs &amp; system errors</strong><p>General application incident monitoring is not connected to this panel yet.</p></div>
       <span class="hc-priority-unavailable">Not connected</span>
     </div>
   </div>
+  <p id="hc-priority-source" class="hc-muted" role="status">Sign in to load operational review counts.</p>
+
 </section>
 <div class="panel">
   <h2>New Special Order</h2>
