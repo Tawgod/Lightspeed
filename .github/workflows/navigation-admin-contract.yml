@@ -9,6 +9,8 @@ on:
       - 'shared-ui/staff-auth.js'
       - 'tests/hierarchical-navigation-admin.test.mjs'
       - 'tests/admin-navigation-access.test.mjs'
+      - 'tests/admin-navigation-postgres.test.mjs'
+      - 'tests/fixtures/admin-navigation-grants-ci.sql'
       - 'services/security/adminNavigationAccess.js'
       - 'server.js'
       - '.github/workflows/navigation-admin-contract.yml'
@@ -18,6 +20,22 @@ permissions:
 jobs:
   verify-navigation-contract:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: hc_test
+          POSTGRES_PASSWORD: hc_test
+          POSTGRES_DB: hc_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hc_test -d hc_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      HC_TEST_DATABASE_URL: postgres://hc_test:hc_test@127.0.0.1:5432/hc_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -31,3 +49,5 @@ jobs:
           node --check shared-ui/staff-auth.js
       - name: Nested routes and secure conditional Admin navigation
         run: node --test tests/hierarchical-navigation-admin.test.mjs tests/admin-navigation-access.test.mjs tests/hierarchical-navigation.test.mjs tests/core-ops-navigation.test.mjs
+      - name: Real disposable PostgreSQL owner, manager, staff and revocation
+        run: node --test tests/admin-navigation-postgres.test.mjs
