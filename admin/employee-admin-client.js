@@ -149,6 +149,52 @@
      container.append(card);
    }
  }
+ async function loadOnboardingReview(epoch){
+   const response=await fetchAdmin('/employee-admin/api/onboarding/review');
+   if(epoch!==viewEpoch||document.hidden||!auth()?.getProof?.())return;
+   if(response?.reviewOnly!==true||!Array.isArray(response.items))
+     throw Error('Onboarding review list unavailable.');
+   const list=$('onboardingReviewList');list.replaceChildren();
+   for(const item of response.items){
+     if(!item||typeof item.requestId!=='string'||
+        !/^[0-9a-f-]{36}$/i.test(item.requestId)||
+        typeof item.name!=='string'||typeof item.requestedRole!=='string')continue;
+     const row=make('form','','setting');
+     const details=make('div','');
+     details.append(make('strong',item.name),make('small','Proposed '+item.requestedRole));
+     const decision=make('select','');
+     for(const value of ['approve','reject']){
+       const option=make('option',value);
+       option.value=value;
+       decision.append(option);
+     }
+     const reason=make('input','');
+     reason.placeholder='Reason for review (8+ characters)';
+     reason.maxLength=400;
+     reason.required=true;
+     const submit=make('button','Record review');
+     submit.type='submit';
+     row.append(details,decision,reason,submit);
+     row.addEventListener('submit',async event=>{
+       event.preventDefault();
+       if(reason.value.trim().length<8){
+         $('onboardingReviewStatus').textContent='A review reason is required.';
+         return;
+       }
+       try{
+         await updateGrant('/employee-admin/api/onboarding/review',{
+           requestId:item.requestId,decision:decision.value,reason:reason.value.trim()
+         });
+         $('onboardingReviewStatus').textContent='Decision recorded. Account provisioning remains separate.';
+         await loadOnboardingReview(viewEpoch);
+       }catch{
+         $('onboardingReviewStatus').textContent='Review not accepted. Fresh Owner passkey verification may be required.';
+       }
+     });
+     list.append(row);
+   }
+   $('onboardingReviewStatus').textContent=response.items.length+' request(s) pending Owner review.';
+ }
  async function loadDirectory(epoch){
    const response=await fetchAdmin('/employee-admin/api/employees');
    if(epoch!==viewEpoch||document.hidden||!auth()?.getProof?.())return;
@@ -189,6 +235,16 @@
      $('ownerDelegationPanel').hidden=overview.role!=='owner' ||
        !overview.grantedOperations?.includes('admin.delegation.manage');
      $('toolGrantPanel').hidden=!overview.grantedOperations?.includes('permissions.manage');
+     const canReview=overview.role==='owner'&&
+       overview.grantedOperations?.includes('employees.onboard.review');
+     $('onboardingReviewPanel').hidden=!canReview;
+     if(canReview){
+       try{await loadOnboardingReview(epoch);}
+       catch{
+         if(epoch!==viewEpoch)return;
+         $('onboardingReviewStatus').textContent='No review service connected.';
+       }
+     }
      const onboardingAllowed=overview.grantedOperations?.includes('employees.onboard');
      $('onboardingPanel').hidden=!onboardingAllowed;
      if(onboardingAllowed){
@@ -244,6 +300,9 @@
    $('identity').textContent='';
    $('ownerDelegationPanel').hidden=true;
    $('toolGrantPanel').hidden=true;
+   $('onboardingReviewPanel').hidden=true;
+   $('onboardingReviewList').replaceChildren();
+   $('onboardingReviewStatus').textContent='Requests are not connected.';
    $('onboardingPanel').hidden=true;
    $('onboardingRequestList').replaceChildren();
    pendingOnboardingKey=null;
