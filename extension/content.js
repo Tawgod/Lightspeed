@@ -98,7 +98,7 @@ function ensureCustomerZipAutofill() {
         padding:'7px 10px',
         border:'1px solid #0f766e',
         borderRadius:'6px',
-        background:'#0f766e',
+        background:'#1769e9',
         color:'#fff',
         fontWeight:'700',
         cursor:'pointer'
@@ -329,8 +329,8 @@ function ensureTimeclockButton() {
     button.textContent = '🕒 Timeclock';
     Object.assign(button.style, {
       borderRadius:'7px',
-      border:'1px solid #0f172a',
-      background:'#0f766e',
+      border:'1px solid #143755',
+      background:'#1769e9',
       color:'#fff',
       fontWeight:'800',
       fontSize:'13px',
@@ -411,7 +411,7 @@ function openTimeclockOverlay() {
     position:'fixed',
     inset:'0',
     zIndex:'2147483647',
-    background:'rgba(15,23,42,.62)',
+    background:'rgba(16,44,72,.68)',
     display:'flex',
     alignItems:'center',
     justifyContent:'center',
@@ -423,7 +423,8 @@ function openTimeclockOverlay() {
     width:'min(520px, 94vw)',
     maxHeight:'88vh',
     overflowY:'auto',
-    background:'#fff',
+    background:'#f6f9fc',
+    border:'1px solid #b9cadd',
     borderRadius:'12px',
     padding:'20px',
     boxShadow:'0 20px 60px rgba(0,0,0,.4)',
@@ -441,7 +442,7 @@ function openTimeclockOverlay() {
 
   const title = document.createElement('h2');
   title.textContent = 'Hobby Corner Timeclock';
-  Object.assign(title.style, { margin:'0', fontSize:'21px', color:'#0f172a' });
+  Object.assign(title.style, { margin:'0', fontSize:'21px', color:'#153858' });
 
   const close = document.createElement('button');
   close.textContent = 'Close';
@@ -485,7 +486,7 @@ function openTimeclockOverlay() {
   Object.assign(status.style, {
     marginTop:'14px',
     padding:'14px',
-    background:'#f8fafc',
+    background:'#e3ebf3',
     border:'1px solid #e2e8f0',
     borderRadius:'8px',
     color:'#0f172a',
@@ -738,7 +739,7 @@ function openSplitOverlay(saleRef) {
     position:'fixed',
     inset:'0',
     zIndex:'2147483646',
-    background:'rgba(15,23,42,.68)',
+    background:'rgba(16,44,72,.72)',
     display:'flex',
     alignItems:'center',
     justifyContent:'center',
@@ -763,7 +764,7 @@ function openSplitOverlay(saleRef) {
     alignItems:'center',
     justifyContent:'space-between',
     padding:'10px 14px',
-    background:'#111827',
+    background:'#102c48',
     color:'#fff',
     fontFamily:'Arial,sans-serif',
     fontWeight:'700'
@@ -823,14 +824,14 @@ function openSplitOverlay(saleRef) {
       justifyContent:'center',
       padding:'30px',
       fontFamily:'Arial,sans-serif',
-      background:'#f8fafc'
+      background:'#e3ebf3'
     });
 
     const card = document.createElement('div');
     Object.assign(card.style, {
       width:'min(760px, 94%)',
       background:'#fff',
-      border:'1px solid #cbd5e1',
+      border:'1px solid #b9cadd',
       borderRadius:'10px',
       padding:'22px',
       boxShadow:'0 8px 24px rgba(15,23,42,.10)'
@@ -863,7 +864,7 @@ function openSplitOverlay(saleRef) {
       overflowY:'auto',
       border:'1px solid #e2e8f0',
       borderRadius:'8px',
-      background:'#f8fafc'
+      background:'#e3ebf3'
     });
 
     const status = document.createElement('div');
@@ -990,7 +991,7 @@ function openSplitOverlay(saleRef) {
         Object.assign(retrieve.style, {
           flex:'0 0 auto',
           padding:'8px 10px',
-          border:'1px solid #0f172a',
+          border:'1px solid #143755',
           borderRadius:'6px',
           background:'#16a34a',
           color:'#fff',
