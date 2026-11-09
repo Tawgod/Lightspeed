@@ -9,7 +9,7 @@ async function boot({directoryAllowed}={}){
  const nodes=new Map(),handlers=new Map(),requested=[];
  const mk=()=>({hidden:true,textContent:'',className:'',children:[],
   addEventListener(){},replaceChildren(){this.children=[]},
-  append(node){this.children.push(node)}
+  append(...nodes){this.children.push(...nodes)}
  });
  const get=id=>{if(!nodes.has(id))nodes.set(id,mk());return nodes.get(id)};
  const document={
