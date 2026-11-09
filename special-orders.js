@@ -2358,7 +2358,7 @@ export function createSpecialOrdersRouter({
       `);
       const counts = rows[0] || {};
       const keys = ['old_open_items','ordered_over_7_days','supplier_sync_failures','delivery_failures'];
-      if (!keys.every(key => Number.isSafeInteger(Number(counts[key])) && Number(counts[key]) >= 0)) {
+      if (!keys.every(key => counts[key] !== null && counts[key] !== undefined && Number.isSafeInteger(Number(counts[key])) && Number(counts[key]) >= 0)) {
         throw new Error('Priority review query returned invalid counts');
       }
       res.set('Cache-Control','no-store');
