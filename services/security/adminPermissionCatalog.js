@@ -2,7 +2,8 @@
 // delegated managers; only a verified Owner may delegate administrative grants.
 export const ADMIN_OPERATIONS=Object.freeze({
  'admin.read':{label:'Open administration',level:'entry'},
- 'employees.onboard':{label:'Invite and onboard new employees',level:'delegable'},
+ 'employees.onboard':{label:'Request new employee onboarding',level:'delegable'},
+ 'employees.onboard.review':{label:'Review employee onboarding requests',level:'owner-only'},
  'employees.directory.read':{label:'View minimum employee directory',level:'delegable'},
  'employees.private.read':{label:'View private employee information',level:'sensitive'},
  'employees.pin.reset':{label:'Assign/reset employee PIN',level:'sensitive'},
