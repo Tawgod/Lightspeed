@@ -1,0 +1,25 @@
+name: Unified hierarchical navigation
+on:
+  pull_request:
+    paths:
+      - 'shared-ui/operations-nav.mjs'
+      - 'shared-ui/core-ops-compat.css'
+      - 'special-orders.html'
+      - 'ordering.html'
+      - 'preorders.html'
+      - 'gw-preorders.html'
+      - 'server.js'
+      - 'tests/hierarchical-navigation.test.mjs'
+      - '.github/workflows/hierarchical-navigation.yml'
+  push:
+    branches: ['feature/unified-hierarchical-navigation-20261109']
+jobs:
+  navigation:
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tests/hierarchical-navigation.test.mjs tests/core-ops-navigation.test.mjs
