@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import pg from 'pg';
 import express from 'express';
-import {createAdminNavigationAccessRouter,createAdminNavigationGrantReader} from '../services/security/adminNavigationAccess.js';
+import {createAdminNavigationAccessRouter,createAdminNavigationGrantReader,verifyAdminNavigationReadOnlyDatabase} from '../services/security/adminNavigationAccess.js';
 
 const databaseUrl=process.env.HC_TEST_DATABASE_URL;
 test('disposable PostgreSQL: Owner, delegated manager, ordinary staff and revocation',{
@@ -24,6 +24,16 @@ test('disposable PostgreSQL: Owner, delegated manager, ordinary staff and revoca
   // Only inside the current transaction/session. The CI fixture mirrors the
   // source-owned table names used by the real Admin permission adapter.
   await client.query(fixture.replaceAll('CREATE TABLE','CREATE TEMP TABLE'));
+  // Exercise the startup privilege check against an actual SELECT-only
+  // PostgreSQL role, not just a mocked has_table_privilege response.
+  await client.query('CREATE ROLE hc_nav_reader_ci NOLOGIN');
+  await client.query('GRANT SELECT ON hc_admin_principals,hc_admin_grants TO hc_nav_reader_ci');
+  await client.query('SET LOCAL ROLE hc_nav_reader_ci');
+  assert.equal(await verifyAdminNavigationReadOnlyDatabase({pool:client}),true,
+   'actual read-only database principal passes startup preflight');
+  await client.query('RESET ROLE');
+  assert.equal(await verifyAdminNavigationReadOnlyDatabase({pool:client}),false,
+   'write-capable fixture database owner must be rejected');
   const grants=createAdminNavigationGrantReader({pool:client});
   const verifyEmployee=async req=>{
    if(!sessionOk||req.get('authorization')!=='Bearer signed-fixture')throw Error('Invalid signed session');
