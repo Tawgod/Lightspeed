@@ -39,6 +39,12 @@
   <div class="toolbar"><span id="identity"></span><div><button id="reload" type="button">Refresh settings</button><button id="adminSignOut" type="button" hidden>Sign out</button></div></div>
   <div id="notification" role="status" aria-live="polite"></div>
   <div class="grid" id="sections"></div>
+  <section id="employeeDirectoryPanel" class="panel" hidden aria-labelledby="employeeDirectoryTitle">
+    <h2 id="employeeDirectoryTitle">Employee directory</h2>
+    <p>Minimum Timeclock identity details only. Private employee information requires a separate permission.</p>
+    <p id="employeeDirectoryStatus" role="status" aria-live="polite">Not connected.</p>
+    <div id="employeeDirectoryList" class="settings"></div>
+  </section>
   <section id="ownerDelegationPanel" class="panel" hidden aria-labelledby="delegationTitle">
     <h2 id="delegationTitle">Owner — delegate administration</h2>
     <p>Choose exactly what another employee can do. Granting access to this portal does not grant private employee records, PIN resets, payroll, or other sensitive permissions.</p>
