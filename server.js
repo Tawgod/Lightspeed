@@ -21,7 +21,7 @@ import { initializeScannerProductReviewQueue } from './services/scannerProductRe
 import { initializeScannerTestCreation } from './services/scannerTestCreationRouter.js';
 import { createScannerIsolatedTestWriter } from './services/scannerIsolatedTestWriter.js';
 import { createStaffAuthGateway } from './services/staffAuthGateway.js';
-import { createAdminNavigationAccessRouter, createAdminNavigationGrantReader } from './services/security/adminNavigationAccess.js';
+import { createAdminNavigationAccessRouter, createAdminNavigationGrantReader, verifyAdminNavigationReadOnlyDatabase } from './services/security/adminNavigationAccess.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -930,11 +930,16 @@ async function startServer() {
           max:3,connectionTimeoutMillis:3000,
           statement_timeout:3000
         });
-        app.use('/api/admin',createAdminNavigationAccessRouter({
-          verifyEmployee:staffAuth.verifyEmployee,
-          hasAdminRead:createAdminNavigationGrantReader({pool:adminGrantsPool})
-        }));
-        console.log('[admin-nav] read-only server-verified admin navigation hint enabled');
+        if(await verifyAdminNavigationReadOnlyDatabase({pool:adminGrantsPool})){
+          app.use('/api/admin',createAdminNavigationAccessRouter({
+            verifyEmployee:staffAuth.verifyEmployee,
+            hasAdminRead:createAdminNavigationGrantReader({pool:adminGrantsPool})
+          }));
+          console.log('[admin-nav] read-only server-verified admin navigation hint enabled');
+        }else{
+          console.warn('[admin-nav] disabled: dedicated grants database must have a SELECT-only role and deployed schema');
+          await adminGrantsPool.end();
+        }
       }
     }
 
