@@ -34,3 +34,13 @@
 - Added a hidden, capability-filtered browser employee directory listing that requests records only when the verified server grants independent directory-read access. Current synthetic staging preview does not have that grant or the adapter.
 - GitHub Actions Shared Lightspeed foundation `42665224213` and Scanner integration `42665224227` **SUCCESS** at functional/test commit `5fb9606b80cea8a63def3245c1b836cf8ae19317`.
 - No admin/Timeclock production deployment, directory data access, employee edit, permission grant, PIN reset or extension release occurred.
+
+## 2026-11-09 — Restricted onboarding, manager scopes, Owner review, policy previews
+
+- Added a minimal, permission-gated and strong-factor-required new-hire request workflow. Manager access is limited to creating/viewing the manager's own requests, without private employee roster access. Request idempotency avoids duplicate creation on retries.
+- Added a separately verified Owner-only new-hire review/decision flow; review approval does **not** provision a Timeclock/Lightspeed employee account. All requests and decisions have durable immutable audit events.
+- Added server-side exact operation checks and a scoped employee-tool permission read interface for future integration. Production tool authorizers remain untouched.
+- Added read-only local vs remote session policy preview against server-bounded rules. No settings-update endpoint is mounted, no Timeclock session TTL is changed, and no policy is deployed.
+- Added opt-in/capability-gated admin UI panels and disposable PostgreSQL/HTTP tests to the Shared Lightspeed foundation workflow.
+- Automated Shared Lightspeed foundation `42668508441` and Scanner regression `42668509091` **SUCCESS** at final functional/test commit `ef2776400451ce219b8d93d856ced302bde77436`. Later commits are documentation-only.
+- No production or staging deployment, real Owner commissioning, live PIN/employee/permissions change, Timeclock API rollout or Chrome extension release.
