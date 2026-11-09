@@ -25,3 +25,12 @@
 - Added read-only capability resolution to the admin metadata API, separating synthetic Owner preview from all real delegation mutation routes. No admin grant store, Timeclock employee writes or tool-setting writers are mounted in the preview.
 - Added denial messages, login and factor controls, URL/Origin and forged-role rejection tests, no-write HTTP tests, and browser volatile proof tests.
 - Security workflow [42293979612](https://github.com/Tawgod/Lightspeed/actions/runs/42293979612) **SUCCESS** after test-harness correction; no Railway deployment or feature flag activation.
+
+## 2026-11-09 — Minimum employee directory with Timeclock-backed privacy
+
+- Added optional employee directory API guarded by the independent `employees.directory.read` operation; `employees.private.read` controls separate private status fields. An employee with `employees.onboard` alone cannot enumerate existing employees.
+- Added a non-mutating Timeclock employee-list endpoint with backend-only admin-secret check to avoid legacy roster GET's implicit Lightspeed sync.
+- Added server-only validated Timeclock transport and minimal field projection; no raw PIN hash, Discord IDs, Lightspeed IDs or personal contact data is sent to basic directory consumers.
+- Added a hidden, capability-filtered browser employee directory listing that requests records only when the verified server grants independent directory-read access. Current synthetic staging preview does not have that grant or the adapter.
+- GitHub Actions Shared Lightspeed foundation `42665224213` and Scanner integration `42665224227` **SUCCESS** at functional/test commit `5fb9606b80cea8a63def3245c1b836cf8ae19317`.
+- No admin/Timeclock production deployment, directory data access, employee edit, permission grant, PIN reset or extension release occurred.
