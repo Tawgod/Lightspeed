@@ -101,7 +101,7 @@
   try{
    if(!navigator.credentials?.get)throw Error('Passkeys unavailable.');
    const epoch=verificationEpoch;
-   const {challengeId,options}=await call('/staff-passkey/authentication/options',{method:'POST',body:{});
+   const {challengeId,options}=await call('/staff-passkey/authentication/options',{method:'POST',body:{}});
    const publicKey={
     ...options,challenge:b64bytes(options.challenge),
     allowCredentials:(options.allowCredentials||[]).map(item=>({...item,id:b64bytes(item.id)}))
