@@ -11,6 +11,9 @@ on:
       - 'server.js'
       - 'tests/hierarchical-navigation.test.mjs'
       - 'tests/hierarchical-navigation-admin.test.mjs'
+      - 'tests/admin-navigation-access.test.mjs'
+      - 'services/security/adminNavigationAccess.js'
+      - 'server.js'
       - 'shared-ui/staff-auth.js'
       - '.github/workflows/hierarchical-navigation.yml'
   push:
@@ -24,4 +27,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --test tests/hierarchical-navigation.test.mjs tests/hierarchical-navigation-admin.test.mjs tests/core-ops-navigation.test.mjs
+      - run: node --test tests/hierarchical-navigation.test.mjs tests/hierarchical-navigation-admin.test.mjs tests/admin-navigation-access.test.mjs tests/core-ops-navigation.test.mjs
