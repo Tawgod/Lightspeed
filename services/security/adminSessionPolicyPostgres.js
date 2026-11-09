@@ -1,4 +1,4 @@
-import {validateStaffSessionPolicy} from './adminSessionPolicy.js';
+import {validateStaffSessionPolicy,previewStaffSessionPolicy} from './adminSessionPolicy.js';
 
 const conflict=()=>Object.assign(new Error('Policy was updated by another administrator.'),{status:409,code:'HC_ADMIN_POLICY_CONFLICT'});
 const unavailable=()=>Object.assign(new Error('Session policy service unavailable.'),{status:503,code:'HC_ADMIN_POLICY_UNAVAILABLE'});
@@ -42,6 +42,15 @@ export function createAdminSessionPolicyStore({pool,adminAccess}={}){
    const result=await db.query('SELECT * FROM hc_admin_session_policies WHERE policy_id=1');
    if(result.rowCount!==1)throw unavailable();
    return normalize(result.rows[0]);
+  });
+ }
+ async function preview({context,policy}={}){
+  const currentState=await current({context}); // same exact read grant
+  const comparison=previewStaffSessionPolicy({current:currentState.policy,next:policy});
+  return Object.freeze({
+   currentVersion:currentState.version,changes:comparison,
+   readOnly:true,applied:false,impactsExistingSessions:false,
+   warning:'Preview only. Active Timeclock session issuance is unchanged.'
   });
  }
  async function update({context,expectedVersion,policy,reason}={}){
@@ -89,5 +98,5 @@ export function createAdminSessionPolicyStore({pool,adminAccess}={}){
    return normalize(written.rows[0]);
   });
  }
- return Object.freeze({current,update});
+ return Object.freeze({current,preview,update});
 }
