@@ -90,6 +90,54 @@
    enabled:$('toolEnabled').value==='true',
    reason:$('toolReason').value.trim()
  }));
+ // Request intake is not employee creation. Exactly the request status is
+ // visible to its submitter; the manager cannot read the employee roster.
+ let pendingOnboardingKey=null;
+ async function loadOwnOnboarding(epoch){
+   const response=await fetchAdmin('/employee-admin/api/onboarding/requests');
+   if(epoch!==viewEpoch||document.hidden||!auth()?.getProof?.())return;
+   if(response?.ownOnly!==true||!Array.isArray(response.items))throw Error('Invalid request list.');
+   const list=$('onboardingRequestList');list.replaceChildren();
+   for(const item of response.items){
+     if(typeof item?.name!=='string'||typeof item?.status!=='string')continue;
+     const row=make('div','','setting');
+     row.append(make('strong',item.name),make('span',item.status,'status'));
+     list.append(row);
+   }
+   $('onboardingMessage').textContent=response.items.length+
+     ' request(s) submitted by your employee account.';
+ }
+ $('onboardingForm').addEventListener('submit',async event=>{
+   event.preventDefault();
+   if($('onboardingPanel').hidden)return;
+   const name=$('onboardingName').value.trim(),reason=$('onboardingReason').value.trim();
+   if(name.length<2||name.length>120||reason.length<8||reason.length>400){
+     $('onboardingMessage').textContent='Enter a valid name and a reason of at least eight characters.';
+     return;
+   }
+   if(!pendingOnboardingKey){
+     if(typeof crypto?.randomUUID!=='function'){
+       $('onboardingMessage').textContent='Secure request identifier unavailable.';
+       return;
+     }
+     pendingOnboardingKey=crypto.randomUUID();
+   }
+   const payload={
+     requestKey:pendingOnboardingKey,name,
+     requestedRole:$('onboardingRole').value,reason
+   };
+   $('onboardingMessage').textContent='Submitting for review (no employee account created)…';
+   try{
+     await updateGrant('/employee-admin/api/onboarding/requests',payload);
+     pendingOnboardingKey=null;
+     $('onboardingName').value='';
+     $('onboardingReason').value='';
+     $('onboardingMessage').textContent='Request accepted for review. No employee account or PIN was created.';
+     await loadOwnOnboarding(viewEpoch);
+   }catch{
+     $('onboardingMessage').textContent='Request was not confirmed. You may retry the same request without creating a duplicate.';
+   }
+ });
  function showCards(sectionAccess){
    const container=$('sections');
    container.replaceChildren();
@@ -141,6 +189,15 @@
      $('ownerDelegationPanel').hidden=overview.role!=='owner' ||
        !overview.grantedOperations?.includes('admin.delegation.manage');
      $('toolGrantPanel').hidden=!overview.grantedOperations?.includes('permissions.manage');
+     const onboardingAllowed=overview.grantedOperations?.includes('employees.onboard');
+     $('onboardingPanel').hidden=!onboardingAllowed;
+     if(onboardingAllowed){
+       try{await loadOwnOnboarding(epoch);}
+       catch{
+         if(epoch!==viewEpoch)return;
+         $('onboardingMessage').textContent='Onboarding requests are not connected or unavailable.';
+       }
+     }
      const directoryAllowed=overview.grantedOperations?.includes('employees.directory.read');
      $('employeeDirectoryPanel').hidden=!directoryAllowed;
      if(directoryAllowed){
@@ -187,6 +244,9 @@
    $('identity').textContent='';
    $('ownerDelegationPanel').hidden=true;
    $('toolGrantPanel').hidden=true;
+   $('onboardingPanel').hidden=true;
+   $('onboardingRequestList').replaceChildren();
+   pendingOnboardingKey=null;
    $('employeeDirectoryPanel').hidden=true;
    $('employeeDirectoryList').replaceChildren();
    $('employeeDirectoryStatus').textContent='Not connected.';
