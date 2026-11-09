@@ -1,0 +1,27 @@
+name: First real Owner commissioning contract
+on:
+  pull_request:
+    branches:
+      - feature/primary-owner-enrollment-preflight-20261109
+    paths:
+      - 'services/security/firstOwnerCommissioning.js'
+      - 'db/hc_owner_commissioning.sql'
+      - 'tests/first-owner-commissioning.test.mjs'
+      - '.github/workflows/first-owner-commissioning.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  first-owner:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install test dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Owner commissioning and inherited enrollment admission regressions
+        run: node --test tests/first-owner-commissioning.test.mjs tests/independent-primary-enrollment-approval.test.mjs tests/primary-timeclock-totp-subsystem.test.mjs tests/primary-live-totp-enrollment-gate.test.mjs
+      - name: Syntax checks
+        run: node --check services/security/firstOwnerCommissioning.js
