@@ -49,7 +49,7 @@ test('policy preview is read-only, exact grant checked, and unavailable when ada
   assert.equal((await post({policy:next,extra:true})).status,400);
   assert.equal((await fetch(root,{method:'PATCH'})).status,404);
   assert.equal(writes,0);
-  assert.equal(reads,2);
+  assert.equal(reads,3,'invalid previews still authenticate and read current policy before rejecting');
   assert.equal((await fetch('http://127.0.0.1:'+offServer.address().port+'/admin/api/session-policy')).status,404);
  }finally{
   await new Promise(resolve=>server.close(resolve));
