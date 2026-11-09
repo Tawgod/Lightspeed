@@ -141,3 +141,17 @@
   .hc-ui .hc-operations-links .hc-nav-group>summary{justify-content:center}
   .hc-ui .hc-operations-links .hc-nav-group .hc-operations-menu{max-width:none;min-width:0;left:0;right:0}
 }
+
+/* SO priority review: truthful status, no fabricated incident counts. */
+.hc-ui .hc-priority-review{border-color:#d3a7a7;background:var(--hc-surface);margin:16px 0}
+.hc-ui .hc-priority-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 14px;background:linear-gradient(105deg,#fcebed,#eff5fb);border-radius:8px}
+.hc-ui .hc-priority-heading h2{margin:0;color:#833038}
+.hc-ui .hc-priority-heading p{margin:3px 0 0}
+.hc-ui .hc-priority-count{display:inline-flex;min-height:34px;align-items:center;padding:5px 11px;border-radius:16px;background:#fff2e9;color:#82371b;font-weight:700;border:1px solid #efc4ac}
+.hc-ui .hc-priority-items{display:grid;gap:8px;margin-top:12px}
+.hc-ui .hc-priority-item{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;background:#f0f5fb;border:1px solid #cedae7;border-radius:8px;padding:12px 14px}
+.hc-ui .hc-priority-item p{margin:3px 0 0;color:var(--hc-muted)}
+.hc-ui .hc-priority-action{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.hc-ui .hc-priority-action>a{color:#1355a3;font-weight:700}
+.hc-ui .hc-priority-unavailable{color:#4a5e76;background:#e1e9f2;border-radius:20px;padding:5px 10px;font-size:.82rem;white-space:nowrap}
+.hc-ui .hc-operations-links .hc-nav-child[data-depth="2"]{margin-left:26px;border-left-color:#93b5d6!important}
