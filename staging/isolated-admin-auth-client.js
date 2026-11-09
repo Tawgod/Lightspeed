@@ -3,8 +3,8 @@
 (() => {
  'use strict';
  const $=id=>document.getElementById(id);
- let base=null,factor=null,expiry=0,mode=null,busy=false;
- const clearFactor=()=>{factor=null;expiry=0;mode=null;};
+ let base=null,factor=null,expiry=0,mode=null,busy=false,verificationEpoch=0;
+ const clearFactor=()=>{verificationEpoch++;factor=null;expiry=0;mode=null;};
  const status=message=>{$('adminAuthMessage').textContent=message;};
  function update(){
   const signed=Boolean(base?.token);
@@ -47,12 +47,13 @@
   for(const byte of new Uint8Array(value))bytes+=String.fromCharCode(byte);
   return btoa(bytes).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
  };
- async function verified(result,type){
+ async function verified(result,type,epoch){
   if(typeof result?.token!=='string'||result.token.length>2500||
     !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(result.token)||
     !Number.isSafeInteger(result.expiresIn)||
     result.expiresIn<1||result.expiresIn>300)
    throw Error('Unrecognized verification proof.');
+  if(epoch!==verificationEpoch||document.hidden)throw Error('Verification was cleared when the page was left.');
   factor=result.token;
   expiry=Date.now()+result.expiresIn*1000;
   mode=type;
@@ -88,8 +89,9 @@
   if(!/^\d{6}$/.test(code)){status('Enter a valid six-digit code.');return;}
   busy=true;clearFactor();
   try{
+   const epoch=verificationEpoch;
    const data=await call('/staff-security/api/mfa/session',{method:'POST',body:{code}});
-   await verified(data,'totp');
+   await verified(data,'totp',epoch);
   }catch{status('Authenticator verification was not accepted.');}
   finally{busy=false;update();}
  });
@@ -98,7 +100,8 @@
   busy=true;clearFactor();
   try{
    if(!navigator.credentials?.get)throw Error('Passkeys unavailable.');
-   const {challengeId,options}=await call('/staff-passkey/authentication/options',{method:'POST',body:{}});
+   const epoch=verificationEpoch;
+   const {challengeId,options}=await call('/staff-passkey/authentication/options',{method:'POST',body:{});
    const publicKey={
     ...options,challenge:b64bytes(options.challenge),
     allowCredentials:(options.allowCredentials||[]).map(item=>({...item,id:b64bytes(item.id)}))
@@ -118,15 +121,22 @@
    const data=await call('/staff-passkey/authentication/verify',{
     method:'POST',body:{challengeId,response}
    });
-   await verified(data,'passkey');
+   await verified(data,'passkey',epoch);
   }catch{status('Passkey verification was not accepted.');}
   finally{busy=false;update();}
  });
  $('adminSignOut').addEventListener('click',()=>{clear();status('Signed out.');});
  document.addEventListener('visibilitychange',()=>{
   if(document.hidden){
+   const wasVerified=Boolean(factor);
    clearFactor();
+   $('adminTestCode').value='';
+   status(wasVerified
+    ?'Admin verification cleared when you left the page. Verify your Authenticator or passkey again.'
+    :'Admin verification is not active. Verify again to open the dashboard.');
    window.dispatchEvent(new Event('hc-admin-signed-out'));
+  } else if(base?.token&&!factor){
+   status('Admin verification is not active. Use your Authenticator or passkey to return to the dashboard.');
   }
  });
  window.addEventListener('pagehide',clear);
