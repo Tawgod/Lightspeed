@@ -1,4 +1,3 @@
-import {randomUUID} from 'node:crypto';
 const id=/^[1-9][0-9]{0,17}$/;
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const deny=()=>Object.assign(new Error('Employee onboarding permission denied.'),{status:403,code:'HC_ONBOARD_DENIED'});
@@ -52,7 +51,17 @@ export function createAdminOnboardingQueue({pool,adminAccess}={}){
       (request_key,requested_by,employee_name,requested_role,reason)
      VALUES($1,$2,$3,$4,$5) ON CONFLICT (request_key) DO NOTHING RETURNING *`,
     [requestKey,employeeId,cleanName,requestedRole,reason.trim()]);
-   if(inserted.rowCount!==1)throw bad();
+   if(inserted.rowCount!==1){
+    // Another request with the same key may have committed while we waited
+    // on the uniqueness constraint. Reconcile instead of reporting a
+    // misleading failure or creating a second entry.
+    const raced=await db.query('SELECT * FROM hc_admin_onboarding_requests WHERE request_key=$1',[requestKey]);
+    const other=raced.rows?.[0];
+    if(other && String(other.requested_by)===employeeId &&
+       other.employee_name===cleanName && other.requested_role===requestedRole &&
+       other.reason===reason.trim())return Object.freeze({...statusResult(other),replayed:true});
+    throw bad();
+   }
    const row=inserted.rows[0];
    await db.query(
     `INSERT INTO hc_admin_onboarding_events(request_id,actor_employee_id,action,reason)
