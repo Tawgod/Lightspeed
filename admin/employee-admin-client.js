@@ -2,6 +2,7 @@
  'use strict';
  const $=id=>document.getElementById(id);
  const auth=()=>window.HCAdminAuth;
+ let viewEpoch=0;
  const sections=Object.freeze([
   {key:'employees',label:'Employees'},{key:'security',label:'Security'},
   {key:'devices',label:'Verified Computers'},{key:'timeclock',label:'Timeclock'},
@@ -101,10 +102,12 @@
    }
  }
  async function load(){
+   const epoch=++viewEpoch;
    $('notification').textContent='Checking administrator access…';
    try {
      const overview=await fetchAdmin('/employee-admin/api/overview');
      const registry=await fetchAdmin('/employee-admin/api/settings');
+     if(epoch!==viewEpoch || !auth()?.getProof?.() || document.hidden)return;
      if(!overview||typeof overview.employeeId!=='string' ||
         !Array.isArray(registry.items)||registry.readOnly!==true ||
         overview.configurationWritesEnabled!==false)throw Error('Unexpected administration service response.');
@@ -132,6 +135,7 @@
      $('settingSummary').textContent=String(registry.items.length)+' registered settings and configuration areas. Read-only until owners connect approved validators and audit flows.';
      $('notification').textContent='Settings metadata loaded. No employee information or configuration values were changed.';
    }catch(error){
+     if(epoch!==viewEpoch)return;
      $('gate').hidden=false;
      $('workspace').hidden=true;
      $('notification').textContent='';
@@ -143,11 +147,16 @@
  $('reload').addEventListener('click',load);
  window.addEventListener('hc-admin-authenticated',load);
  window.addEventListener('hc-admin-signed-out',()=>{
+   ++viewEpoch;
    $('gate').hidden=false;
    $('workspace').hidden=true;
    $('settingSummary').textContent='';
    $('settingsList').replaceChildren();
    $('sections').replaceChildren();
+   $('identity').textContent='';
+   $('ownerDelegationPanel').hidden=true;
+   $('toolGrantPanel').hidden=true;
+   $('notification').textContent='';
  });
  if(auth()?.getProof)load();
 })();
