@@ -13,10 +13,10 @@ function setup(){
   });
   return elements.get(id);
  };
- const windowEvents=new Map(),docEvents=new Map(),now=2000000000000;
+ const windowEvents=new Map(),docEvents=new Map();let now=2000000000000;const emitted=[];
  const fakeWindow={
   addEventListener(name,handler){windowEvents.set(name,handler)},
-  dispatchEvent(event){const handler=windowEvents.get(event.type);if(handler)handler(event)}
+  dispatchEvent(event){emitted.push(event.type);const handler=windowEvents.get(event.type);if(handler)handler(event)}
  };
  const document={
   getElementById:element,
@@ -38,7 +38,7 @@ function setup(){
   Event:class {constructor(type){this.type=type}},
   navigator:{},console
  },{timeout:1000});
- return {element,handlers,requests,docEvents,document,window:fakeWindow,setMode:m=>mode=m};
+ return {element,handlers,requests,docEvents,document,window:fakeWindow,emitted,setMode:m=>mode=m,setNow:n=>now=n};
 }
 test('isolated admin login never grants PIN-only access; TOTP proof stays memory-only',async()=>{
  const h=setup();
@@ -60,27 +60,47 @@ test('isolated admin login never grants PIN-only access; TOTP proof stays memory
  ]);
  assert.equal(h.requests[1].options.headers.Authorization,'Bearer signed.synthetic');
 });
-test('hidden page and sign-out clear verified proof, failed factor never authorizes admin',async()=>{
+test('brief tab switch hides dashboard but retains unexpired proof for server recheck',async()=>{
  const h=setup();
  h.element('adminTestPin').value='1234';
  await h.handlers.get('adminTestSignIn:submit')({preventDefault(){}});
- h.setMode('reject');
  h.element('adminTestCode').value='123456';
  await h.handlers.get('adminTestTotp:submit')({preventDefault(){}});
- assert.equal(h.window.HCAdminAuth.getProof(),null);
- h.setMode('ok');
- h.element('adminTestCode').value='123456';
- await h.handlers.get('adminTestTotp:submit')({preventDefault(){}});
- assert.ok(h.window.HCAdminAuth.getProof());
- const documentHiddenEvent=h.docEvents.get('visibilitychange');
- // Visibility changes clear elevated proof, not the base synthetic identity.
+ const token=h.window.HCAdminAuth.getProof().factorToken;
  h.document.hidden=true;
- documentHiddenEvent();
- assert.equal(h.window.HCAdminAuth.getProof(),null);
- assert.match(h.element('adminAuthMessage').textContent,/verification cleared.*page/i);
+ h.docEvents.get('visibilitychange')();
+ assert.equal(h.window.HCAdminAuth.getProof().factorToken,token);
+ assert.equal(h.emitted.at(-1),'hc-admin-suspended');
+ h.setNow(2000000001000);
  h.document.hidden=false;
  h.docEvents.get('visibilitychange')();
- assert.match(h.element('adminAuthMessage').textContent,/use your Authenticator or passkey/i);
+ assert.equal(h.emitted.at(-1),'hc-admin-authenticated');
+ assert.match(h.element('adminAuthMessage').textContent,/checking current/i);
+ assert.equal(h.window.HCAdminAuth.getProof().factorToken,token);
  h.handlers.get('adminSignOut:click')();
  assert.equal(h.window.HCAdminAuth.getProof(),null);
+});
+test('return after five-minute proof expiry keeps PIN sign-in but requires fresh factor',async()=>{
+ const h=setup();
+ h.element('adminTestPin').value='1234';
+ await h.handlers.get('adminTestSignIn:submit')({preventDefault(){}});
+ h.element('adminTestCode').value='123456';
+ await h.handlers.get('adminTestTotp:submit')({preventDefault(){}});
+ h.document.hidden=true;h.docEvents.get('visibilitychange')();
+ h.setNow(2000000300001);
+ h.document.hidden=false;h.docEvents.get('visibilitychange')();
+ assert.equal(h.window.HCAdminAuth.getProof(),null);
+ assert.equal(h.emitted.at(-1),'hc-admin-signed-out');
+ assert.match(h.element('adminAuthMessage').textContent,/verification expired/i);
+ assert.equal(h.element('adminTestSignIn').hidden,true);
+ assert.equal(h.element('adminTestTotp').hidden,false);
+});
+test('failed second-factor check never opens admin',async()=>{
+ const h=setup();
+ h.element('adminTestPin').value='1234';
+ await h.handlers.get('adminTestSignIn:submit')({preventDefault(){}});
+ h.setMode('reject');h.element('adminTestCode').value='123456';
+ await h.handlers.get('adminTestTotp:submit')({preventDefault(){}});
+ assert.equal(h.window.HCAdminAuth.getProof(),null);
+ assert.ok(!h.emitted.includes('hc-admin-authenticated'));
 });
