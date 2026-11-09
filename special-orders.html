@@ -6,6 +6,7 @@
 <link rel="stylesheet" href="/special-orders.css">
 <link rel="stylesheet" href="/shared-ui/hc.css">
 <link rel="stylesheet" href="/shared-ui/core-ops-compat.css">
+<script type="module" src="/shared-ui/operations-nav.mjs"></script>
 </head>
 <body class="hc-ui"><div class="wrap hc-page">
     <nav class="hc-operations-nav hc-core-header" aria-label="Hobby Corner tools">
@@ -13,16 +14,7 @@
       <img src="/shared-ui/assets/hc-wordmark.webp" alt="Hobby Corner" width="174" height="48">
       <span class="hc-brand-subtitle">Store Operations</span>
     </a>
-    <div class="hc-operations-links">
-      <a href="/special-orders" aria-current="page">Special Orders</a>
-      <a href="/ordering">Ordering</a>
-      <a href="/preorders">Preorders</a>
-      <a href="/gw-preorders">GW Preorders</a>
-      <details class="hc-operations-more"><summary>More tools</summary><div class="hc-operations-menu">
-        <a href="https://consignment-beta-test.up.railway.app/consignment" target="_blank" rel="noopener noreferrer">Consignment <span class="hc-nav-beta">Beta / Test</span></a>
-        <a href="https://lightspeed-api-production-c087.up.railway.app/extension" target="_blank" rel="noopener noreferrer">Lightspeed Toolkit</a>
-      </div></details>
-    </div>
+    <div class="hc-operations-links" data-current-tool="special-orders" aria-label="All Hobby Corner tools"></div>
     <div class="hc-operations-auth" aria-label="Employee session">
       <label class="hc-header-login-label" for="employeePin">Employee PIN</label>
       <input id="employeePin" class="hc-header-pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" placeholder="4-digit PIN">
