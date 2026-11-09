@@ -1,0 +1,59 @@
+/* Consignment adapter over shared-ui/hc.css. Preserve legacy JS classes and IDs.
+   Tokens and fundamental components come exclusively from the shared UI foundation. */
+.hc-ui{--hc-ink:var(--hc-text);--hc-surface-muted:var(--hc-surface-inset);--hc-accent:var(--hc-primary);--hc-focus:#bc5700}
+.hc-ui header.hc-topbar{background:var(--hc-header);border-bottom:3px solid var(--hc-accent);padding:14px 24px}
+.hc-ui nav a{color:#eaf4ff;min-height:44px;display:inline-flex;align-items:center}
+.hc-ui nav a.active{background:var(--hc-primary)}
+.hc-ui .top{border-bottom-color:var(--hc-border)}
+.hc-ui h1,.hc-ui h2,.hc-ui h3{color:var(--hc-text)}
+.hc-ui .panel{background:var(--hc-surface);border-color:var(--hc-border);box-shadow:var(--hc-shadow)}
+.hc-ui .panel-head{background:var(--hc-surface-inset);border-bottom-color:var(--hc-border)}
+.hc-ui .panel-body{background:var(--hc-surface)}
+.hc-ui .metric{background:var(--hc-surface);border-color:var(--hc-border);border-left-color:var(--hc-primary)}
+.hc-ui .metric:nth-child(2){border-left-color:#46749f}
+.hc-ui .metric:nth-child(3){border-left-color:#8574a5}
+.hc-ui .metric:nth-child(4){border-left-color:var(--hc-accent)}
+.hc-ui .tabs,.hc-ui .controls{background:var(--hc-surface-inset);border-color:var(--hc-border)}
+.hc-ui .tab{color:#37516e}.hc-ui .tab.active{color:var(--hc-info);background:var(--hc-surface);border-bottom-color:var(--hc-primary)}
+.hc-ui .btn:not(.secondary):not(.ghost):not(.danger){background:var(--hc-primary);border-color:var(--hc-primary);color:#fff}
+.hc-ui .btn:not(.secondary):not(.ghost):not(.danger):hover:not(:disabled){background:var(--hc-primary-hover)}
+.hc-ui .btn.secondary{background:#e6eef8;border-color:#b7cbe4;color:#184273}
+.hc-ui .btn.secondary:hover:not(:disabled){background:#d3e2f4}
+.hc-ui .btn.ghost{background:transparent;color:var(--hc-info)}
+.hc-ui :is(input:not([type="checkbox"]),select,textarea){border-color:#9cb2c9;background:#fff;color:var(--hc-text)}
+.hc-ui input[type=checkbox]{accent-color:var(--hc-primary)}
+.hc-ui .field label{color:var(--hc-text)}
+.hc-ui .muted{color:var(--hc-muted)}
+.hc-ui :is(.match,.item-box,.item-card){background:var(--hc-surface-inset);border-color:var(--hc-border-subtle)}
+.hc-ui .match.best{border-left:4px solid var(--hc-primary)}
+.hc-ui .note{background:var(--hc-info-bg);border-color:#afc9e8;color:#143e78}
+.hc-ui .demo{background:var(--hc-warning-bg);border-color:#ead193;color:var(--hc-warning)}
+.hc-ui th{background:#dce9f5;color:#193d62}
+.hc-ui td{background:var(--hc-surface);border-color:var(--hc-border-subtle)}
+.hc-ui tbody tr:nth-child(even) td{background:var(--hc-surface-inset)}
+.hc-ui tr.itemrow:hover td,.hc-ui tr.itemrow.selected td{background:#e0eeff}
+.hc-ui .customer-head{background:var(--hc-surface-inset)!important;border-color:var(--hc-border)}
+.hc-ui .subhead{color:var(--hc-text);border-top-color:var(--hc-border-subtle)}
+.hc-ui .pill.FOR_SALE{background:var(--hc-success-bg);color:var(--hc-success)}
+.hc-ui .pill.PENDING_REVIEW{background:var(--hc-warning-bg);color:var(--hc-warning)}
+.hc-ui .pill.SOLD_HOLD,.hc-ui .pill.CREDIT_DUE{background:var(--hc-info-bg);color:var(--hc-info)}
+.hc-ui .warnings{background:var(--hc-warning-bg);color:var(--hc-warning)}
+.hc-ui :is(button,input,select,textarea,a):focus-visible{outline:2px solid #fff;outline-offset:2px;box-shadow:0 0 0 4px var(--hc-focus)}
+@media(prefers-reduced-motion:reduce){.hc-ui *, .hc-ui *::before,.hc-ui *::after{transition:none!important;scroll-behavior:auto!important}}
+
+
+/* Core-operations navigation coordinated with draft PR #23. */
+.hc-ui .hc-consignment-nav{flex:1 1 650px;min-width:0}
+.hc-ui .hc-consignment-links{display:flex;align-items:center;flex-wrap:wrap;justify-content:flex-end;gap:3px}
+.hc-ui .hc-consignment-links a,.hc-ui .hc-consignment-more summary{color:#eaf4ff;padding:9px 11px;min-height:44px;display:inline-flex;align-items:center;border-radius:7px;font-weight:650;font-size:13px;text-decoration:none;cursor:pointer}
+.hc-ui .hc-consignment-links a:hover,.hc-ui .hc-consignment-more summary:hover{background:#21496f}
+.hc-ui .hc-consignment-links a[aria-current=page]{background:var(--hc-primary);color:#fff}
+.hc-ui .hc-consignment-more{position:relative}
+.hc-ui .hc-consignment-more summary{list-style:none}
+.hc-ui .hc-consignment-more summary::-webkit-details-marker{display:none}
+.hc-ui .hc-consignment-more summary::after{content:" ▾"}
+.hc-ui .hc-consignment-more-content{position:absolute;right:0;top:100%;min-width:240px;background:var(--hc-nav);border:1px solid #51728d;border-radius:9px;box-shadow:var(--hc-shadow-raised);padding:7px;z-index:12}
+.hc-ui .hc-consignment-more-content a{display:flex}
+.hc-ui .hc-beta-text{font-size:11px;margin-left:4px;color:#f8d8a8}
+@media(max-width:950px){.hc-ui .hc-consignment-links{justify-content:flex-start}.hc-ui .hc-consignment-nav{flex-basis:100%}}
+@media(max-width:550px){.hc-ui .hc-consignment-links a{font-size:12px;padding:7px 8px;min-height:42px}.hc-ui .hc-consignment-more-content{right:auto;left:0}}
