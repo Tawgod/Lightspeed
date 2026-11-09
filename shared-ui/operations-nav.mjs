@@ -25,12 +25,15 @@ export const allDestinations = toolGroups.flatMap(g=>g.items.flatMap(descendants
 export const adminDestination=Object.freeze({
  id:'employee-admin',label:'Employee Administration',href:'/employee-admin/'
 });
-export async function canShowAdminNavigation(fetchImpl){
- if(typeof fetchImpl!=='function')return false;
+export async function canShowAdminNavigation(fetchImpl,staffAuth=typeof window!=='undefined'?window.HCStaffAuth:null){
+ if(typeof fetchImpl!=='function'||typeof staffAuth?.readSession!=='function'||
+    typeof staffAuth?.headers!=='function'||!staffAuth.readSession())return false;
  try{
+  const headers=staffAuth.headers({Accept:'application/json'});
+  if(typeof headers?.Authorization!=='string'||!headers.Authorization.startsWith('Bearer '))return false;
   const response=await fetchImpl('/api/admin/navigation-access',{
-   method:'GET',cache:'no-store',credentials:'same-origin',
-   headers:{Accept:'application/json'}
+   method:'GET',cache:'no-store',credentials:'omit',redirect:'error',
+   headers
   });
   if(!response?.ok)return false;
   const result=await response.json();
