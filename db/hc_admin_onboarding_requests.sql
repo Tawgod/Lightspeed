@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS hc_admin_onboarding_requests (
  employee_name text NOT NULL CHECK (length(employee_name) BETWEEN 2 AND 120),
  requested_role text NOT NULL CHECK (requested_role IN ('staff','manager')),
  reason text NOT NULL CHECK (length(reason) BETWEEN 8 AND 400),
- status text NOT NULL DEFAULT 'pending_review' CHECK (status IN ('pending_review','cancelled','completed','rejected')),
+ status text NOT NULL DEFAULT 'pending_review' CHECK (status IN ('pending_review','approved_pending_creation','cancelled','completed','rejected')),
  created_at timestamptz NOT NULL DEFAULT now(),
  updated_at timestamptz NOT NULL DEFAULT now(),
  CONSTRAINT hc_onboarding_request_identity UNIQUE (requested_by,request_key)
