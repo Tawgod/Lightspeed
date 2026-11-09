@@ -1,3 +1,4 @@
+import {installHobbyCornerNavigation} from './shared-ui/navigation.mjs';
 import {captureSupplierProductPage} from './product-scanner/page-capture.js';
 const BACKEND = 'https://lightspeed-api-production-c087.up.railway.app';
 
@@ -183,3 +184,5 @@ document.getElementById('scan-page').addEventListener('click', async () => {
     window.close();
   } catch(e){setStatus('Scanner unavailable: '+e.message);}
 });
+
+installHobbyCornerNavigation(document.getElementById('hc-shared-navigation'),{current:'toolkit'});

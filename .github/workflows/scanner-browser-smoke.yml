@@ -1,0 +1,31 @@
+name: Scanner Chrome layout acceptance (mock APIs)
+on:
+  push:
+    branches: [feature/scanner-consignment-nav-alignment-20261028]
+    paths:
+      - 'extension/**'
+      - 'tests/scannerChromeLayoutSmoke.mjs'
+      - '.github/workflows/scanner-browser-smoke.yml'
+  workflow_dispatch:
+jobs:
+  chrome-layout:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Chromium and layout harness
+        run: |
+          npm install --no-save --ignore-scripts --no-audit --no-fund playwright
+          npx playwright install --with-deps chromium
+      - name: Verify popup and scanner layout with mocked Chrome APIs
+        run: node tests/scannerChromeLayoutSmoke.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: scanner-chrome-layout-screenshots
+          path: browser-smoke-artifacts/
+          retention-days: 14
