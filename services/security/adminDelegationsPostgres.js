@@ -208,6 +208,44 @@ export function createAdminDelegations({pool,adminAccess=null,verifyTargetEmploy
    return scope.rowCount===1;
   });}catch{return false;}
  }
+ // Source-only exact operation resolver for future tool gateway adapters.
+ // A store device, employee PIN or UI role never authorizes an operation alone.
+ async function canUseEmployeeTool({employeeId:subject,toolOperation}={}){
+  const target=employeeId(subject);
+  if(!target||!allowedTools.has(toolOperation)||!(await targetIsActive(target)))return false;
+  try{return await transaction(async db=>{
+   const result=await db.query(
+    'SELECT 1 FROM hc_employee_tool_grants WHERE employee_id=$1 AND operation=$2',
+    [target,toolOperation]);
+   return result.rowCount===1;
+  });}catch{return false;}
+ }
+ async function listEmployeeToolGrants({context,targetEmployeeId}={}){
+  if(!adminAccess)throw unavailable();
+  const actor=await adminAccess.authorize({context,operation:'permissions.read'});
+  const target=employeeId(targetEmployeeId);
+  if(!target||!(await targetIsActive(target)))throw denied();
+  return transaction(async db=>{
+   const issuer=await readRole(db,actor.employeeId);
+   if(!issuer||issuer.active!==true)throw denied();
+   const subject=await readRole(db,target);
+   if(subject?.role==='owner'&&issuer.role!=='owner')throw denied();
+   const results=await db.query(
+    'SELECT operation FROM hc_employee_tool_grants WHERE employee_id=$1 ORDER BY operation',[target]);
+   if(issuer.role==='owner'){
+    return Object.freeze({employeeId:target,operations:Object.freeze(results.rows.map(x=>x.operation)),readOnly:true});
+   }
+   if(issuer.role!=='delegated_admin')throw denied();
+   const scopes=await db.query(
+    'SELECT tool_operation FROM hc_admin_grant_scopes WHERE employee_id=$1',[actor.employeeId]);
+   const allowed=new Set(scopes.rows.map(x=>x.tool_operation));
+   return Object.freeze({
+    employeeId:target,
+    operations:Object.freeze(results.rows.map(x=>x.operation).filter(op=>allowed.has(op))),
+    scoped:true,readOnly:true
+   });
+  });
+ }
  // A manager can grant ONLY the specific tool operations the Owner scoped.
  // Neither admin access nor private employee records can be granted through this route.
  async function changeEmployeeToolGrant({context,targetEmployeeId,toolOperation,enabled,reason}={}){
@@ -241,5 +279,5 @@ export function createAdminDelegations({pool,adminAccess=null,verifyTargetEmploy
    return Object.freeze({employeeId:target,toolOperation,enabled});
   });
  }
- return Object.freeze({canAdmin,capabilitiesForVerifiedEmployee,getRole,listGrants,changeAdminGrant,changeGrantScope,changeSettingScope,canManageSetting,changeEmployeeToolGrant});
+ return Object.freeze({canAdmin,capabilitiesForVerifiedEmployee,getRole,listGrants,changeAdminGrant,changeGrantScope,changeSettingScope,canManageSetting,changeEmployeeToolGrant,canUseEmployeeTool,listEmployeeToolGrants});
 }
