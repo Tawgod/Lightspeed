@@ -94,3 +94,10 @@
 - `primaryTimeclockTotpSubsystem.js` now actually binds its existing PostgreSQL approval hooks through the independent approver gate. New read-only `preflight` reports whether an authorized distinct approver exists without creating an Owner, enrolling a factor or issuing a QR.
 - GitHub Actions `42711042161` **SUCCESS** at functional SHA `2603ef4facdcd3cfc9bab43ca09119bff46e82b2` with the new policy tests and inherited candidate composition regressions.
 - **First Owner commissioning remains blocked:** no real primary employee verification, audited independent Owner identification, authorized external approver, production factor credential or recovery decision exists. Do not bypass this with the isolated synthetic Owner's self-enrollment exception. Code remains unmounted; no production deployment, live DB/employee/credential change or Chrome release.
+
+
+## 2026-11-09 — First real Owner independently authorized passkey commissioning (development)
+
+- Added draft PR #44 stacked on primary enrollment PR #43. `db/hc_owner_commissioning.sql` is an **unapplied** short-lived independent approval and append-only audit schema. `services/security/firstOwnerCommissioning.js` is an **unmounted** callback designed for the existing passkey registration transaction, verifying canonical signed Timeclock employee identity and independently issued evidence, then consuming the approval, appointing first Owner and logging audit atomically.
+- Added negative tests for expired/replayed/missing authorization, wrong/synthetic employee, unavailable DB and pre-existing Owner. GitHub Actions [42714947158](https://github.com/Tawgod/Lightspeed/actions/runs/42714947158) **SUCCESS** at source SHA `6ef9b33868e9197e6ff765bba4e8bf2eb3633829`.
+- Operator runbook `docs/FIRST_OWNER_COMMISSIONING.md` specifies separate identity proofing, DB role separation, explicit deployment authorization, recovery and live acceptance. **No independent operator verifier or approval issuance is implemented**, and no real employee account, PIN, passkey, TOTP secret, schema or Railway service was modified.
