@@ -65,6 +65,7 @@ test('staff sign-out/in refresh signal exists, no browser role shortcut',()=>{
  const source=readFileSync(new URL('../shared-ui/staff-auth.js',import.meta.url),'utf8');
  const nav=readFileSync(new URL('../shared-ui/operations-nav.mjs',import.meta.url),'utf8');
  assert.match(source,/hc-staff-auth-changed/);
+ assert.match(nav,/window\.addEventListener\('hc-staff-auth-changed'/);
  assert.match(nav,/hc-staff-auth-changed/);
  assert.doesNotMatch(nav,/sessionStorage\.(?:getItem|setItem)/);
  assert.doesNotMatch(nav,/\.role\s*===\s*['"]owner['"]/);
