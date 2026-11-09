@@ -198,6 +198,8 @@ jobs:
         run: node --test tests/employee-admin-directory.test.mjs tests/employee-admin-timeclock-directory-reader.test.mjs tests/employee-admin-directory-client.test.mjs
       - name: Restricted employee onboarding request and private audit integration
         run: node --test --test-concurrency=1 tests/employee-admin-onboarding.test.mjs
+      - name: Admin read-only session-policy preview HTTP safety
+        run: node --test tests/employee-admin-policy-preview-http.test.mjs
       - name: Existing backend parse check
         run: node --check server.js
       - name: Staff settings browser script parse check
