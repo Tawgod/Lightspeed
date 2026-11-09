@@ -20,8 +20,10 @@ test('disposable PostgreSQL: Owner, delegated manager, ordinary staff and revoca
  let server=null;
  try{
   await client.query('BEGIN');
-  await client.query('CREATE TEMP TABLE hc_admin_principals (employee_id bigint PRIMARY KEY,role text NOT NULL,active boolean NOT NULL DEFAULT true)');
-  await client.query('CREATE TEMP TABLE hc_admin_grants (employee_id bigint NOT NULL,operation text NOT NULL,PRIMARY KEY(employee_id,operation))');
+  const fixture=await readFile(new URL('./fixtures/admin-navigation-grants-ci.sql',import.meta.url),'utf8');
+  // Only inside the current transaction/session. The CI fixture mirrors the
+  // source-owned table names used by the real Admin permission adapter.
+  await client.query(fixture.replaceAll('CREATE TABLE','CREATE TEMP TABLE'));
   const grants=createAdminNavigationGrantReader({pool:client});
   const verifyEmployee=async req=>{
    if(!sessionOk||req.get('authorization')!=='Bearer signed-fixture')throw Error('Invalid signed session');
