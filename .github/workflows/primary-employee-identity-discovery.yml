@@ -24,6 +24,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Install test dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
       - name: Primary Timeclock identity and strong commissioning contracts
         run: node --test tests/primary-employee-identity-discovery.test.mjs tests/primary-employee-security-readiness.test.mjs tests/primary-timeclock-canonical-reader.test.mjs tests/primary-employee-identity-http.test.mjs
       - name: Parse contracts
