@@ -23,6 +23,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Install existing backend dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
       - name: Check JavaScript syntax
         run: |
           node --check shared-ui/operations-nav.mjs
