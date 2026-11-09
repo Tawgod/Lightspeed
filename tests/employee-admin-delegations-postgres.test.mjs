@@ -29,7 +29,8 @@ test('Owner delegates onboarding and scoped tools but not private employee data 
   canAdmin:input=>delegates.canAdmin(input),now:fresh
  });
  delegates=createAdminDelegations({pool,adminAccess:access,
-  verifyTargetEmployee:async id=>['901','902','903'].includes(id)?{id,active:true}:null
+  verifyTargetEmployee:async id=>['901','902','903'].includes(id)?{id,active:true}:null,
+  verifyToolSession:async context=>context?.signed==='server-verified-fixture-903'?{employeeId:'903'}:null
  });
  try{
   await pool.query(await readFile(new URL('../db/hc_admin_delegations.sql',import.meta.url),'utf8'));
@@ -79,9 +80,9 @@ test('Owner delegates onboarding and scoped tools but not private employee data 
   await delegates.changeEmployeeToolGrant({
    context,targetEmployeeId:'903',toolOperation:'products.draft',enabled:true,reason
   });
-  assert.equal(await delegates.canUseEmployeeTool({employeeId:'903',toolOperation:'products.draft'}),true);
-  assert.equal(await delegates.canUseEmployeeTool({employeeId:'903',toolOperation:'products.create'}),false);
-  assert.equal(await delegates.canUseEmployeeTool({employeeId:'999',toolOperation:'products.draft'}),false);
+  assert.equal(await delegates.canUseEmployeeTool({context:{signed:'server-verified-fixture-903'},toolOperation:'products.draft'}),true);
+  assert.equal(await delegates.canUseEmployeeTool({context:{signed:'server-verified-fixture-903'},toolOperation:'products.create'}),false);
+  assert.equal(await delegates.canUseEmployeeTool({context:{employeeId:'903'},toolOperation:'products.draft'}),false);
   const scoped=await delegates.listEmployeeToolGrants({context,targetEmployeeId:'903'});
   assert.deepEqual(scoped.operations,['products.draft']);
   assert.equal(scoped.scoped,true);
