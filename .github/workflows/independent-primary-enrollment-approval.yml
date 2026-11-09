@@ -1,0 +1,26 @@
+name: Independent primary Authenticator approval
+on:
+  pull_request:
+    branches:
+      - feature/primary-live-totp-enrollment-gate-20261109
+    paths:
+      - 'services/security/independentPrimaryEnrollmentApproval.js'
+      - 'tests/independent-primary-enrollment-approval.test.mjs'
+      - '.github/workflows/independent-primary-enrollment-approval.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  approval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install regression dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Independent approver, first Owner and canonical TOTP regressions
+        run: node --test tests/independent-primary-enrollment-approval.test.mjs tests/primary-live-totp-enrollment-gate.test.mjs tests/primary-timeclock-totp-subsystem.test.mjs tests/primary-timeclock-verification-wiring.test.mjs
+      - name: Check module
+        run: node --check services/security/independentPrimaryEnrollmentApproval.js
