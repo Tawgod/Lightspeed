@@ -1,0 +1,36 @@
+name: Primary employee identity discovery
+on:
+  pull_request:
+    branches:
+      - feature/primary-employee-security-readiness-20261109
+    paths:
+      - 'services/security/primaryEmployeeIdentityDiscovery.js'
+      - 'services/security/primaryTimeclockCanonicalReader.js'
+      - 'routes/primaryEmployeeIdentity.js'
+      - 'tests/primary-employee-identity-discovery.test.mjs'
+      - 'tests/primary-timeclock-canonical-reader.test.mjs'
+      - 'tests/primary-employee-identity-http.test.mjs'
+      - 'services/security/primaryEmployeeSecurityReadiness.js'
+      - 'tests/primary-employee-security-readiness.test.mjs'
+      - '.github/workflows/primary-employee-identity-discovery.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  identity-discovery:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install test dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Primary Timeclock identity and strong commissioning contracts
+        run: node --test tests/primary-employee-identity-discovery.test.mjs tests/primary-employee-security-readiness.test.mjs tests/primary-timeclock-canonical-reader.test.mjs tests/primary-employee-identity-http.test.mjs
+      - name: Parse contracts
+        run: |
+          node --check services/security/primaryEmployeeIdentityDiscovery.js
+          node --check services/security/primaryTimeclockCanonicalReader.js
+          node --check routes/primaryEmployeeIdentity.js
+          node --check services/security/primaryEmployeeSecurityReadiness.js
