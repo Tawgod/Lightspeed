@@ -325,7 +325,7 @@ async function configureAutoRefresh(){
     const r=await fetch(api+'/health');const h=await r.json();
     if(autoRefreshTimer){clearInterval(autoRefreshTimer);autoRefreshTimer=null}
     if(h.liveMode){
-      autoRefreshTimer=setInterval(()=>{if(authEmployee()||accessKey()){loadStats();loadOrders();loadSuppliers();}},60000);
+      autoRefreshTimer=setInterval(()=>{if(authEmployee()||accessKey()){loadStats();loadPriorityReview();loadOrders();loadSuppliers();}},60000);
     }
   }catch{}
 }
@@ -356,6 +356,7 @@ function setAuthState(ok,msg=''){
   const signOut=document.getElementById('signOutButton');
   if(signOut)signOut.style.display=ok&&authEmployee()?'inline-block':'none';
   renderAuthIdentity();
+  if(!ok)resetPriorityReview();
   if(msg)showNotice(msg);
 }
 async function staffSignIn(){
@@ -424,24 +425,49 @@ async function importWorkbook(){
 async function loadStats(){try{
   const s=await getJson(api+'/stats');
   for(const k of Object.keys(s))if(document.getElementById(k))document.getElementById(k).textContent=s[k];
-  const aging=document.getElementById('hc-priority-aging');
-  const total=document.getElementById('hc-priority-total');
-  // Aggregate only the existing verified "ordered_over_7_days" statistic.
-  // Other review sources are visibly not connected; do not fabricate counts.
-  if(aging&&total){
-    const count=Number(s.ordered_over_7_days);
-    if(Number.isSafeInteger(count)&&count>=0){
-      aging.textContent=String(count);
-      total.textContent=count===0?'No aged-order flags':count+' aged-order flag'+(count===1?'':'s');
-    }else{aging.textContent='Unavailable';total.textContent='Count unavailable';}
+}catch(e){showNotice(e.message)}}
+const priorityFields={
+  old_open_items:'hc-priority-old',
+  ordered_over_7_days:'hc-priority-aging',
+  supplier_sync_failures:'hc-priority-sync',
+  delivery_failures:'hc-priority-delivery'
+};
+function resetPriorityReview(message='Sign in to load operational review counts.'){
+  for(const id of Object.values(priorityFields)){
+    const element=document.getElementById(id);
+    if(element)element.textContent='—';
   }
-}catch(e){
-  const aging=document.getElementById('hc-priority-aging');
   const total=document.getElementById('hc-priority-total');
-  if(aging)aging.textContent='Unavailable';
-  if(total)total.textContent='Review data unavailable';
-  showNotice(e.message);
-}}
+  if(total)total.textContent='Unavailable';
+  const source=document.getElementById('hc-priority-source');
+  if(source)source.textContent=message;
+}
+async function loadPriorityReview(){
+  try{
+    const result=await getJson(api+'/priority-review');
+    if(!authEmployee()&&!accessKey()){resetPriorityReview();return}
+    if(result?.source!=='special-orders')throw new Error('Unexpected review source');
+    const counts=result.counts||{};
+    const values=Object.keys(priorityFields).map(key=>counts[key]);
+    if(!values.every(x=>Number.isSafeInteger(x)&&x>=0)){
+      throw new Error('Review counts unavailable');
+    }
+    for(const [key,id] of Object.entries(priorityFields)){
+      const element=document.getElementById(id);
+      if(element)element.textContent=String(counts[key]);
+    }
+    const activeCategories=values.filter(x=>x>0).length;
+    const total=document.getElementById('hc-priority-total');
+    if(total)total.textContent=activeCategories===0?'No flags in 4 checked categories':activeCategories+' categories need review';
+    const source=document.getElementById('hc-priority-source');
+    if(source){
+      const stamp=new Date(result.as_of);
+      source.textContent='Special Orders records · Last checked: '+
+        (Number.isFinite(stamp.getTime())?stamp.toLocaleString():'time unavailable')+
+        ' · General application bugs not monitored here.';
+    }
+  }catch(e){resetPriorityReview('Operational review source unavailable. Try refreshing after sign-in.')}
+}
 async function loadOrders(){try{
   const p=new URLSearchParams();
   const st=document.getElementById('statusFilter').value;if(st)p.set('status',st);
@@ -1724,7 +1750,7 @@ async function loadGwCampaign(){
   }catch(e){status.textContent='GW campaign load failed: '+e.message}
 }
 
-async function loadAll(){await Promise.allSettled([loadStats(),loadOrders(),loadSuppliers(),loadBrands(),loadDepartments(),loadProductCategories(),loadPreorders(),loadProductReconcileStatus(),loadGwCampaigns()])}
+async function loadAll(){await Promise.allSettled([loadStats(),loadPriorityReview(),loadOrders(),loadSuppliers(),loadBrands(),loadDepartments(),loadProductCategories(),loadPreorders(),loadProductReconcileStatus(),loadGwCampaigns()])}
 document.addEventListener('input',e=>{if(orderDraftIds.includes(e.target.id)||productDraftIds.includes(e.target.id))saveDrafts()});
 document.addEventListener('change',e=>{if(orderDraftIds.includes(e.target.id)||productDraftIds.includes(e.target.id)||e.target.id==='newSuppliers')saveDrafts()});
 async function initializeAuth(){
@@ -1739,5 +1765,9 @@ async function initializeAuth(){
   }
   showNotice('Special Orders is locked. Sign in with your Timeclock PIN in the header.');
 }
+document.getElementById('hc-priority-attention-link')?.addEventListener('click',()=>{
+  const attention=document.getElementById('attention');
+  if(attention){attention.checked=true;loadOrders();}
+});
 document.getElementById('employeePin')?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();staffSignIn()}});
 initializeAuth();
