@@ -1,0 +1,29 @@
+name: Primary Timeclock Authenticator enrollment gate
+on:
+  pull_request:
+    branches:
+      - feature/primary-timeclock-verification-wiring-20261109
+    paths:
+      - 'services/security/primaryLiveTotpEnrollmentGate.js'
+      - 'services/security/primaryTimeclockTotpSubsystem.js'
+      - 'tests/primary-live-totp-enrollment-gate.test.mjs'
+      - 'tests/primary-timeclock-totp-subsystem.test.mjs'
+      - '.github/workflows/primary-live-totp-enrollment-gate.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  primary-factor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Canonical Timeclock and durable enrollment admission regressions
+        run: node --test tests/primary-timeclock-totp-subsystem.test.mjs tests/primary-live-totp-enrollment-gate.test.mjs tests/primary-timeclock-verification-wiring.test.mjs tests/primary-timeclock-canonical-reader.test.mjs tests/shared-staff-mfa.test.mjs tests/shared-staff-security.test.mjs
+      - name: Code syntax checks
+        run: |
+          node --check services/security/primaryLiveTotpEnrollmentGate.js
+          node --check services/security/primaryTimeclockTotpSubsystem.js
