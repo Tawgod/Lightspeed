@@ -1,0 +1,40 @@
+name: Avery Label UI Regression
+on:
+  push:
+    branches:
+      - feature/labels-shared-ui-reconciled-20261028
+  pull_request:
+    paths:
+      - index.html
+      - server.js
+      - shared-ui/**
+      - Templates/**
+      - tests/labelSharedUi.test.mjs
+      - tests/labelBrowserSmoke.mjs
+      - tests/labelPdfSmoke.mjs
+      - .github/workflows/label-ui-regression.yml
+jobs:
+  label-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify label UI and Avery print contracts
+        run: node --test tests/labelSharedUi.test.mjs
+      - name: Install Chromium test runner
+        run: npm install --no-save --ignore-scripts playwright
+      - name: Install browser
+        run: npx playwright install chromium
+      - name: Run browser acceptance smoke
+        run: node tests/labelBrowserSmoke.mjs
+      - name: Generate representative Avery PDFs against actual label API
+        run: node tests/labelPdfSmoke.mjs
+      - name: Archive synthetic PDF test samples
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: avery-5960-synthetic-pdf-samples
+          path: label-pdf-artifacts/*.pdf
+          if-no-files-found: ignore
