@@ -325,7 +325,7 @@ async function configureAutoRefresh(){
     const r=await fetch(api+'/health');const h=await r.json();
     if(autoRefreshTimer){clearInterval(autoRefreshTimer);autoRefreshTimer=null}
     if(h.liveMode){
-      autoRefreshTimer=setInterval(()=>{if(authEmployee()||accessKey()){loadStats();loadPriorityReview();loadOrders();loadSuppliers();}},60000);
+      autoRefreshTimer=setInterval(()=>{if(authEmployee()||accessKey()){loadStats();loadOrders();loadSuppliers();}},60000);
     }
   }catch{}
 }
@@ -425,7 +425,8 @@ async function importWorkbook(){
 async function loadStats(){try{
   const s=await getJson(api+'/stats');
   for(const k of Object.keys(s))if(document.getElementById(k))document.getElementById(k).textContent=s[k];
-}catch(e){showNotice(e.message)}}
+}catch(e){showNotice(e.message)}
+finally{await loadPriorityReview();}}
 const priorityFields={
   old_open_items:'hc-priority-old',
   ordered_over_7_days:'hc-priority-aging',
@@ -1750,7 +1751,7 @@ async function loadGwCampaign(){
   }catch(e){status.textContent='GW campaign load failed: '+e.message}
 }
 
-async function loadAll(){await Promise.allSettled([loadStats(),loadPriorityReview(),loadOrders(),loadSuppliers(),loadBrands(),loadDepartments(),loadProductCategories(),loadPreorders(),loadProductReconcileStatus(),loadGwCampaigns()])}
+async function loadAll(){await Promise.allSettled([loadStats(),loadOrders(),loadSuppliers(),loadBrands(),loadDepartments(),loadProductCategories(),loadPreorders(),loadProductReconcileStatus(),loadGwCampaigns()])}
 document.addEventListener('input',e=>{if(orderDraftIds.includes(e.target.id)||productDraftIds.includes(e.target.id))saveDrafts()});
 document.addEventListener('change',e=>{if(orderDraftIds.includes(e.target.id)||productDraftIds.includes(e.target.id)||e.target.id==='newSuppliers')saveDrafts()});
 async function initializeAuth(){
