@@ -194,7 +194,7 @@ jobs:
       - name: Admin visibility reentry and late network response regression
         run: node --test tests/employee-admin-visibility-race.test.mjs
       - name: Employee roster privacy and no-sync Timeclock adapter
-        run: node --test tests/employee-admin-directory.test.mjs tests/employee-admin-timeclock-directory-reader.test.mjs
+        run: node --test tests/employee-admin-directory.test.mjs tests/employee-admin-timeclock-directory-reader.test.mjs tests/employee-admin-directory-client.test.mjs
       - name: Existing backend parse check
         run: node --check server.js
       - name: Staff settings browser script parse check
