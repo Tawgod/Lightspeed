@@ -1,6 +1,7 @@
 /* Shared web navigation registry. Only verified routes become links.
  * The Chrome extension has a different runtime; coordinate labels and
  * destinations with its owner instead of importing browser-host code. */
+export const homeDestination=Object.freeze({id:'home',label:'Home / Dashboard',href:'/store-operations'});
 export const toolGroups = Object.freeze([
   {label:'Special Orders',items:[
     {id:'special-orders',label:'Special Orders Dashboard',href:'/special-orders',children:[
@@ -17,7 +18,7 @@ export const toolGroups = Object.freeze([
 ]);
 // Recursively flatten nested tools so any existing page can mark its location.
 const descendants=item=>[item,...(item.children||[]).flatMap(descendants)];
-export const allDestinations = toolGroups.flatMap(g=>g.items.flatMap(descendants));
+export const allDestinations = [homeDestination,...toolGroups.flatMap(g=>g.items.flatMap(descendants))];
 
 // Administrator navigation remains absent unless THIS origin's trusted
 // backend independently confirms the exact admin.read grant for the current
@@ -81,6 +82,9 @@ export function renderOperationsNav(root=document) {
   const current=target.dataset.currentTool;
   if(!allDestinations.some(t=>t.id===current))return false;
   const fragment=root.createDocumentFragment();
+  const homeLink=makeLink(homeDestination,current);
+  homeLink.classList.add('hc-nav-home-link');
+  fragment.append(homeLink);
   for(const group of toolGroups){
     const details=root.createElement('details');
     details.className='hc-operations-more hc-nav-group';
