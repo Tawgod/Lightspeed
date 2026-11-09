@@ -43,7 +43,7 @@ export function createFirstOwnerCommissioning({
     try {
       rows=await client.query(
         `SELECT approval_id,employee_id,evidence_digest,independent_operator_ref,
-          approved_at,expires_at,consumed_at
+          approved_at,expires_at,consumed_at,evidence_signature
          FROM hc_owner_commissioning_authorizations
          WHERE employee_id=$1 AND consumed_at IS NULL
          FOR UPDATE`,[id]);
@@ -66,7 +66,10 @@ export function createFirstOwnerCommissioning({
     try{verified=await verifyIndependentEvidence({
       context,employeeId:id,approvalId:String(approval.approval_id),
       evidenceDigest:approval.evidence_digest,
-      independentOperatorRef:approval.independent_operator_ref
+      independentOperatorRef:approval.independent_operator_ref,
+      approvedAt:new Date(approval.approved_at).toISOString(),
+      expiresAt:new Date(approval.expires_at).toISOString(),
+      evidenceSignature:approval.evidence_signature
     })===true;}catch{throw denied();}
     if(!verified)throw denied();
 
