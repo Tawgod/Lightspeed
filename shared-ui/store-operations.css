@@ -1,0 +1,48 @@
+/* Store Operations Home: navy/blue design with honest live-data states. */
+.hc-ui.hc-dashboard-page,.hc-ui .hc-dashboard-page{color:#102c48}
+.hc-ui .hc-dashboard-page{max-width:1560px}
+.hc-ui .hc-dashboard-page main{padding:0 2px 30px}
+.hc-ui .hc-dash-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;flex-wrap:wrap;margin:22px 0 24px}
+.hc-ui .hc-dash-heading h1{margin:4px 0 6px;font-size:clamp(1.55rem,2.5vw,2.2rem);color:#102c48}
+.hc-ui .hc-dash-eyebrow{font-size:.78rem;letter-spacing:.09em;color:#1157c2;font-weight:800;margin:0}
+.hc-ui .hc-dash-muted{color:#4c6681;font-size:.91rem;line-height:1.45}
+.hc-ui .hc-dash-heading p{margin-top:4px;margin-bottom:0}
+.hc-ui .hc-dash-refresh{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.hc-ui .hc-dash-refresh #dashboardUpdated{font-size:.8rem;color:#4c6681}
+.hc-ui .hc-dash-error{border:1px solid #d88b89;background:#fff0ee;color:#833030;padding:12px;margin:12px 0;border-radius:10px}
+.hc-ui .hc-dash-kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-bottom:20px}
+.hc-ui .hc-dash-kpi{display:flex;flex-direction:column;gap:6px;min-height:150px;min-width:0;text-decoration:none;color:#102c48!important;padding:18px;background:linear-gradient(145deg,#f7fbff,#dce9fa);border:1px solid #bdd0e7;border-left:4px solid #216ae3;border-radius:13px;box-shadow:0 3px 12px #1636531a}
+.hc-ui .hc-dash-kpi span{font-weight:750;font-size:.93rem}
+.hc-ui .hc-dash-kpi strong{font-size:2rem;line-height:1.2}
+.hc-ui .hc-dash-kpi small{color:#45617e}
+.hc-ui .hc-dash-kpi:hover,.hc-ui .hc-dash-actions a:hover{background:#e1edfd}
+.hc-ui .hc-dash-amber{border-left-color:#d7a71c}
+.hc-ui .hc-dash-purple{border-left-color:#9363d2}
+.hc-ui .hc-dash-teal{border-left-color:#23a3aa}
+.hc-ui .hc-dash-green{border-left-color:#48b676}
+.hc-ui .hc-dash-grid{display:grid;grid-template-columns:1.1fr 1fr;gap:16px}
+.hc-ui .hc-dash-panel{min-width:0;border:1px solid #b8cde4;border-radius:13px;background:linear-gradient(150deg,#f8fbff,#e7f0fa);box-shadow:0 3px 12px #16365318;padding:16px}
+.hc-ui .hc-dash-panel h2{font-size:1.17rem;color:#102c48;margin:0 0 14px}
+.hc-ui .hc-dash-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.hc-ui .hc-dash-actions a{display:flex;align-items:center;justify-content:center;min-height:64px;text-align:center;text-decoration:none;font-weight:750;color:#133858;padding:12px;border:1px solid #b7cde6;border-radius:9px;background:linear-gradient(#eff6ff,#d9e9fc)}
+.hc-ui .hc-dash-actions a:first-child{background:linear-gradient(#2a7aff,#0b4ec8);color:#fff}
+.hc-ui .hc-dash-note{margin:12px 0 0}
+.hc-ui .hc-dash-priority{border-color:#e1bbc3}
+.hc-ui .hc-dash-priority-heading{background:linear-gradient(90deg,#fff0ef,#e8f1fc);padding:11px 12px;border-radius:9px;margin:-5px -5px 10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+.hc-ui .hc-dash-priority-heading h2{margin:0;color:#842e3a}
+.hc-ui .hc-dash-priority-heading span{color:#7d2b38;background:#fff6f6;border-radius:25px;border:1px solid #edc4c5;padding:5px 9px;font-size:.8rem;font-weight:700}
+.hc-ui .hc-dash-review-list{list-style:none;margin:0;padding:0}
+.hc-ui .hc-dash-review-list li{display:flex;justify-content:space-between;align-items:center;gap:8px;border-bottom:1px solid #d7e2ee;padding:10px 0}
+.hc-ui .hc-dash-review-list li:last-child{border-bottom:0}
+.hc-ui .hc-dash-review-list li div{display:flex;flex-direction:column;gap:3px}
+.hc-ui .hc-dash-review-list li small{color:#5a7086}
+.hc-ui .hc-dash-review-list li>span{font-weight:800;color:#102c48}
+.hc-ui .hc-dash-not-connected{font-size:.78rem;font-weight:600!important;color:#64758a!important;white-space:nowrap}
+.hc-ui .hc-dash-review-link{display:inline-flex;margin-top:10px;color:#1451aa;font-weight:750}
+.hc-ui .hc-dash-mini-row{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid #d8e4ef;padding:12px 0}
+.hc-ui .hc-dash-mini-row:last-child{border:0}
+.hc-ui .hc-dash-mini-row strong{color:#164d89}
+.hc-ui .hc-nav-home-link{border:1px solid #426c95!important}
+@media(max-width:1100px){.hc-ui .hc-dash-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:780px){.hc-ui .hc-dash-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.hc-ui .hc-dash-grid{grid-template-columns:1fr}}
+@media(max-width:440px){.hc-ui .hc-dash-kpis{grid-template-columns:1fr}.hc-ui .hc-dash-actions{grid-template-columns:1fr}.hc-ui .hc-dash-refresh{width:100%}}
