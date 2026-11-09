@@ -8,12 +8,9 @@ for(const route of routes){
   const html=readFileSync(new URL('../'+route+'.html',import.meta.url),'utf8');
   const nav=html.match(/<nav class="hc-operations-nav hc-core-header"[^>]*>([\s\S]*?)<\/nav>/);
   assert.ok(nav);
-  for(const href of routes) assert.match(nav[1],new RegExp('href="\\/'+href+'"'));
-  for(const label of labels) assert.match(nav[1],new RegExp('>'+label+'<'));
-  assert.match(nav[1],new RegExp('href="\\/'+route+'"[^>]*aria-current="page"'));
+  assert.match(nav[1],new RegExp('data-current-tool="'+route+'"'));
+  assert.match(html,/src="\/shared-ui\/operations-nav\.mjs"/);
   assert.match(nav[1],/hc-wordmark\.webp/);
-  assert.match(nav[1],/More tools/);
-  assert.match(nav[1],/Beta \/ Test/);
   assert.match(nav[1],/id="employeePin"/);
   assert.match(nav[1],/staffSignIn\(\)/);
   assert.match(nav[1],/id="signOutButton"/);
