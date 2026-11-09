@@ -5,7 +5,9 @@ on:
       - feature/primary-live-totp-enrollment-gate-20261109
     paths:
       - 'services/security/independentPrimaryEnrollmentApproval.js'
+      - 'services/security/primaryTimeclockTotpSubsystem.js'
       - 'tests/independent-primary-enrollment-approval.test.mjs'
+      - 'tests/primary-timeclock-totp-subsystem.test.mjs'
       - '.github/workflows/independent-primary-enrollment-approval.yml'
   workflow_dispatch:
 permissions:
@@ -23,4 +25,6 @@ jobs:
       - name: Independent approver, first Owner and canonical TOTP regressions
         run: node --test tests/independent-primary-enrollment-approval.test.mjs tests/primary-live-totp-enrollment-gate.test.mjs tests/primary-timeclock-totp-subsystem.test.mjs tests/primary-timeclock-verification-wiring.test.mjs
       - name: Check module
-        run: node --check services/security/independentPrimaryEnrollmentApproval.js
+        run: |
+          node --check services/security/independentPrimaryEnrollmentApproval.js
+          node --check services/security/primaryTimeclockTotpSubsystem.js
