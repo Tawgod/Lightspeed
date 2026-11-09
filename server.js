@@ -193,6 +193,11 @@ app.get('/shared-ui/core-ops-compat.css', (req, res) => {
   res.type('text/css').sendFile(path.join(__dirname, 'shared-ui', 'core-ops-compat.css'));
 });
 
+app.get('/shared-ui/operations-nav.mjs', (req, res) => {
+  res.set('Cache-Control','no-store');
+  res.type('application/javascript').sendFile(path.join(__dirname, 'shared-ui', 'operations-nav.mjs'));
+});
+
 app.get('/shared-ui/staff-auth.js', (req, res) => {
   res.set('Cache-Control','no-store');
   res.type('application/javascript').sendFile(path.join(__dirname, 'shared-ui', 'staff-auth.js'));
