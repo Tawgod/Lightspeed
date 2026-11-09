@@ -59,6 +59,8 @@ export function renderOperationsNav(root=document) {
     if(!item||!e.target.matches('summary'))return;
     for(const other of target.querySelectorAll('details.hc-nav-group'))if(other!==item)other.open=false;
   };
+  if(target.dataset.navInitialized==='true')return true;
+  target.dataset.navInitialized='true';
   target.addEventListener('click',closeOtherMenus);
   target.addEventListener('keydown',e=>{
     if(e.key==='Escape'){
@@ -68,4 +70,12 @@ export function renderOperationsNav(root=document) {
   });
   return true;
 }
-if(typeof document!=='undefined')renderOperationsNav();
+// A module script is normally deferred, but keep startup safe for dynamic embedding
+// and navigation opened before the page shell is constructed.
+if(typeof document!=='undefined'){
+  if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded',()=>renderOperationsNav(),{once:true});
+  }else{
+    renderOperationsNav();
+  }
+}
