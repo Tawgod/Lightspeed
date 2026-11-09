@@ -117,6 +117,22 @@ export function createEmployeeAdminRouter({adminAccess,delegations=null,resolveC
    try{return res.json(await onboardingQueue.ownRequests({context:req}));}
    catch(e){return error(res,e);}
   });
+  if(typeof onboardingQueue.pendingReview==='function'&&typeof onboardingQueue.review==='function'){
+   router.get('/api/onboarding/review',async(req,res)=>{
+    try{return res.json(await onboardingQueue.pendingReview({context:req}));}
+    catch(e){return error(res,e);}
+   });
+   router.post('/api/onboarding/review',express.json({limit:'2kb',strict:true}),async(req,res)=>{
+    const body=req.body;
+    if(!body||Object.keys(body).sort().join(',')!=='decision,reason,requestId')
+     return res.status(400).json({error:'Invalid review request.'});
+    try{return res.json(await onboardingQueue.review({context:req,...body}));}
+    catch(e){
+     if(e?.status===400)return res.status(400).json({error:'Invalid review request.'});
+     return error(res,e);
+    }
+   });
+  }
   router.post('/api/onboarding/requests',express.json({limit:'2kb',strict:true}),async(req,res)=>{
    const body=req.body;
    if(!body||Object.keys(body).sort().join(',')!=='name,reason,requestKey,requestedRole')
