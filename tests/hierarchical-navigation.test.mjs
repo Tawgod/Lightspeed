@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {toolGroups,allDestinations} from '../shared-ui/operations-nav.mjs';
 const read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
-const pages=[['special-orders','special-orders.html'],['ordering','ordering.html'],['preorders','preorders.html'],['gw-preorders','gw-preorders.html']];
+const pages=[['home','store-operations.html'],['special-orders','special-orders.html'],['ordering','ordering.html'],['preorders','preorders.html'],['gw-preorders','gw-preorders.html']];
 test('unique verified destinations, nested dependent preorders',()=>{
  const ids=allDestinations.map(t=>t.id);
  assert.equal(new Set(ids).size,ids.length);
- assert.deepEqual(ids,['special-orders','preorders','gw-preorders','ordering','toolkit','consignment']);
+ assert.deepEqual(ids,['home','special-orders','preorders','gw-preorders','ordering','toolkit','consignment']);
  const parent=toolGroups.flatMap(g=>g.items).find(x=>x.id==='special-orders');
  assert.deepEqual(parent.children.map(t=>t.id),['preorders','ordering']);
  assert.deepEqual(parent.children[0].children.map(t=>t.id),['gw-preorders']);
