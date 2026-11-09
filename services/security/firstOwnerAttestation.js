@@ -5,7 +5,7 @@ import {createPublicKey,verify as verifySignature} from 'node:crypto';
 // operator must sign the approved facts outside the employee PIN system.
 // Application's public key is not evidence that a particular human is Owner.
 const ID=/^[1-9][0-9]{0,17}$/;
-const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DIGEST=/^[a-f0-9]{64}$/;
 const SIG=/^[A-Za-z0-9_-]{86}$/;
 
