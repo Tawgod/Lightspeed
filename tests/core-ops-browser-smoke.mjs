@@ -44,18 +44,18 @@ try {
         throw new Error(route + ' horizontal overflow ' + overflow + 'px at zoom ' + zoom);
       }
 
-      const summary = page.locator('.hc-operations-more summary');
+      const summary = page.locator('.hc-operations-more summary').first();
       await summary.focus();
       const summaryFocused = await summary.evaluate((el) => document.activeElement === el);
       if (!summaryFocused) {
         throw new Error(route + ' More menu focus failed at zoom ' + zoom);
       }
       await summary.click();
-      const menuOpen = await page.locator('.hc-operations-more').evaluate((el) => el.open === true);
+      const menuOpen = await page.locator('.hc-operations-more').first().evaluate((el) => el.open === true);
       if (!menuOpen) {
         throw new Error(route + ' More menu open/layout failed at zoom ' + zoom);
       }
-      await page.locator('.hc-operations-more').evaluate((el) => el.removeAttribute('open'));
+      await page.locator('.hc-operations-more').first().evaluate((el) => el.removeAttribute('open'));
 
       const pin = page.locator('#employeePin');
       await pin.focus();
