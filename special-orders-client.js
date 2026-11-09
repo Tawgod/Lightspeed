@@ -421,7 +421,27 @@ async function importWorkbook(){
     await loadStats();await loadOrders();
   }catch(e){showNotice(e.message)}
 }
-async function loadStats(){try{const s=await getJson(api+'/stats');for(const k of Object.keys(s))if(document.getElementById(k))document.getElementById(k).textContent=s[k]}catch(e){showNotice(e.message)}}
+async function loadStats(){try{
+  const s=await getJson(api+'/stats');
+  for(const k of Object.keys(s))if(document.getElementById(k))document.getElementById(k).textContent=s[k];
+  const aging=document.getElementById('hc-priority-aging');
+  const total=document.getElementById('hc-priority-total');
+  // Aggregate only the existing verified "ordered_over_7_days" statistic.
+  // Other review sources are visibly not connected; do not fabricate counts.
+  if(aging&&total){
+    const count=Number(s.ordered_over_7_days);
+    if(Number.isSafeInteger(count)&&count>=0){
+      aging.textContent=String(count);
+      total.textContent=count===0?'No aged-order flags':count+' aged-order flag'+(count===1?'':'s');
+    }else{aging.textContent='Unavailable';total.textContent='Count unavailable';}
+  }
+}catch(e){
+  const aging=document.getElementById('hc-priority-aging');
+  const total=document.getElementById('hc-priority-total');
+  if(aging)aging.textContent='Unavailable';
+  if(total)total.textContent='Review data unavailable';
+  showNotice(e.message);
+}}
 async function loadOrders(){try{
   const p=new URLSearchParams();
   const st=document.getElementById('statusFilter').value;if(st)p.set('status',st);
