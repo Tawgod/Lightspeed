@@ -59,3 +59,12 @@
 - Added one-time `scripts/admin-nav-reader-isolated-once.mjs` provisioning an independently credentialed `hc_admin_nav_reader` LOGIN with SELECT-only table privileges; isolated deployment `b62b8f3b-6c5c-437c-989e-cd09a02cfd40` **SUCCESS**. Credential in Railway variables, not repository.
 - Added unit/rollback tests; Shared foundation Actions `42681876995` and `42682795631`, Scanner `42681877056` and `42682795628`, Admin integration `42681876845` and `42682795964` SUCCESS.
 - Separate read-only Railway smoke `2c1384c3-7080-4921-bad7-674572ed17d0` SUCCESS after elevated migration URL disabled. No Owner, manager, employee record or production grant was created; browser Admin navigation not deployed.
+
+
+## 2026-11-09 — Primary Timeclock self-identity discovery (development, unmounted)
+
+- Stacked draft PR #40 on primary security readiness PR #39; added `primaryEmployeeIdentityDiscovery.js` to separate first-time canonical employee identification from the independent Owner/strong-factor enrollment gate. No passkey is required for **read-only identification**, but identity discovery never authorizes credential registration or Owner appointment.
+- `primaryTimeclockCanonicalReader.js` reuses the existing backend-only Timeclock Scanner authorization service. It requires a matching active Timeclock employee and trusted `timeclock_employee` provenance; clock-in state, Scanner approval and a client role cannot confer Owner permission.
+- Added disabled-by-default `GET /self` router factory `routes/primaryEmployeeIdentity.js`, unmounted by any production or staging server. Returns only limited self-identification/readiness with no employee selector, login secret, factor transfer or write methods.
+- Synthetic, revoked, expired, mismatched, role-spoofed and service-unavailable identity checks fail closed. Focused unit and HTTP tests and module syntax checks passed in GitHub Actions [42703689898](https://github.com/Tawgod/Lightspeed/actions/runs/42703689898) at `55092098a6daec7a2a731952d27172e7c77c01d3`.
+- Neither real employee data nor primary PIN/passkey/TOTP records were read or modified. No schema migration, extension packaging, Railway change, factor enrollment, Owner grant, branch merge or production deployment occurred.
