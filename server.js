@@ -21,6 +21,7 @@ import { initializeScannerProductReviewQueue } from './services/scannerProductRe
 import { initializeScannerTestCreation } from './services/scannerTestCreationRouter.js';
 import { createScannerIsolatedTestWriter } from './services/scannerIsolatedTestWriter.js';
 import { createStaffAuthGateway } from './services/staffAuthGateway.js';
+import { createAdminNavigationAccessRouter, createAdminNavigationGrantReader } from './services/security/adminNavigationAccess.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -914,6 +915,28 @@ async function startServer() {
     verifyStaffEmployee=staffAuth.verifyEmployee;
     app.use('/api/staff-auth', staffAuth.router);
     console.log('[staff-auth] Timeclock PIN employee authentication enabled');
+
+    // Read-only Admin navigation hint, isolated from Admin's stronger login.
+    // Disabled by default: requires a separately provisioned admin grants DB.
+    // Missing tables or revoked grants must leave the nav link hidden.
+    if(process.env.HC_ADMIN_NAV_ENABLED==='true'){
+      const grantsUrl=process.env.HC_ADMIN_GRANTS_DATABASE_URL;
+      if(typeof grantsUrl!=='string'||grantsUrl.length<16){
+        console.warn('[admin-nav] disabled: dedicated admin grants database not configured');
+      }else{
+        const adminGrantsPool=new pg.Pool({
+          connectionString:grantsUrl,
+          ssl:process.env.HC_ADMIN_GRANTS_PGSSL==='true'?{rejectUnauthorized:false}:undefined,
+          max:3,connectionTimeoutMillis:3000,
+          statement_timeout:3000
+        });
+        app.use('/api/admin',createAdminNavigationAccessRouter({
+          verifyEmployee:staffAuth.verifyEmployee,
+          hasAdminRead:createAdminNavigationGrantReader({pool:adminGrantsPool})
+        }));
+        console.log('[admin-nav] read-only server-verified admin navigation hint enabled');
+      }
+    }
 
     const lookup=createSpecialOrdersMatchLookup({
       baseUrl:'http://127.0.0.1:'+PORT,
