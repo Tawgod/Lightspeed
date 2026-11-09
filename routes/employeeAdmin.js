@@ -7,7 +7,9 @@ import {visibleAdminSections} from '../services/security/adminPermissionCatalog.
 // Candidate only. Never mount without trusted Timeclock identity, real enrolled
 // passkey/TOTP verification and a reviewed backend admin permission checker.
 // No employee records or configuration writes exist in this router.
-export function createEmployeeAdminRouter({adminAccess,delegations=null,resolveCapabilities=null,employeeDirectory=null}={}){
+export function createEmployeeAdminRouter({adminAccess,delegations=null,resolveCapabilities=null,employeeDirectory=null,onboardingQueue=null}={}){
+ if(onboardingQueue!==null && (typeof onboardingQueue?.request!=='function'||typeof onboardingQueue?.ownRequests!=='function'))
+  throw new TypeError('Verified onboarding workflow is required.');
  if(employeeDirectory!==null && typeof employeeDirectory?.list!=='function')
    throw new TypeError('Verified Timeclock directory adapter required.');
  if(resolveCapabilities!==null && typeof resolveCapabilities!=='function')
@@ -105,6 +107,27 @@ export function createEmployeeAdminRouter({adminAccess,delegations=null,resolveC
       scope==='private'?'employees.private.read':'employees.directory.read'});
     return res.json(await employeeDirectory.list({includePrivate:scope==='private'}));
    }catch(e){return error(res,e);}
+  });
+ }
+ // Restricted onboarding request intake. No employee directory read is needed.
+ // Requests do not create staff/PINs or sync Lightspeed; only a later approved
+ // Timeclock integration can execute a reviewed enrollment.
+ if(onboardingQueue){
+  router.get('/api/onboarding/requests',async(req,res)=>{
+   try{return res.json(await onboardingQueue.ownRequests({context:req}));}
+   catch(e){return error(res,e);}
+  });
+  router.post('/api/onboarding/requests',express.json({limit:'2kb',strict:true}),async(req,res)=>{
+   const body=req.body;
+   if(!body||Object.keys(body).sort().join(',')!=='name,reason,requestKey,requestedRole')
+    return res.status(400).json({error:'Invalid onboarding intake.'});
+   try{
+    const created=await onboardingQueue.request({context:req,...body});
+    return res.status(created.replayed?200:202).json(created);
+   }catch(e){
+    if(e?.status===400)return res.status(400).json({error:'Invalid onboarding intake.'});
+    return error(res,e);
+   }
   });
  }
  // Strongly verified owner-facing delegated admin management.
