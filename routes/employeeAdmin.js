@@ -7,7 +7,9 @@ import {visibleAdminSections} from '../services/security/adminPermissionCatalog.
 // Candidate only. Never mount without trusted Timeclock identity, real enrolled
 // passkey/TOTP verification and a reviewed backend admin permission checker.
 // No employee records or configuration writes exist in this router.
-export function createEmployeeAdminRouter({adminAccess,delegations=null,resolveCapabilities=null}={}){
+export function createEmployeeAdminRouter({adminAccess,delegations=null,resolveCapabilities=null,employeeDirectory=null}={}){
+ if(employeeDirectory!==null && typeof employeeDirectory?.list!=='function')
+   throw new TypeError('Verified Timeclock directory adapter required.');
  if(resolveCapabilities!==null && typeof resolveCapabilities!=='function')
    throw new TypeError('Read-only administrator capability resolver must be a function.');
  if(delegations!==null && ['capabilitiesForVerifiedEmployee','listGrants','changeAdminGrant','changeGrantScope','changeSettingScope','changeEmployeeToolGrant'].some(x=>typeof delegations?.[x]!=='function'))
@@ -89,6 +91,22 @@ export function createEmployeeAdminRouter({adminAccess,delegations=null,resolveC
      return res.json({item:{...entry},readOnly:true});
    }catch(e){return error(res,e);}
  });
+ // Employee records are an explicitly optional Timeclock-only integration.
+ // Merely having employees.onboard is NOT an employee-list permission.
+ // Real employee data is never mounted in synthetic staging.
+ if(employeeDirectory){
+  router.get('/api/employees',async(req,res)=>{
+   const scope=req.query.scope===undefined?'directory':req.query.scope;
+   if(!['directory','private'].includes(scope)||
+      Object.keys(req.query).some(key=>key!=='scope'))
+    return res.status(400).json({error:'Invalid employee directory scope.'});
+   try{
+    await adminAccess.authorize({context:req,operation:
+      scope==='private'?'employees.private.read':'employees.directory.read'});
+    return res.json(await employeeDirectory.list({includePrivate:scope==='private'}));
+   }catch(e){return error(res,e);}
+  });
+ }
  // Strongly verified owner-facing delegated admin management.
  // Only configured adapters can expose these paths; no production mount exists.
  if(delegations){
