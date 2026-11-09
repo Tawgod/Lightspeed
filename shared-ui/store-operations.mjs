@@ -81,6 +81,13 @@ export async function loadDashboard(){
   return;
  }
  const stats=queries[0],priority=queries[1];
+ // Never leave numbers from an earlier successful request displayed as current.
+ // Partial failure means only the failed source is cleared.
+ for(const id of [...Object.values(kpiMap),'summaryOrdering','summaryBackordered','summaryOrdered','summaryHeld'])setText(id,'—');
+ for(const id of Object.values(reviewMap))setText(id,'—');
+ setText('statsCoverage','Unavailable');
+ setText('priorityCoverage','Unavailable');
+ setText('prioritySummary','Review unavailable');
  let anyLoaded=false;
  if(stats.status==='fulfilled'){
   try{
