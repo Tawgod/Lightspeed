@@ -146,7 +146,7 @@
  }
  $('reload').addEventListener('click',load);
  window.addEventListener('hc-admin-authenticated',load);
- window.addEventListener('hc-admin-signed-out',()=>{
+ function hideProtectedView(){
    ++viewEpoch;
    $('gate').hidden=false;
    $('workspace').hidden=true;
@@ -157,6 +157,8 @@
    $('ownerDelegationPanel').hidden=true;
    $('toolGrantPanel').hidden=true;
    $('notification').textContent='';
- });
+ }
+ window.addEventListener('hc-admin-suspended',hideProtectedView);
+ window.addEventListener('hc-admin-signed-out',hideProtectedView);
  if(auth()?.getProof)load();
 })();
