@@ -18,6 +18,10 @@
     }
   }
 
+  function notifyAuthChanged(){
+    if(typeof window.dispatchEvent==='function'&&typeof Event==='function')
+      window.dispatchEvent(new Event('hc-staff-auth-changed'));
+  }
   function employee(){return readSession()?.employee||null}
 
   function headers(extra={}){
@@ -54,6 +58,7 @@
     };
     sessionStorage.setItem(SESSION_KEY,JSON.stringify(session));
     sessionStorage.removeItem(LEGACY_KEY);
+    notifyAuthChanged();
     return session;
   }
 
@@ -78,6 +83,7 @@
 
   function signOut(){
     sessionStorage.removeItem(SESSION_KEY);
+    notifyAuthChanged();
   }
 
   function setLegacyKey(value){
@@ -85,6 +91,7 @@
     if(clean)sessionStorage.setItem(LEGACY_KEY,clean);
     else sessionStorage.removeItem(LEGACY_KEY);
     sessionStorage.removeItem(SESSION_KEY);
+    notifyAuthChanged();
   }
 
   function legacyKey(){return String(sessionStorage.getItem(LEGACY_KEY)||'')}
