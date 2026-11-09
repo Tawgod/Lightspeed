@@ -28,4 +28,5 @@ jobs:
       - name: Parse and direct client audit
         run: |
           node --check services/lightspeed/secureReadPolicy.js
+          git fetch --no-tags origin integration/hobby-corner-consolidation:refs/remotes/origin/integration/hobby-corner-consolidation
           node scripts/audit-lightspeed-consumers.mjs --check-new
