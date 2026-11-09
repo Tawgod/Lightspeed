@@ -13,8 +13,9 @@ const readRole=async(db,id)=>{
  const result=await db.query('SELECT role,active,version FROM hc_admin_principals WHERE employee_id=$1',[id]);
  return result.rows?.[0]||null;
 };
-export function createAdminDelegations({pool,adminAccess=null,verifyTargetEmployee}={}){
+export function createAdminDelegations({pool,adminAccess=null,verifyTargetEmployee,verifyToolSession=null}={}){
  if(typeof pool?.connect!=='function'||typeof verifyTargetEmployee!=='function' ||
+    (verifyToolSession!==null&&typeof verifyToolSession!=='function')||
     (adminAccess!==null&&typeof adminAccess.authorize!=='function'))
   throw new TypeError('Durable admin permissions require PostgreSQL and verified manager access.');
  async function targetIsActive(targetEmployeeId){
@@ -210,9 +211,14 @@ export function createAdminDelegations({pool,adminAccess=null,verifyTargetEmploy
  }
  // Source-only exact operation resolver for future tool gateway adapters.
  // A store device, employee PIN or UI role never authorizes an operation alone.
- async function canUseEmployeeTool({employeeId:subject,toolOperation}={}){
-  const target=employeeId(subject);
-  if(!target||!allowedTools.has(toolOperation)||!(await targetIsActive(target)))return false;
+ async function canUseEmployeeTool({context,toolOperation}={}){
+  // A bare employee ID is not authentication. Tools must supply a trusted,
+  // independently verified employee-session resolver when enabling this path.
+  if(!verifyToolSession||!context||!allowedTools.has(toolOperation))return false;
+  let identity;
+  try{identity=await verifyToolSession(context);}catch{return false;}
+  const target=employeeId(identity?.employeeId||identity?.id);
+  if(!target||!(await targetIsActive(target)))return false;
   try{return await transaction(async db=>{
    const result=await db.query(
     'SELECT 1 FROM hc_employee_tool_grants WHERE employee_id=$1 AND operation=$2',
