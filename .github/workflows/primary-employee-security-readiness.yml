@@ -1,0 +1,24 @@
+name: Primary employee security readiness
+on:
+  pull_request:
+    branches:
+      - feature/employee-admin-security-foundation-20261106
+    paths:
+      - 'services/security/primaryEmployeeSecurityReadiness.js'
+      - 'tests/primary-employee-security-readiness.test.mjs'
+      - '.github/workflows/primary-employee-security-readiness.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  primary-employee-readiness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify bound primary identity and synthetic isolation
+        run: node --test tests/primary-employee-security-readiness.test.mjs
+      - name: Parse code
+        run: node --check services/security/primaryEmployeeSecurityReadiness.js
