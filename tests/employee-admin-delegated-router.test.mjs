@@ -16,7 +16,8 @@ test('delegated manager sees only allowed menu sections and non-sensitive tool s
   changeAdminGrant:async()=>{throw Object.assign(new Error('denied'),{status:403})},
   changeGrantScope:async()=>{throw Object.assign(new Error('denied'),{status:403})},
   changeSettingScope:async()=>{throw Object.assign(new Error('denied'),{status:403})},
-  changeEmployeeToolGrant:async()=>{throw Object.assign(new Error('denied'),{status:403})}
+  changeEmployeeToolGrant:async()=>{throw Object.assign(new Error('denied'),{status:403})},
+  listEmployeeToolGrants:async()=>{throw Object.assign(new Error('denied'),{status:403})}
  };
  const access={
   authorize:async({operation})=>{
