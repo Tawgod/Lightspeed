@@ -170,6 +170,19 @@ app.use('/api/work-orders', createWorkOrderCombineRouter({
   token: LIGHTSPEED_TOKEN
 }));
 
+app.get('/store-operations', (req, res) => {
+  res.set('Cache-Control','no-store');
+  res.sendFile(path.join(__dirname, 'store-operations.html'));
+});
+app.get('/shared-ui/store-operations.css', (req, res) => {
+  res.set('Cache-Control','no-store');
+  res.type('text/css').sendFile(path.join(__dirname, 'shared-ui', 'store-operations.css'));
+});
+app.get('/shared-ui/store-operations.mjs', (req, res) => {
+  res.set('Cache-Control','no-store');
+  res.type('application/javascript').sendFile(path.join(__dirname, 'shared-ui', 'store-operations.mjs'));
+});
+
 app.get('/special-orders', (req, res) => {
   res.sendFile(path.join(__dirname, 'special-orders.html'));
 });
