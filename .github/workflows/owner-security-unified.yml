@@ -12,6 +12,9 @@ on:
       - 'routes/firstOwnerActivation.js'
       - 'services/security/ownerSecurityStagingMount.js'
       - 'services/security/ownerTimeclockStagingBundle.js'
+      - 'services/security/ownerStagingDatabasePreflight.js'
+      - 'staging/owner-security-server.js'
+      - 'tests/owner-staging-database-preflight.test.mjs'
       - 'tests/owner-timeclock-staging-bundle.test.mjs'
       - 'tests/owner-security-staging-mount.test.mjs'
       - 'owner-setup/**'
@@ -66,6 +69,8 @@ jobs:
           node --check routes/firstOwnerActivation.js
           node --check services/security/ownerSecurityStagingMount.js
           node --check services/security/ownerTimeclockStagingBundle.js
+          node --check services/security/ownerStagingDatabasePreflight.js
+          node --check staging/owner-security-server.js
           node --check staff-security-client.js
           node --check owner-setup/client.js
       - name: Unified Owner, Admin, passkey, Authenticator and Timeclock contracts
@@ -84,4 +89,5 @@ jobs:
             tests/employee-admin-owner-commissioning.test.mjs \
             tests/employee-admin-delegated-router.test.mjs \
             tests/owner-security-staging-mount.test.mjs \
-            tests/owner-timeclock-staging-bundle.test.mjs
+            tests/owner-timeclock-staging-bundle.test.mjs \
+            tests/owner-staging-database-preflight.test.mjs
