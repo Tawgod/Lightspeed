@@ -14,7 +14,7 @@ on:
       - 'staff-security-client.js'
       - 'tests/owner-authenticator-ui-contract.test.mjs'
       - 'owner-setup/**'
-      - 'tests/first-owner-activation-router.test.mjs tests/owner-passkey-totp-enrollment-postgres.test.mjs tests/primary-timeclock-totp-subsystem.test.mjs tests/shared-staff-security.test.mjs tests/owner-authenticator-ui-contract.test.mjs'
+      - 'tests/first-owner-activation-router.test.mjs'
       - '.github/workflows/first-owner-operator-activation.yml'
   workflow_dispatch:
 permissions:
@@ -58,4 +58,12 @@ jobs:
           node --check services/security/ownerPasskeyTotpEnrollmentCandidate.js
           node --check staff-security-client.js
           node --check owner-setup/client.js
-      - run: node --test --test-concurrency=1 tests/operator-first-owner-postgres.test.mjs tests/first-owner-passkey-registration-postgres.test.mjs tests/first-owner-activation-router.test.mjs
+      - run: |
+          node --test --test-concurrency=1 \
+            tests/operator-first-owner-postgres.test.mjs \
+            tests/first-owner-passkey-registration-postgres.test.mjs \
+            tests/first-owner-activation-router.test.mjs \
+            tests/owner-passkey-totp-enrollment-postgres.test.mjs \
+            tests/primary-timeclock-totp-subsystem.test.mjs \
+            tests/shared-staff-security.test.mjs \
+            tests/owner-authenticator-ui-contract.test.mjs
