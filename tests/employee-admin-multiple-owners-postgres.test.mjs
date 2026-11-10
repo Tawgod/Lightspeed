@@ -38,7 +38,9 @@ test('real Timeclock-backed Owners may appoint other Owners; cannot self-promote
     delegates=createAdminDelegations({
       pool:testPool,adminAccess:access,
       verifyTargetEmployee:async id=>allowTarget&&['901','902','903'].includes(id)
-        ?{id,active:true}:null
+        ?{id,active:true}:null,
+      verifyToolSession:async req=>req?.trusted==='canonical-test-staff-session'
+        ?{employeeId:actor}:null
     });
     const reason='Owner authorized an additional responsible administrator';
     // Simulate an explicit one-time system operator initial Owner assignment.
@@ -47,6 +49,17 @@ test('real Timeclock-backed Owners may appoint other Owners; cannot self-promote
     await assert.rejects(delegates.changeOwnerRole({
       context,targetEmployeeId:'901',enabled:true,reason
     }),e=>e?.status===403,'cannot appoint oneself');
+    // Owner has full known-tool access only when a trusted employee session
+    // is present; PIN/employee IDs supplied by the browser are not enough.
+    assert.equal(await delegates.canUseEmployeeTool({
+      context:{trusted:'canonical-test-staff-session'},toolOperation:'products.create'
+    }),true);
+    assert.equal(await delegates.canUseEmployeeTool({
+      context:{employeeId:'901'},toolOperation:'products.create'
+    }),false);
+    assert.equal(await delegates.canUseEmployeeTool({
+      context:{trusted:'canonical-test-staff-session'},toolOperation:'unknown.elevate'
+    }),false);
     await assert.rejects(delegates.changeOwnerRole({
       context,targetEmployeeId:'999',enabled:true,reason
     }),e=>e?.status===403,'target must exist and be active in canonical Timeclock');
@@ -58,6 +71,9 @@ test('real Timeclock-backed Owners may appoint other Owners; cannot self-promote
     await delegates.changeOwnerRole({context,targetEmployeeId:'902',enabled:true,reason});
     assert.equal((await delegates.capabilitiesForVerifiedEmployee('902')).role,'owner');
     actor='902';
+    assert.equal(await delegates.canUseEmployeeTool({
+      context:{trusted:'canonical-test-staff-session'},toolOperation:'inventory.adjust'
+    }),true,'appointed Owner inherits recognized tool grants');
     await delegates.changeOwnerRole({context,targetEmployeeId:'903',enabled:true,reason});
     assert.equal((await delegates.canAdmin({
       employeeId:'903',operation:'admin.delegation.manage'})),true);
