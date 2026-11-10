@@ -30,9 +30,13 @@ on:
       - 'services/scannerIsolatedTestWriter.js'
       - 'routes/specialOrderProducts.js'
       - '.github/workflows/scanner-ui-check.yml'
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   ui:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -40,6 +44,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      # No package lockfile on this branch: cache downloads, not installed modules.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-scanner-ui-${{ hashFiles('package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-scanner-ui-
       - name: Install dependencies
         run: npm install --ignore-scripts --no-audit --no-fund
       - name: Check extension JavaScript
@@ -109,7 +120,6 @@ jobs:
         run: node --test tests/scannerDuplicateSafety.test.js
       - name: Verify integrated scanner duplicate and review workflows
         run: |
-          node --test tests/scannerDuplicateSafety.test.js
           node --test tests/scannerProductReviewQueue.test.js
           node --test tests/scannerIsolatedTestCreation.test.js
           node --test tests/scannerEmployeeAccess.test.js
