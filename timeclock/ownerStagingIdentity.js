@@ -59,7 +59,9 @@ export function createOwnerStageIdentityRouter({
   const scannerSecret = environment.SCANNER_SERVICE_SECRET;
   const configured = enabled && isId(id) && fixedSecret(secret) &&
     fixedSecret(environment.OWNER_STAGING_THROTTLE_SECRET) &&
-    secret !== scannerSecret;
+    secret !== scannerSecret &&
+    secret !== environment.OWNER_STAGING_THROTTLE_SECRET &&
+    environment.OWNER_STAGING_THROTTLE_SECRET !== scannerSecret;
   const limiter = reserve || (configured ?
     createOwnerStageLimiter({pool, secret: environment.OWNER_STAGING_THROTTLE_SECRET}) : null);
   const router = Router();
