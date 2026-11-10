@@ -14,7 +14,7 @@ test('Owner management route uses only strongly gated backend delegation and rej
   changeEmployeeToolGrant:async()=>{},listEmployeeToolGrants:async()=>{},
   changeOwnerRole:async args=>{
    calls.push(args);
-   if(args.context.get('x-strong-proof')!=='verified')throw denied();
+   if(args.context.get('x-strong-proof')!=='verified'||args.targetEmployeeId==='901')throw denied();
    return {employeeId:args.targetEmployeeId,role:'owner',active:args.enabled};
   }
  };
@@ -34,7 +34,7 @@ test('Owner management route uses only strongly gated backend delegation and rej
   assert.equal(response.status,400);
   assert.equal(calls.length,0,'browser role claim must not reach delegate');
   response=await post({...valid,targetEmployeeId:'901'},{'x-strong-proof':'verified'});
-  assert.equal(response.status,200,'route delegates; service independently enforces no self grant');
+  assert.equal(response.status,403,'the backend refuses owner self-appointment');
   response=await post(valid);
   assert.equal(response.status,403,'missing strong proof is rejected by backend');
   response=await post(valid,{'x-strong-proof':'verified'});
