@@ -1,8 +1,5 @@
 name: Employee Admin integration contract
 on:
-  push:
-    branches:
-      - feature/employee-admin-security-foundation-20261106
   pull_request:
     paths:
       - 'services/security/adminIntegrationCatalog.js'
@@ -10,16 +7,26 @@ on:
       - 'tests/employee-admin-integrations.test.mjs'
       - '.github/workflows/employee-admin-integration.yml'
   workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 permissions:
   contents: read
 jobs:
   integration-contract:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-admin-${{ hashFiles('package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-admin-
       - name: Install existing backend dependencies
         run: npm install --ignore-scripts --no-audit --no-fund
       - name: Admin integration operation and routing regression

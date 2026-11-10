@@ -59,3 +59,8 @@
 - Added one-time `scripts/admin-nav-reader-isolated-once.mjs` provisioning an independently credentialed `hc_admin_nav_reader` LOGIN with SELECT-only table privileges; isolated deployment `b62b8f3b-6c5c-437c-989e-cd09a02cfd40` **SUCCESS**. Credential in Railway variables, not repository.
 - Added unit/rollback tests; Shared foundation Actions `42681876995` and `42682795631`, Scanner `42681877056` and `42682795628`, Admin integration `42681876845` and `42682795964` SUCCESS.
 - Separate read-only Railway smoke `2c1384c3-7080-4921-bad7-674572ed17d0` SUCCESS after elevated migration URL disabled. No Owner, manager, employee record or production grant was created; browser Admin navigation not deployed.
+
+## 2026-11-09 — GitHub Actions budget optimization (Admin review candidate)
+
+- Removed duplicate feature push validation from shared-foundation and Employee Admin integration workflows while retaining PR and manual checks. Added explicit PR base coverage for the active Admin branch in this review candidate, cancellation of superseded PR runs, timeouts and package-manifest-keyed npm download caching. No mandatory security/PostgreSQL tests removed; workflow/job names unchanged.
+- Added AGENTS.md three-tier AI development CI rules. Draft only; repository admin must verify required checks before merging.
