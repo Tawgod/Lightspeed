@@ -1,0 +1,58 @@
+name: First Owner verified passkey registration with disposable Postgres
+on:
+  pull_request:
+    branches:
+      - feature/first-owner-signed-attestation-20261109
+    paths:
+      - 'services/security/firstOwnerPasskeyRegistrationCandidate.js'
+      - 'services/security/firstOwnerCommissioning.js'
+      - 'services/security/firstOwnerAttestation.js'
+      - 'db/hc_owner_commissioning.sql'
+      - 'tests/first-owner-passkey-registration-postgres.test.mjs'
+      - '.github/workflows/first-owner-passkey-registration.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  first-owner-passkey:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: hc_test
+          POSTGRES_PASSWORD: hc_test
+          POSTGRES_DB: hc_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hc_test -d hc_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      HC_TEST_DATABASE_URL: postgres://hc_test:hc_test@127.0.0.1:5432/hc_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-first-owner-${{ hashFiles('package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-first-owner-
+      - name: Install test dependencies without scripts
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Validate complete first-Owner registration and existing controls
+        run: node --test tests/first-owner-passkey-registration-postgres.test.mjs tests/first-owner-attestation.test.mjs tests/first-owner-commissioning.test.mjs tests/independent-primary-enrollment-approval.test.mjs
+      - name: Verify syntax
+        run: |
+          node --check services/security/firstOwnerPasskeyRegistrationCandidate.js
+          node --check services/security/firstOwnerCommissioning.js
+          node --check services/security/firstOwnerAttestation.js
