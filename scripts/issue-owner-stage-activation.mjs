@@ -32,7 +32,8 @@ async function issue({
   refuse();
  const identity=createIdentity({
   baseUrl:env.HC_OWNER_TIMECLOCK_ORIGIN,
-  serviceSecret:env.HC_OWNER_TIMECLOCK_SERVICE_SECRET
+  serviceSecret:env.HC_OWNER_TIMECLOCK_SERVICE_SECRET,
+  mode:'owner-staging'
  });
  const person=await identity.authorize(id);
  if(String(person?.id)!==id||person?.permissionSource!=='timeclock_employee'||
