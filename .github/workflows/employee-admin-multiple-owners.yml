@@ -1,0 +1,52 @@
+name: Employee Admin multiple Owner authorization
+on:
+  pull_request:
+    branches:
+      - feature/employee-admin-security-foundation-20261106
+    paths:
+      - 'db/hc_admin_delegations.sql'
+      - 'services/security/adminDelegationsPostgres.js'
+      - 'tests/employee-admin-multiple-owners-postgres.test.mjs'
+      - 'tests/employee-admin-multiple-owners-router.test.mjs'
+      - 'routes/employeeAdmin.js'
+      - '.github/workflows/employee-admin-multiple-owners.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  admin-multiple-owners:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: hc_test
+          POSTGRES_PASSWORD: hc_test
+          POSTGRES_DB: hc_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hc_test -d hc_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      HC_TEST_DATABASE_URL: postgres://hc_test:hc_test@127.0.0.1:5432/hc_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-owner-admin-${{ hashFiles('package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-owner-admin-
+      - run: npm install --ignore-scripts --no-audit --no-fund
+      - run: node --check services/security/adminDelegationsPostgres.js
+      - run: node --test --test-concurrency=1 tests/employee-admin-multiple-owners-postgres.test.mjs tests/employee-admin-delegations-postgres.test.mjs tests/employee-admin-owner-commissioning.test.mjs tests/employee-admin-multiple-owners-router.test.mjs

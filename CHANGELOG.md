@@ -59,3 +59,12 @@
 - Added one-time `scripts/admin-nav-reader-isolated-once.mjs` provisioning an independently credentialed `hc_admin_nav_reader` LOGIN with SELECT-only table privileges; isolated deployment `b62b8f3b-6c5c-437c-989e-cd09a02cfd40` **SUCCESS**. Credential in Railway variables, not repository.
 - Added unit/rollback tests; Shared foundation Actions `42681876995` and `42682795631`, Scanner `42681877056` and `42682795628`, Admin integration `42681876845` and `42682795964` SUCCESS.
 - Separate read-only Railway smoke `2c1384c3-7080-4921-bad7-674572ed17d0` SUCCESS after elevated migration URL disabled. No Owner, manager, employee record or production grant was created; browser Admin navigation not deployed.
+
+
+## 2026-11-10 — Simplified Timeclock Owner permissions (draft)
+
+- User clarified the first Owner is their **existing active Timeclock employee account**. Preserve the PIN; allow passkey plus Google Authenticator on the same staff identity. External business ownership verification is not required by the requested workflow. The first Owner must still be provisioned through a one-time trusted system operator mapping and a secure activation flow, not auto-promoted by PIN/Discord/UI role.
+- `db/hc_admin_delegations.sql` removes the old single-active-Owner draft index and supports auditable multiple Owners. `adminDelegationsPostgres.js` adds strong-factor Owner appointment/revocation with canonical active employee targeting, transaction lock, no self-appointment, no automatic recovery of inactive principals, append-only audit, and final-Owner protection.
+- An active, trusted-session Owner inherits all **recognized tool permission grants**. This is only a grant-layer permission and does NOT remove strong login, tool-level write checks, audit requirements or mutation safety.
+- `routes/employeeAdmin.js` adds an optional unmounted Owner management POST API requiring the backend delegate; it does not use browser-selected roles to authorize itself. New disposable PostgreSQL and HTTP route regression tests are in `tests/employee-admin-multiple-owners-*.test.mjs`. See `docs/SIMPLIFIED_OWNER_SETUP.md` for planned initial activation and factor setup.
+- Branch: `feature/admin-multiple-owners-20261110`; draft PR #52. No live account, PIN, passkey/TOTP seed, migration, Railway or production changes. Reconcile with existing Owner passkey PR #50 before any deployment.
