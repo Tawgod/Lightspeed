@@ -9,6 +9,8 @@ on:
       - 'services/security/ownerTimeclockStagingBundle.js'
       - 'scripts/issue-owner-stage-activation.mjs'
       - 'tests/owner-staging-scoped-timeclock.test.mjs'
+      - 'tests/owner-staging-roles-postgres.test.mjs'
+      - 'db/hc_owner_staging_privilege_groups.sql'
       - '.github/workflows/owner-scoped-timeclock-adapter.yml'
 permissions:
   contents: read
@@ -51,6 +53,7 @@ jobs:
         run: |
           node --test --test-concurrency=1 \
             tests/owner-staging-scoped-timeclock.test.mjs \
+            tests/owner-staging-roles-postgres.test.mjs \
             tests/operator-first-owner-postgres.test.mjs \
             tests/first-owner-passkey-registration-postgres.test.mjs \
             tests/first-owner-activation-router.test.mjs \
