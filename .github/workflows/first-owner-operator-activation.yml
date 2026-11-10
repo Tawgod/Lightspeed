@@ -1,15 +1,17 @@
 name: Operator-controlled first Owner activation
 on:
   pull_request:
-    branches: [feature/first-owner-operator-bootstrap-20261110]
+    branches: [feature/owner-activation-browser-20261110]
     paths:
       - 'db/hc_first_owner_operator_activation.sql'
       - 'services/security/operatorFirstOwnerPasskeyCandidate.js'
       - 'tests/operator-first-owner-postgres.test.mjs'
       - 'routes/firstOwnerActivation.js'
       - 'services/security/isolatedFirstOwnerSetup.js'
+      - 'services/security/ownerPasskeyTotpEnrollmentCandidate.js'
+      - 'tests/owner-passkey-totp-enrollment-postgres.test.mjs'
       - 'owner-setup/**'
-      - 'tests/first-owner-activation-router.test.mjs'
+      - 'tests/first-owner-activation-router.test.mjs tests/owner-passkey-totp-enrollment-postgres.test.mjs tests/primary-timeclock-totp-subsystem.test.mjs'
       - '.github/workflows/first-owner-operator-activation.yml'
   workflow_dispatch:
 permissions:
@@ -50,5 +52,6 @@ jobs:
           node --check services/security/operatorFirstOwnerPasskeyCandidate.js
           node --check routes/firstOwnerActivation.js
           node --check services/security/isolatedFirstOwnerSetup.js
+          node --check services/security/ownerPasskeyTotpEnrollmentCandidate.js
           node --check owner-setup/client.js
       - run: node --test --test-concurrency=1 tests/operator-first-owner-postgres.test.mjs tests/first-owner-passkey-registration-postgres.test.mjs tests/first-owner-activation-router.test.mjs
