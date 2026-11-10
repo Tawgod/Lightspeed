@@ -68,6 +68,7 @@ export function createOwnerTimeclockStagingBundle({
  const timeclockIdentity=createIdentity({
   baseUrl:e.HC_OWNER_TIMECLOCK_ORIGIN,
   serviceSecret:e.HC_OWNER_TIMECLOCK_SERVICE_SECRET,
+  mode:'owner-staging',
   ...(fetchImpl?{fetchImpl}:{})
  });
  // The Scanner identity service can recognize many Timeclock employees,
