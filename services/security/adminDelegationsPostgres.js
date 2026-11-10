@@ -147,6 +147,59 @@ export function createAdminDelegations({pool,adminAccess=null,verifyTargetEmploy
    return Object.freeze({employeeId:target,operation,enabled});
   });
  }
+ // A current, strongly verified Owner may appoint another REAL active
+ // Timeclock employee as Owner. No first-Owner bootstrap or PIN-only path.
+ // Revocation deactivates access and refuses to remove the final active Owner.
+ async function changeOwnerRole({context,targetEmployeeId,enabled,reason}={}){
+  if(!adminAccess)throw unavailable();
+  const actor=await adminAccess.authorize({
+   context,operation:'admin.delegation.manage',requireStrong:true
+  });
+  const target=employeeId(targetEmployeeId);
+  if(!target||target===actor.employeeId||typeof enabled!=='boolean'||
+     !reasonValid(reason))throw denied();
+  if(enabled&&!(await targetIsActive(target)))throw denied();
+  return transaction(async db=>{
+   // Serialize appointment/revocation and final-Owner protection.
+   await db.query('SELECT pg_advisory_xact_lock(42811010)');
+   const owner=await readRole(db,actor.employeeId);
+   if(owner?.role!=='owner'||owner.active!==true)throw denied();
+   const existing=await readRole(db,target);
+   if(enabled){
+    if(existing?.active===false)throw denied(); // recovery is separate
+    if(existing?.role==='owner')throw denied(); // no silent repeated grant
+    if(existing&&existing.role!=='delegated_admin')throw denied();
+    if(existing){
+     await db.query(
+      "UPDATE hc_admin_principals SET role='owner',version=version+1,appointed_by=$2,appointed_at=now() WHERE employee_id=$1",
+      [target,actor.employeeId]
+     );
+    }else{
+     await db.query(
+      "INSERT INTO hc_admin_principals(employee_id,role,active,appointed_by) VALUES($1,'owner',true,$2)",
+      [target,actor.employeeId]
+     );
+    }
+   }else{
+    if(existing?.role!=='owner'||existing.active!==true)throw denied();
+    const owners=await db.query(
+     "SELECT count(*)::integer AS total FROM hc_admin_principals WHERE role='owner' AND active=true"
+    );
+    if(Number(owners.rows[0]?.total)<=1)throw denied();
+    const result=await db.query(
+     "UPDATE hc_admin_principals SET active=false,version=version+1 WHERE employee_id=$1 AND role='owner' AND active=true RETURNING employee_id",
+     [target]
+    );
+    if(result.rowCount!==1)throw denied();
+   }
+   await db.query(
+    `INSERT INTO hc_admin_authorization_events(actor_id,target_employee_id,kind,operation,reason)
+     VALUES($1,$2,$3,'admin.owner.manage',$4)`,
+    [actor.employeeId,target,enabled?'owner_appoint':'owner_revoke',reason.trim()]
+   );
+   return Object.freeze({employeeId:target,role:'owner',active:enabled});
+  });
+ }
  async function changeGrantScope({context,targetEmployeeId,toolOperation,enabled,reason}={}){
   if(!adminAccess)throw unavailable();
   const actor=await adminAccess.authorize({context,operation:'admin.delegation.manage',requireStrong:true});
@@ -285,5 +338,5 @@ export function createAdminDelegations({pool,adminAccess=null,verifyTargetEmploy
    return Object.freeze({employeeId:target,toolOperation,enabled});
   });
  }
- return Object.freeze({canAdmin,capabilitiesForVerifiedEmployee,getRole,listGrants,changeAdminGrant,changeGrantScope,changeSettingScope,canManageSetting,changeEmployeeToolGrant,canUseEmployeeTool,listEmployeeToolGrants});
+ return Object.freeze({canAdmin,capabilitiesForVerifiedEmployee,getRole,listGrants,changeAdminGrant,changeOwnerRole,changeGrantScope,changeSettingScope,canManageSetting,changeEmployeeToolGrant,canUseEmployeeTool,listEmployeeToolGrants});
 }
