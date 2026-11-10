@@ -70,11 +70,34 @@ export function createOwnerTimeclockStagingBundle({
   serviceSecret:e.HC_OWNER_TIMECLOCK_SERVICE_SECRET,
   ...(fetchImpl?{fetchImpl}:{})
  });
+ // The Scanner identity service can recognize many Timeclock employees,
+ // but the initial Owner staging host must accept ONLY the exact operator
+ // selected employee. Restrict both PIN issuance and later authorization.
+ const selectedIdentity=Object.freeze({
+  verifyPin:async pin=>{
+   const person=await timeclockIdentity.verifyPin(pin);
+   if(String(person?.id)!==ownerId||
+      person?.permissionSource!=='timeclock_employee'||
+      person?.canLookup!==true)
+    throw Object.assign(new Error('Employee sign-in denied.'),{status:403});
+   return person;
+  },
+  authorize:async id=>{
+   if(String(id)!==ownerId)
+    throw Object.assign(new Error('Employee access denied.'),{status:403});
+   const person=await timeclockIdentity.authorize(id);
+   if(String(person?.id)!==ownerId||
+      person?.permissionSource!=='timeclock_employee'||
+      person?.canLookup!==true)
+    throw Object.assign(new Error('Employee access denied.'),{status:403});
+   return person;
+  }
+ });
  const throttle=createThrottle({
   pool,secret:e.HC_OWNER_THROTTLE_SECRET,scope:'hc:owner:timeclock:pin'
  });
  const staffAuthGateway=createAuth({
-  identity:timeclockIdentity,sessionSecret:e.HC_OWNER_SESSION_SECRET,
+  identity:selectedIdentity,sessionSecret:e.HC_OWNER_SESSION_SECRET,
   ttlSeconds:900,
   // This is a private, preselected account; the selector is NEVER proof.
   loginLimiter:({ip})=>throttle.reserve({employeeId:ownerId,sourceIp:ip})
@@ -85,7 +108,7 @@ export function createOwnerTimeclockStagingBundle({
  const stage=createMount({
   environment:'test',enabled:true,expectedOwnerEmployeeId:ownerId,
   loginRouter:staffAuthGateway.router,
-  staffAuthGateway,timeclockIdentity,pool,
+  staffAuthGateway,timeclockIdentity:selectedIdentity,pool,
   origin:e.HC_OWNER_STAGING_ORIGIN,rpID:e.HC_OWNER_STAGING_RPID,
   signingSecret:e.HC_OWNER_PASSKEY_SIGNING_SECRET,
   loginThrottle:passkeyThrottle,
