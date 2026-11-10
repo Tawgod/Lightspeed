@@ -78,7 +78,7 @@ export function createLightspeedTransport({
       try {
         const declaredLength = response.headers?.get?.('content-length');
         if (declaredLength !== null && declaredLength !== undefined &&
-            /^\\d+$/.test(declaredLength) && Number(declaredLength) > maxResponseBytes) {
+            /^\d+$/.test(declaredLength) && Number(declaredLength) > maxResponseBytes) {
           throw new Error('Response size exceeds configured limit.');
         }
         // Enforce an actual byte limit, even if Content-Length is missing or dishonest.
