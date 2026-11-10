@@ -24,3 +24,10 @@ The implementation deliberately reuses `createStaffSecuritySubsystem` and `staff
 - Run full mandatory PR/security checks, request explicit authorization for each production migration, admin role grant and deployment.
 
 No production services, PINs, employees, factor secrets, Railway or Chrome extension were modified.
+
+
+## Owner approval control added in the existing settings screen
+
+`staff-security.html` now offers **Approve my setup with passkey (Owner only)** after a standard enrollment request is created. `staff-security-client.js` obtains a fresh WebAuthn assertion through the existing (still unmounted) `/staff-passkey/authentication/options` + `/authentication/verify` endpoints, then sends the short-lived signed passkey proof to the already-existing `/staff-security/api/enrollment-approve` endpoint for the exact request ID. No passkey proof or TOTP code is placed into persistent browser storage. Backend `ownerPasskeyTotpEnrollmentCandidate` checks canonical identity, active Owner database role and exact employee/session-bound strong proof: UI visibility is NOT authorization.
+
+This UI path needs the trusted signed Timeclock session, existing passkey authentication router and TOTP service securely mounted together at the same reviewed HTTPS origin to work. It is **not connected to production** and must not use a mock WebAuthn callback or test credentials for a live employee.
