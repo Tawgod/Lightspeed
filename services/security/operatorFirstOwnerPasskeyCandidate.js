@@ -98,6 +98,11 @@ export function createOperatorFirstOwnerPasskeyCandidate({
  });
  return Object.freeze({
    beginRegistration:passkeys.beginRegistration,
-   finishRegistration:passkeys.finishRegistration
+   finishRegistration:passkeys.finishRegistration,
+   // Reuse the SAME verifier, credential store, signing key and canonical
+   // employee session for subsequent actual WebAuthn step-up checks.
+   beginAuthentication:passkeys.beginAuthentication,
+   finishAuthentication:passkeys.finishAuthentication,
+   verify:passkeys.verify
  });
 }

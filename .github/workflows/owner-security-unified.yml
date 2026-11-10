@@ -1,7 +1,7 @@
 name: Owner Security unified integration
 on:
   pull_request:
-    branches: [feature/owner-passkey-totp-enrollment-20261110]
+    branches: [integration/owner-security-unified-20261110]
     paths:
       - 'db/hc_admin_delegations.sql'
       - 'db/hc_first_owner_operator_activation.sql'
@@ -10,6 +10,8 @@ on:
       - 'services/security/ownerPasskeyTotpEnrollmentCandidate.js'
       - 'routes/employeeAdmin.js'
       - 'routes/firstOwnerActivation.js'
+      - 'services/security/ownerSecurityStagingMount.js'
+      - 'tests/owner-security-staging-mount.test.mjs'
       - 'owner-setup/**'
       - 'staff-security.html'
       - 'staff-security-client.js'
@@ -60,6 +62,7 @@ jobs:
           node --check services/security/ownerPasskeyTotpEnrollmentCandidate.js
           node --check routes/employeeAdmin.js
           node --check routes/firstOwnerActivation.js
+          node --check services/security/ownerSecurityStagingMount.js
           node --check staff-security-client.js
           node --check owner-setup/client.js
       - name: Unified Owner, Admin, passkey, Authenticator and Timeclock contracts
@@ -76,4 +79,5 @@ jobs:
             tests/employee-admin-multiple-owners-router.test.mjs \
             tests/employee-admin-delegations-postgres.test.mjs \
             tests/employee-admin-owner-commissioning.test.mjs \
-            tests/employee-admin-delegated-router.test.mjs
+            tests/employee-admin-delegated-router.test.mjs \
+            tests/owner-security-staging-mount.test.mjs
