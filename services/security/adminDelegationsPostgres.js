@@ -273,6 +273,10 @@ export function createAdminDelegations({pool,adminAccess=null,verifyTargetEmploy
   const target=employeeId(identity?.employeeId||identity?.id);
   if(!target||!(await targetIsActive(target)))return false;
   try{return await transaction(async db=>{
+   // Full-access Owner receives recognized tool permission at the grant
+   // layer, not an exemption from independent login/MFA/write safety gates.
+   const principal=await readRole(db,target);
+   if(principal?.role==='owner'&&principal.active===true)return true;
    const result=await db.query(
     'SELECT 1 FROM hc_employee_tool_grants WHERE employee_id=$1 AND operation=$2',
     [target,toolOperation]);
