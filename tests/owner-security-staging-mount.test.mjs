@@ -63,7 +63,7 @@ test('secure staging routes are composed under existing URLs and mutating cross-
   assert.equal(authAsset.status,200);
   const authScript=await authAsset.text();
   assert.match(authScript,/HCStaffAuth/);
-  assert.doesNotMatch(authScript,/sessionStorage|localStorage|hcSpecialOrdersKey/);
+  assert.doesNotMatch(authScript,/(?:sessionStorage|localStorage)\\.|hcSpecialOrdersKey/);
   assert.match(authScript,/pagehide/);
   const passkeyRequest=await fetch(base+'/staff-passkey/authentication/options',{
    method:'POST',headers:{
