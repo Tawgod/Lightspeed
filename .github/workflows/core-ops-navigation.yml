@@ -5,9 +5,13 @@ on:
     paths: ['special-orders.html','ordering.html','preorders.html','gw-preorders.html','shared-ui/**','services/staffAuthGateway.js','server.js','tests/core-ops-*.mjs','.github/workflows/core-ops-navigation.yml']
   push:
     branches: ['feature/core-ops-ui-consistency-nav-20261028']
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   core-ops-ui:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions: {contents: read}
     steps:
       - uses: actions/checkout@v4
@@ -15,6 +19,17 @@ jobs:
         with: {node-version: '22'}
       - run: node --check server.js
       - run: node --test tests/core-ops-navigation.test.mjs tests/core-ops-auth-session.test.mjs
+      # Cache downloads without replacing verified test execution.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-core-ops-${{ hashFiles('package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-core-ops-
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-chromium-1.56.1
       - run: npm install --no-save playwright@1.56.1
       - run: npx playwright install --with-deps chromium
       - run: node tests/core-ops-browser-smoke.mjs
