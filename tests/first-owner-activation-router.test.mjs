@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import {createFirstOwnerActivationRouter} from '../routes/firstOwnerActivation.js';
+import {createIsolatedFirstOwnerSetup} from '../services/security/isolatedFirstOwnerSetup.js';
 
 test('Owner activation screen and route require same-origin evidence plus backend authorization',async()=>{
  let begins=0,finishes=0;
@@ -101,4 +102,14 @@ test('backend denial is sanitized, not leaked to the browser',async()=>{
   assert.equal(b.status,503);
   assert.doesNotMatch(await b.text(),/DB credentials/);
  }finally{await new Promise(resolve=>server.close(resolve));}
+});
+
+test('setup composer has no production activation or secret issuance fallback',()=>{
+ assert.throws(()=>createIsolatedFirstOwnerSetup(),TypeError);
+ assert.throws(()=>createIsolatedFirstOwnerSetup({
+  environment:'production',enabled:true
+ }),TypeError);
+ assert.throws(()=>createIsolatedFirstOwnerSetup({
+  environment:'test',enabled:true,expectedOwnerEmployeeId:'901'
+ }),TypeError,'Missing trusted Timeclock and storage cannot initialize');
 });
