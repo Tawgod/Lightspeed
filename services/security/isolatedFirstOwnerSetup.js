@@ -18,5 +18,5 @@ export function createIsolatedFirstOwnerSetup({
   readActivationSecret:context=>context?.get?.('x-hc-owner-activation')
  });
  const router=createFirstOwnerActivationRouter({candidate,origin});
- return Object.freeze({router});
+ return Object.freeze({router,passkeys:candidate});
 }
