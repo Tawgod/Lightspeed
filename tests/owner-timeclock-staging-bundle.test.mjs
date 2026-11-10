@@ -99,6 +99,6 @@ test('wires existing Timeclock PIN verify and canonical read to signed session w
   assert.match(bound.binding,/^[A-Za-z0-9_.:-]{16,256}$/);
   assert.equal(calls.length,4,'selected PIN, refused other employee PIN, signed session check and canonical recheck');
   assert.ok(calls.every(call=>call.method==='POST'));
-  assert.ok(calls.every(call=>call.headers['x-scanner-service-secret']===e.HC_OWNER_TIMECLOCK_SERVICE_SECRET));
+  assert.ok(calls.every(call=>call.headers['x-owner-staging-service-secret']===e.HC_OWNER_TIMECLOCK_SERVICE_SECRET && call.headers['x-scanner-service-secret']===undefined && call.url.includes('/integrations/owner-staging/')));
  }finally{await new Promise(resolve=>server.close(resolve));}
 });
