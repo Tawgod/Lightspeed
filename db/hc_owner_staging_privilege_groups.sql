@@ -38,7 +38,8 @@ GRANT SELECT, INSERT ON hc_staff_passkey_events TO hc_owner_stage_runtime_privs;
 GRANT SELECT, INSERT, UPDATE ON hc_staff_auth_throttle TO hc_owner_stage_runtime_privs;
 GRANT SELECT, INSERT, UPDATE ON hc_staff_factor_approvals TO hc_owner_stage_runtime_privs;
 GRANT SELECT, INSERT, UPDATE ON hc_staff_totp TO hc_owner_stage_runtime_privs;
-GRANT SELECT, UPDATE(consumed_at,credential_id)
+GRANT SELECT ON hc_first_owner_activations TO hc_owner_stage_runtime_privs;
+GRANT UPDATE(consumed_at,credential_id)
   ON hc_first_owner_activations TO hc_owner_stage_runtime_privs;
 GRANT SELECT, INSERT ON hc_first_owner_activation_events TO hc_owner_stage_runtime_privs;
 
