@@ -1,7 +1,7 @@
 name: Owner Security unified integration
 on:
   pull_request:
-    branches: [integration/owner-security-unified-20261110]
+    branches: [feature/owner-staging-wiring-20261110]
     paths:
       - 'db/hc_admin_delegations.sql'
       - 'db/hc_first_owner_operator_activation.sql'
