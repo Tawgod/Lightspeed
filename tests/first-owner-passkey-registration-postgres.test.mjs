@@ -70,6 +70,33 @@ test('first Owner signature, challenge, atomic credential+Owner+audit, no second
        VALUES ($1,$2,$3,$4,$5,$6,$7)`,
       [approvalId,employeeId,evidenceDigest,evidenceSignature,operator,approvedAt,expiresAt]
     );
+    // Force the final audit INSERT to fail. The existing passkey service
+    // must roll back its credential and Owner role along with the approval.
+    await pool.query(`CREATE FUNCTION fail_owner_audit() RETURNS trigger
+      LANGUAGE plpgsql AS $ BEGIN RAISE EXCEPTION 'CI audit failure'; END; $`);
+    await pool.query(`CREATE TRIGGER owner_test_force_rollback
+      BEFORE INSERT ON hc_owner_commissioning_events
+      FOR EACH ROW EXECUTE FUNCTION fail_owner_audit()`);
+    const attempt=await passkeys.beginRegistration({context});
+    assert.equal(typeof attempt.challengeId,'string');
+    await assert.rejects(passkeys.finishRegistration({
+      context,challengeId:attempt.challengeId,response:{id:credentialId}
+    }), e=>e?.status===503,'audit failure rolls back verified credential and Owner');
+    const rolledBack=await Promise.all([
+      pool.query('SELECT 1 FROM hc_staff_passkeys WHERE employee_id=$1',[employeeId]),
+      pool.query('SELECT 1 FROM hc_admin_principals WHERE employee_id=$1',[employeeId]),
+      pool.query('SELECT consumed_at FROM hc_owner_commissioning_authorizations WHERE approval_id=$1',[approvalId])
+    ]);
+    assert.equal(rolledBack[0].rowCount,0);
+    assert.equal(rolledBack[1].rowCount,0);
+    assert.equal(rolledBack[2].rows[0].consumed_at,null);
+    await pool.query('DROP TRIGGER owner_test_force_rollback ON hc_owner_commissioning_events');
+    await pool.query('DROP FUNCTION fail_owner_audit()');
+    // A fresh challenge can now complete; the failed challenge was consumed
+    // and cannot be replayed.
+    await assert.rejects(passkeys.finishRegistration({
+      context,challengeId:attempt.challengeId,response:{id:credentialId}
+    }),e=>e?.status===403);
     const begin=await passkeys.beginRegistration({context});
     assert.equal(typeof begin.challengeId,'string');
     const finished=await passkeys.finishRegistration({
