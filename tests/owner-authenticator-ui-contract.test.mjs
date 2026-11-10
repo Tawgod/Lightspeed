@@ -8,7 +8,8 @@ test('existing employee security page offers passkey-backed Owner setup without 
  assert.match(html,/id="approveSelfPasskey"/);
  assert.match(client,/approveOwnEnrollmentWithPasskey/);
  assert.match(client,/navigator\.credentials\.get/);
- assert.match(client,/staff-passkey\/.*authentication/);
+ assert.match(client,/staff-passkey/);
+ assert.match(client,/authentication\/options/);
  assert.match(client,/enrollment-approve/);
  assert.match(client,/X-HC-Passkey-Proof/);
  assert.match(client,/approvalState !== 'requested'/);
