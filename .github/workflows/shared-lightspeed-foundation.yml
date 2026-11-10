@@ -1,7 +1,7 @@
 name: Shared Lightspeed foundation
 on:
   pull_request:
-    branches: [integration/hobby-corner-consolidation, feature/shared-lightspeed-services-phase1-20261029]
+    branches: [integration/hobby-corner-consolidation, feature/shared-lightspeed-services-phase1-20261029, feature/employee-admin-security-foundation-20261106]
     paths:
       - 'services/lightspeed/**'
       - 'services/security/**'
@@ -89,14 +89,16 @@ on:
       - 'db/lightspeed_shared_foundation.sql'
       - 'scripts/audit-lightspeed-consumers.mjs'
       - '.github/workflows/shared-lightspeed-foundation.yml'
-  push:
-    branches: [feature/shared-lightspeed-services-phase1-20261029, feature/employee-admin-security-foundation-20261106]
   workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 permissions:
   contents: read
 jobs:
   foundation:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:16
@@ -120,6 +122,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-foundation-${{ hashFiles('package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-foundation-
       - name: Install regression dependencies
         run: npm install --ignore-scripts --no-audit --no-fund
       - name: Read-only staging production-dependency audit summary
