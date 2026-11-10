@@ -1,6 +1,6 @@
 # Owner staging — dedicated Timeclock credential design (candidate, not deployed)
 
-**Status:** Planned / security review required. Branch: `feature/owner-timeclock-scoped-credential-20261110`, based on `integration/hobby-corner-consolidation`. This document proposes additive access only; no implementation, route deployment, or production credential changes are authorized by creating this branch.
+**Status:** Implemented and CI-tested as a default-disabled development candidate; still unmerged, unapplied and undeployed. Branch: `feature/owner-timeclock-scoped-credential-20261110`, based on `integration/hobby-corner-consolidation`. This document describes implemented additive candidate access and release gates. No production database, deployment, credential or login was changed by development.
 
 ## Verified existing contract
 
@@ -18,3 +18,11 @@ Production `timeclock/server.js` exposes `POST /api/timeclock/integrations/scann
 ## Current staging
 
 Dedicated Railway project `HC Owner Security Staging` is staged, not deployed. App source pin `b17f274910145b324462edc2ec2893a99eb0ca2f`; database version and least-privilege roles unresolved. New domain cannot be generated until a service instance exists. Do not apply a partial staging patch: app startup intentionally fails without prerequisite roles, migrations, secrets and WebAuthn HTTPS origin.
+
+## Implementation and test checkpoint — 2026-11-10
+
+- Dedicated implementation: `timeclock/ownerStagingIdentity.js`, mounted additively behind default-off `OWNER_STAGING_IDENTITY_ENABLED`, with distinct `OWNER_STAGING_SERVICE_SECRET`, `OWNER_STAGING_THROTTLE_SECRET` and exact `OWNER_STAGING_EMPLOYEE_ID`; not a replacement for Scanner or employee PIN login.
+- Unapplied production migration: `timeclock/db/hc_owner_stage_login_limits.sql`, providing atomic PostgreSQL account-global authentication budgets; no automatic schema change.
+- Regression coverage: `timeclock/tests/owner-staging-identity.test.mjs` and `timeclock/tests/owner-staging-throttle-postgres.test.mjs`, CI against disposable PostgreSQL 16; latest candidate source uses distinct credential and throttle secrets.
+- [Draft PR #59](https://github.com/Tawgod/Lightspeed/pull/59) code has passing isolated and Scanner CI after the independent-secret hardening. Deployment requires explicit production authorization, reviewed backup/restore, rate limiting acceptance and ability to roll back while leaving Owner-specific route disabled.
+- Stacked [draft PR #60](https://github.com/Tawgod/Lightspeed/pull/60) switches isolated Owner setup and private activation issuer to these new endpoints, with full Owner/Admin/Scanner regression checks on PostgreSQL 16 and 18. Staging is not deployed.
