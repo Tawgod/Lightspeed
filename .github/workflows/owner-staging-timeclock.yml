@@ -1,0 +1,48 @@
+name: Owner staging Timeclock credential checks
+on:
+  push:
+    branches:
+      - feature/owner-timeclock-scoped-credential-20261110
+  pull_request:
+    paths:
+      - 'timeclock/**'
+      - '.github/workflows/owner-staging-timeclock.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  scoped-identity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: hc_test
+          POSTGRES_PASSWORD: hc_test_pass
+          POSTGRES_DB: hc_owner_stage_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hc_test"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      OWNER_STAGE_TEST_DATABASE_URL: postgresql://hc_test:hc_test_pass@127.0.0.1:5432/hc_owner_stage_test
+    defaults:
+      run:
+        working-directory: timeclock
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Timeclock dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Check server and adapter syntax
+        run: |
+          node --check server.js
+          node --check ownerStagingIdentity.js
+      - name: Run isolated auth regression tests
+        run: node --test tests/owner-staging-identity.test.mjs tests/owner-staging-throttle-postgres.test.mjs
