@@ -1,11 +1,14 @@
 name: Operator-controlled first Owner activation
 on:
   pull_request:
-    branches: [feature/first-owner-passkey-registration-integration-20261110]
+    branches: [feature/first-owner-operator-bootstrap-20261110]
     paths:
       - 'db/hc_first_owner_operator_activation.sql'
       - 'services/security/operatorFirstOwnerPasskeyCandidate.js'
       - 'tests/operator-first-owner-postgres.test.mjs'
+      - 'routes/firstOwnerActivation.js'
+      - 'owner-setup/**'
+      - 'tests/first-owner-activation-router.test.mjs'
       - '.github/workflows/first-owner-operator-activation.yml'
   workflow_dispatch:
 permissions:
@@ -42,5 +45,8 @@ jobs:
           path: ~/.npm
           key: ${{ runner.os }}-npm-operator-owner-${{ hashFiles('package.json') }}
       - run: npm install --ignore-scripts --no-audit --no-fund
-      - run: node --check services/security/operatorFirstOwnerPasskeyCandidate.js
-      - run: node --test --test-concurrency=1 tests/operator-first-owner-postgres.test.mjs tests/first-owner-passkey-registration-postgres.test.mjs
+      - run: |
+          node --check services/security/operatorFirstOwnerPasskeyCandidate.js
+          node --check routes/firstOwnerActivation.js
+          node --check owner-setup/client.js
+      - run: node --test --test-concurrency=1 tests/operator-first-owner-postgres.test.mjs tests/first-owner-passkey-registration-postgres.test.mjs tests/first-owner-activation-router.test.mjs
