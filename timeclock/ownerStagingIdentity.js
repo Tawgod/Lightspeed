@@ -73,7 +73,7 @@ export function createOwnerStageIdentityRouter({
   });
   router.post('/verify-pin', async (req, res) => {
     const pin = req.body?.pin;
-    if (typeof pin !== 'string' || !/^\\d{4}$/.test(pin)) return deny(res, 401);
+    if (typeof pin !== 'string' || !/^\d{4}$/.test(pin)) return deny(res, 401);
     try {
       if (!await limiter({employeeId:id,sourceIp:req.socket.remoteAddress,action:'pin'}))
         return deny(res, 429);
