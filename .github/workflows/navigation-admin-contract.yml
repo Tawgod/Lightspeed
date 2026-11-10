@@ -1,8 +1,5 @@
 name: Navigation admin permission contract
 on:
-  push:
-    branches:
-      - feature/unified-hierarchical-navigation-20261109
   pull_request:
     paths:
       - 'shared-ui/operations-nav.mjs'
@@ -17,11 +14,15 @@ on:
       - 'server.js'
       - '.github/workflows/navigation-admin-contract.yml'
   workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 permissions:
   contents: read
 jobs:
   verify-navigation-contract:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:16
@@ -43,6 +44,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-nav-admin-${{ hashFiles('package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-nav-admin-
       - name: Install existing backend dependencies
         run: npm install --ignore-scripts --no-audit --no-fund
       - name: Check JavaScript syntax

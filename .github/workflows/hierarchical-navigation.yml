@@ -20,16 +20,24 @@ on:
       - 'server.js'
       - 'shared-ui/staff-auth.js'
       - '.github/workflows/hierarchical-navigation.yml'
-  push:
-    branches: ['feature/unified-hierarchical-navigation-20261109']
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   navigation:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions: { contents: read }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-nav-${{ hashFiles('package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-nav-
       - run: npm install --ignore-scripts --no-audit --no-fund
       - run: node --test tests/hierarchical-navigation.test.mjs tests/hierarchical-navigation-admin.test.mjs tests/admin-navigation-access.test.mjs tests/core-ops-navigation.test.mjs
