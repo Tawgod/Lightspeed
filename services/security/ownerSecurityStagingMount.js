@@ -72,12 +72,13 @@ export function createOwnerSecurityStagingMount({
    // The initial setup candidate never grants revocation/recovery.
    revoke:async()=>{throw denied();}
   }}));
-  // Existing Employee Security Settings depends on shared staff auth JS.
-  // Serve only this reviewed asset; do not mount unrelated shared UI routes.
+  // Existing Employee Security Settings expects HCStaffAuth. Serve a
+  // memory-only substitute at the same URL, never the general shared-ui
+  // sessionStorage/legacy-key implementation.
   app.get('/shared-ui/staff-auth.js',async(_req,res)=>{
    res.set({'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
    try{
-    const code=await readFile(new URL('../../shared-ui/staff-auth.js',import.meta.url));
+    const code=await readFile(new URL('../../owner-setup/memory-staff-auth.js',import.meta.url));
     return res.type('application/javascript').send(code);
    }catch{return res.sendStatus(503);}
   });
