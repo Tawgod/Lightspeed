@@ -1,0 +1,30 @@
+name: Owner scoped Timeclock adapter
+on:
+  push:
+    branches:
+      - feature/owner-staging-scoped-timeclock-adapter-20261110
+  pull_request:
+    paths:
+      - 'services/scannerTimeclockIdentity.js'
+      - 'services/security/ownerTimeclockStagingBundle.js'
+      - 'scripts/issue-owner-stage-activation.mjs'
+      - 'tests/owner-staging-scoped-timeclock.test.mjs'
+      - '.github/workflows/owner-scoped-timeclock-adapter.yml'
+permissions:
+  contents: read
+jobs:
+  adapter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check relevant syntax
+        run: |
+          node --check services/scannerTimeclockIdentity.js
+          node --check services/security/ownerTimeclockStagingBundle.js
+          node --check scripts/issue-owner-stage-activation.mjs
+      - name: Test scoped transport and legacy Scanner
+        run: node --test tests/owner-staging-scoped-timeclock.test.mjs
