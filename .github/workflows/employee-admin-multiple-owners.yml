@@ -47,4 +47,4 @@ jobs:
             ${{ runner.os }}-npm-owner-admin-
       - run: npm install --ignore-scripts --no-audit --no-fund
       - run: node --check services/security/adminDelegationsPostgres.js
-      - run: node --test tests/employee-admin-multiple-owners-postgres.test.mjs tests/employee-admin-delegations-postgres.test.mjs tests/employee-admin-owner-commissioning.test.mjs
+      - run: node --test --test-concurrency=1 tests/employee-admin-multiple-owners-postgres.test.mjs tests/employee-admin-delegations-postgres.test.mjs tests/employee-admin-owner-commissioning.test.mjs
