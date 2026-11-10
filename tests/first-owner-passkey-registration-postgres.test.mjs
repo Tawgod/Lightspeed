@@ -73,7 +73,7 @@ test('first Owner signature, challenge, atomic credential+Owner+audit, no second
     // Force the final audit INSERT to fail. The existing passkey service
     // must roll back its credential and Owner role along with the approval.
     await pool.query(`CREATE FUNCTION fail_owner_audit() RETURNS trigger
-      LANGUAGE plpgsql AS $ BEGIN RAISE EXCEPTION 'CI audit failure'; END; $`);
+      LANGUAGE plpgsql AS 'BEGIN RAISE EXCEPTION ''CI audit failure''; END;'`);
     await pool.query(`CREATE TRIGGER owner_test_force_rollback
       BEFORE INSERT ON hc_owner_commissioning_events
       FOR EACH ROW EXECUTE FUNCTION fail_owner_audit()`);
