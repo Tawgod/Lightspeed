@@ -1,0 +1,16 @@
+{
+  "name": "Hobby Corner — isolated Owner security tests",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "workspace",
+  "runServices": ["workspace", "db"],
+  "workspaceFolder": "/workspaces/Lightspeed",
+  "shutdownAction": "stopCompose",
+  "postCreateCommand": "npm install --ignore-scripts --no-audit --no-fund",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  }
+}
