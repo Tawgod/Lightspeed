@@ -59,6 +59,16 @@ test('secure staging routes are composed under existing URLs and mutating cross-
   const page=await fetch(base+'/owner-setup/');
   assert.equal(page.status,200);
   assert.deepEqual(await page.json(),{page:'owner'});
+  const authAsset=await fetch(base+'/shared-ui/staff-auth.js');
+  assert.equal(authAsset.status,200);
+  assert.match(await authAsset.text(),/HCStaffAuth/);
+  const passkeyRequest=await fetch(base+'/staff-passkey/authentication/options',{
+   method:'POST',headers:{
+    'Content-Type':'application/json','Origin':ORIGIN,
+    'Sec-Fetch-Site':'same-origin'
+   },body:'{}'
+  });
+  assert.equal(passkeyRequest.status,200,'existing WebAuthn auth route shares the setup verifier');
   const send=headers=>fetch(base+'/staff-security/api/test-proof',{
    method:'POST',headers:{'Origin':ORIGIN,'Sec-Fetch-Site':'same-origin',...headers}
   });
