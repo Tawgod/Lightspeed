@@ -59,8 +59,8 @@ test('wires existing Timeclock PIN verify and canonical read to signed session w
    const employee={id:'42',name:'Verified Employee',canLookup:true,
     canApprove:false,permissionSource:'timeclock_employee'};
    if(url.pathname.endsWith('verify-pin')){
-    assert.equal(body.pin,'1234');
-    return {ok:true,json:async()=>({employee})};
+    assert.ok(['1234','9999'].includes(body.pin));
+    return {ok:true,json:async()=>({employee:body.pin==='9999'?{...employee,id:'43'}:employee})};
    }
    assert.equal(String(body.employeeId),'42');
    return {ok:true,json:async()=>({employee})};
@@ -82,6 +82,11 @@ test('wires existing Timeclock PIN verify and canonical read to signed session w
   const data=await login.json();
   assert.equal(data.employee.id,'42');
   assert.equal(data.employee.permissionSource,'timeclock_employee');
+  const other=await fetch(base+'/api/staff-auth/session',{
+   method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({pin:'9999'})
+  });
+  assert.equal(other.status,403,'a different real employee PIN must never create an Owner staging session');
   const check=await fetch(base+'/api/staff-auth/session',{
    headers:{Authorization:'Bearer '+data.token}
   });
@@ -92,7 +97,7 @@ test('wires existing Timeclock PIN verify and canonical read to signed session w
   });
   assert.equal(bound.employeeId,'42');
   assert.match(bound.binding,/^[A-Za-z0-9_.:-]{16,256}$/);
-  assert.equal(calls.length,3,'verify PIN, authorize signed session, and canonical recheck only');
+  assert.equal(calls.length,4,'selected PIN, refused other employee PIN, signed session check and canonical recheck');
   assert.ok(calls.every(call=>call.method==='POST'));
   assert.ok(calls.every(call=>call.headers['x-scanner-service-secret']===e.HC_OWNER_TIMECLOCK_SERVICE_SECRET));
  }finally{await new Promise(resolve=>server.close(resolve));}
