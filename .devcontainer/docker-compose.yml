@@ -1,0 +1,25 @@
+services:
+  workspace:
+    image: mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm
+    volumes:
+      - ..:/workspaces/Lightspeed:cached
+    working_dir: /workspaces/Lightspeed
+    command: sleep infinity
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      HC_TEST_DATABASE_URL: postgres://hc_test:hc_test@db:5432/hc_test
+      NODE_ENV: test
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: hc_test
+      POSTGRES_PASSWORD: hc_test
+      POSTGRES_DB: hc_test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hc_test -d hc_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    # Disposable test DB only. No host port mapping and no shared Railway data.
