@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer"><title>Hobby Corner — Initial Owner Setup</title>
+<script defer src="./client.js"></script>
+<link rel="stylesheet" href="./styles.css"></head><body><main>
+<p class="hint">HOBBY CORNER · CONTROLLED INITIAL SETUP</p>
+<h1>Connect your Owner account</h1>
+<p>Keep your existing Timeclock PIN. Register a passkey to the employee account already selected by the authorized setup operator. The setup code is separate from your PIN and expires shortly.</p>
+<section><h2>1. Timeclock sign-in</h2>
+<form id="login" autocomplete="off">
+<label for="pin">Your existing four-digit Timeclock PIN</label>
+<input id="pin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" required>
+<button type="submit">Sign in</button></form>
+<p id="identity" class="hint">Not signed in</p></section>
+<section><h2>2. Register your passkey</h2>
+<label for="activation">Private one-time Owner activation code</label>
+<input id="activation" type="password" autocomplete="off" spellcheck="false" aria-describedby="activation-note">
+<p class="hint" id="activation-note">Provided privately by the authorized setup operator; not your PIN.</p>
+<button id="register" type="button" disabled>Register passkey</button></section>
+<p id="status" role="status" aria-live="polite"></p>
+<button id="signout" type="button" disabled>Clear and sign out</button>
+<small>This screen does not change your PIN or enroll Google Authenticator. Authenticator setup follows from protected Admin security settings after Owner access is active. This page is not enabled on production.</small>
+</main></body></html>

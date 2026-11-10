@@ -126,3 +126,12 @@
 - `tests/operator-first-owner-postgres.test.mjs` covers wrong/no token, wrong employee, audit-write failure rollback, replay protection and success in disposable Postgres. [Actions 42848285658](https://github.com/Tawgod/Lightspeed/actions/runs/42848285658) **SUCCESS: 4 tests passed, none skipped**.
 - Draft [PR #53](https://github.com/Tawgod/Lightspeed/pull/53) is stacked on PR #50. Reconcile with multiple Owners PR #52 and the existing TOTP/employee Admin flow before any release. No live Owner, PIN, authenticators, operator activation secret, Railway or production change.
 - Setup and release safety guide: `docs/FIRST_OWNER_OPERATOR_SETUP.md`. Real browser ceremony, protected token handling, actual Timeclock mapping, database privilege separation, TOTP verification/recovery and explicit live deployment authorization are outstanding.
+
+
+## 2026-11-10 — Protected first-Owner browser enrollment (draft PR #54)
+
+- Added unmounted `/owner-setup` HTTP candidate, standalone first-Owner page, native WebAuthn registration UI, and explicit isolated-test-only backend composition. Reuses existing signed Timeclock session and operator-selected one-time Owner activation; no new employee account or PIN replacement.
+- Browser requests require exact Origin, same-origin fetch metadata, JSON shape, a 43-character activation secret header, strict challenge IDs and sanitized error responses. Static assets have CSP, no-store/referrer and anti-framing headers; tokens are not persisted in browser storage.
+- Existing TOTP/Google Authenticator settings screen and subsystem discovered and retained for later connection, avoiding a duplicate enrollment system. First Owner self-setup must require a newly verified registered strong passkey, not a PIN-only or synthetic-manager approval.
+- [Run 42852751541](https://github.com/Tawgod/Lightspeed/actions/runs/42852751541) **SUCCESS**, 7 tests passed/0 failed/0 skipped on functional source `c53e6ac846bacc6296f06474e6816cb27392a422` including HTTP route protections and disposable PostgreSQL first-Owner regression.
+- See `docs/FIRST_OWNER_BROWSER_ENROLLMENT.md`. No real-browser passkey, actual employee lookup, live token, production URL, Railway deployment, schema migration, account promotion or Chrome extension change. PR #54 remains draft and stacked on #53; Admin #52 must be reconciled before release.
