@@ -77,7 +77,9 @@ test('disabled, missing or reused credentials deny before database',async()=>{
     {...env,OWNER_STAGING_IDENTITY_ENABLED:'false'},
     {...env,OWNER_STAGING_EMPLOYEE_ID:'901'},
     {...env,OWNER_STAGING_SERVICE_SECRET:env.SCANNER_SERVICE_SECRET},
-    {...env,OWNER_STAGING_THROTTLE_SECRET:''}
+    {...env,OWNER_STAGING_THROTTLE_SECRET:''},
+    {...env,OWNER_STAGING_THROTTLE_SECRET:env.OWNER_STAGING_SERVICE_SECRET},
+    {...env,OWNER_STAGING_THROTTLE_SECRET:env.SCANNER_SERVICE_SECRET}
   ]) {
     const s=await setup({environment});
     try {
