@@ -10,8 +10,9 @@ CREATE TABLE IF NOT EXISTS hc_admin_principals (
  appointed_by bigint NULL,
  appointed_at timestamptz NOT NULL DEFAULT now()
 );
-CREATE UNIQUE INDEX IF NOT EXISTS hc_admin_single_active_owner
- ON hc_admin_principals ((role)) WHERE role='owner' AND active=true;
+-- Multiple Owners are allowed after the first controlled provisioning.
+-- An existing one-Owner draft index must be removed to permit later appointments.
+DROP INDEX IF EXISTS hc_admin_single_active_owner;
 
 CREATE TABLE IF NOT EXISTS hc_admin_grants (
  employee_id bigint NOT NULL REFERENCES hc_admin_principals(employee_id),
@@ -50,7 +51,7 @@ CREATE TABLE IF NOT EXISTS hc_admin_authorization_events (
  event_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
  actor_id bigint NOT NULL CHECK(actor_id>0),
  target_employee_id bigint NOT NULL CHECK(target_employee_id>0),
- kind text NOT NULL CHECK(kind IN ('admin_grant','admin_revoke','admin_disable','tool_grant','tool_revoke','scope_grant','scope_revoke','setting_scope_grant','setting_scope_revoke')),
+ kind text NOT NULL CHECK(kind IN ('owner_appoint','owner_revoke','admin_grant','admin_revoke','admin_disable','tool_grant','tool_revoke','scope_grant','scope_revoke','setting_scope_grant','setting_scope_revoke')),
  operation text NOT NULL CHECK(length(operation) BETWEEN 3 AND 100),
  reason text NOT NULL CHECK(length(reason) BETWEEN 8 AND 400),
  created_at timestamptz NOT NULL DEFAULT now()
