@@ -60,6 +60,7 @@
       : 'Not signed in. Sign in with your staging PIN to start another session test.';
     $('startEnrollment').disabled = true;
     $('requestApproval').disabled = !yes;
+    $('approveSelfPasskey').disabled = !yes || approvalState !== 'requested';
     $('checkApproval').disabled = !yes;
     $('mfaButton').disabled = true;
     if (!yes) {
@@ -88,7 +89,8 @@
       credentials: 'omit',
       headers: {
         Authorization: 'Bearer ' + session.token,
-        ...(options.body === undefined ? {} : { 'Content-Type': 'application/json' })
+        ...(options.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        ...(options.extraHeaders || {})
       },
       ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) })
     });
@@ -137,6 +139,7 @@
       ? 'Expires at ' + new Date(data.expiresAtMs).toLocaleTimeString() + '.'
       : '';
     $('requestApproval').disabled = state !== 'none' || working;
+    $('approveSelfPasskey').disabled = state !== 'requested' || working;
     $('startEnrollment').disabled = state !== 'approved' || working;
     if (state === 'requested') $('authHelp').textContent =
       'Your setup request is awaiting independently verified manager approval.';
@@ -158,6 +161,89 @@
       notice(error.message);
       $('requestApproval').disabled = false;
     } finally { working = false; }
+  }
+  // Existing registered Owner passkey approves THIS account's enrollment.
+  // The backend verifies the same signed employee session, current Owner role,
+  // fresh signed passkey proof and exact enrollment-request ID. A PIN-only
+  // session or browser role never grants approval.
+  const ownerBytes = value => {
+    if (typeof value !== 'string' || !/^[A-Za-z0-9_-]+$/.test(value))
+      throw Error('Invalid passkey challenge.');
+    const raw = atob(value.replace(/-/g, '+').replace(/_/g, '/')
+      .padEnd(Math.ceil(value.length / 4) * 4, '='));
+    return Uint8Array.from(raw, char => char.charCodeAt(0));
+  };
+  const ownerB64 = value => {
+    let text = '';
+    for (const byte of new Uint8Array(value)) text += String.fromCharCode(byte);
+    return btoa(text).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+  };
+  async function freshOwnerPasskey() {
+    const session = auth()?.readSession?.();
+    if (!session?.token || !navigator.credentials?.get)
+      throw Error('Sign in on a passkey-capable device.');
+    const signed = async (path, data) => {
+      const response = await fetch('/staff-passkey/' + path, {
+        method:'POST',mode:'same-origin',credentials:'omit',cache:'no-store',
+        referrerPolicy:'no-referrer',
+        headers:{'Authorization':'Bearer ' + session.token,
+          'Content-Type':'application/json'},
+        body:JSON.stringify(data)
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) throw Error('A registered Owner passkey is required.');
+      return json;
+    };
+    const ceremony = await signed('authentication/options', {});
+    const opts = ceremony.options;
+    if (!opts?.challenge || typeof ceremony.challengeId !== 'string')
+      throw Error('Passkey ceremony unavailable.');
+    const credential = await navigator.credentials.get({publicKey:{
+      ...opts,challenge:ownerBytes(opts.challenge),
+      allowCredentials:(opts.allowCredentials || []).map(item=>({
+        ...item,id:ownerBytes(item.id)
+      }))
+    }});
+    if (!credential) throw Error('Passkey verification was cancelled.');
+    const result = await signed('authentication/verify', {
+      challengeId:ceremony.challengeId,
+      response:{
+        id:credential.id,rawId:ownerB64(credential.rawId),type:credential.type,
+        response:{
+          clientDataJSON:ownerB64(credential.response.clientDataJSON),
+          authenticatorData:ownerB64(credential.response.authenticatorData),
+          signature:ownerB64(credential.response.signature),
+          userHandle:credential.response.userHandle
+            ?ownerB64(credential.response.userHandle):null
+        },
+        clientExtensionResults:credential.getClientExtensionResults()
+      }
+    });
+    if(typeof result.token!=='string'||result.token.length>2500||
+       !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(result.token)||
+       !Number.isSafeInteger(result.expiresIn)||result.expiresIn<1||
+       result.expiresIn>300)
+      throw Error('Strong Owner passkey proof was not valid.');
+    return result.token;
+  }
+  async function approveOwnEnrollmentWithPasskey() {
+    if (working || approvalState !== 'requested') return;
+    working = true;
+    $('approveSelfPasskey').disabled = true;
+    try {
+      const requestId = $('approvalRequestId').value;
+      if (!/^[a-f0-9-]{36}$/i.test(requestId))
+        throw Error('Refresh the current enrollment request.');
+      const proof = await freshOwnerPasskey();
+      const result = await request('enrollment-approve', {
+        method:'POST',body:{requestId},
+        extraHeaders:{'X-HC-Passkey-Proof':proof}
+      });
+      if(result.approved !== true)throw Error('Owner approval was not confirmed.');
+      await loadApproval();
+      notice('Owner passkey approved this enrollment. Set up Google Authenticator next.');
+    } catch(error) {notice(error.message);}
+    finally {working=false;$('approveSelfPasskey').disabled=approvalState!=='requested';}
   }
   async function refresh() {
     if (working) return;
@@ -428,6 +514,7 @@
     notice('Signed out. Your setup key has been cleared from this page.');
   });
   $('requestApproval').addEventListener('click', requestApproval);
+  $('approveSelfPasskey').addEventListener('click', approveOwnEnrollmentWithPasskey);
   $('checkApproval').addEventListener('click', async () => {
     if (working) return;
     try { await loadApproval(); notice('Enrollment approval status updated.'); }
