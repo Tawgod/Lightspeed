@@ -12,9 +12,13 @@ on:
       - 'tests/scanner**'
       - 'server.js'
       - '.github/workflows/scanner-tests.yml'
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   scanner-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -22,6 +26,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-scanner-${{ hashFiles('package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-scanner-
       - run: npm install --ignore-scripts --no-audit --no-fund
       - run: node --test tests/scanner*.test.js
       - run: |
