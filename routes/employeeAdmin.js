@@ -193,6 +193,22 @@ export function createEmployeeAdminRouter({adminAccess,delegations=null,resolveC
    try{return res.json(await delegations.listGrants({context:req,targetEmployeeId:req.params.employeeId}));}
    catch(e){return error(res,e);}
   });
+  // Additional Owners are appointed only through the backend's strong-factor
+  // protected role service. Never accept a browser-provided 'role' or actor.
+  if(typeof delegations.changeOwnerRole==='function'){
+   router.post('/api/owners',express.json({limit:'2kb',strict:true}),async(req,res)=>{
+    const body=req.body;
+    if(!body||Object.keys(body).sort().join(',')!=='enabled,reason,targetEmployeeId'||
+       typeof body.enabled!=='boolean'||typeof body.reason!=='string'||
+       !/^[1-9][0-9]{0,17}$/.test(String(body.targetEmployeeId||'')))
+     return res.status(400).json({error:'Invalid Owner role request.'});
+    try{
+     const result=await delegations.changeOwnerRole({context:req,
+       targetEmployeeId:body.targetEmployeeId,enabled:body.enabled,reason:body.reason});
+     return res.json(result);
+    }catch(e){return error(res,e);}
+   });
+  }
   router.post('/api/admin-grants',express.json({limit:'2kb',strict:true}),async(req,res)=>{
    const body=req.body;
    if(!body||Object.keys(body).sort().join(',')!=='enabled,operation,reason,targetEmployeeId')
