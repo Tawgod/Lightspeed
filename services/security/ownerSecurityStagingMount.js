@@ -1,3 +1,4 @@
+import {readFile} from 'node:fs/promises';
 import {createIsolatedFirstOwnerSetup} from './isolatedFirstOwnerSetup.js';
 import {createOwnerPasskeyTotpEnrollmentCandidate} from './ownerPasskeyTotpEnrollmentCandidate.js';
 import {createStaffPasskeyRouter} from '../../routes/staffPasskey.js';
@@ -71,6 +72,15 @@ export function createOwnerSecurityStagingMount({
    // The initial setup candidate never grants revocation/recovery.
    revoke:async()=>{throw denied();}
   }}));
+  // Existing Employee Security Settings depends on shared staff auth JS.
+  // Serve only this reviewed asset; do not mount unrelated shared UI routes.
+  app.get('/shared-ui/staff-auth.js',async(_req,res)=>{
+   res.set({'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
+   try{
+    const code=await readFile(new URL('../../shared-ui/staff-auth.js',import.meta.url));
+    return res.type('application/javascript').send(code);
+   }catch{return res.sendStatus(503);}
+  });
   app.use('/staff-security',guard,factor.settingsRouter);
  }
  return Object.freeze({mount});
