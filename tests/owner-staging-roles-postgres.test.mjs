@@ -45,10 +45,10 @@ test('isolated staging database: runtime cannot issue/rewrite first Owner approv
     runtime=new pg.Pool({connectionString:runtimeUrl.toString()});
     assert.deepEqual(await verifyOwnerStagingDatabasePrivileges({pool:runtime}),{ready:true});
     const permissions=await runtime.query(
-      \`SELECT has_table_privilege(current_user,'hc_first_owner_activations','INSERT') AS can_issue,
+      `SELECT has_table_privilege(current_user,'hc_first_owner_activations','INSERT') AS can_issue,
               has_table_privilege(current_user,'hc_first_owner_activations','DELETE') AS can_delete,
               has_column_privilege(current_user,'hc_first_owner_activations','activation_digest','UPDATE') AS can_rewrite,
-              has_column_privilege(current_user,'hc_first_owner_activations','credential_id','UPDATE') AS can_consume\`
+              has_column_privilege(current_user,'hc_first_owner_activations','credential_id','UPDATE') AS can_consume`
     );
     assert.deepEqual(permissions.rows[0],
       {can_issue:false,can_delete:false,can_rewrite:false,can_consume:true});
@@ -57,9 +57,9 @@ test('isolated staging database: runtime cannot issue/rewrite first Owner approv
     operatorUrl.password='ci_fixture_only_operator';
     operator=new pg.Pool({connectionString:operatorUrl.toString()});
     const op=await operator.query(
-      \`SELECT has_table_privilege(current_user,'hc_first_owner_activations','INSERT') AS can_issue,
+      `SELECT has_table_privilege(current_user,'hc_first_owner_activations','INSERT') AS can_issue,
               has_table_privilege(current_user,'hc_staff_totp','SELECT') AS can_read_totp,
-              has_column_privilege(current_user,'hc_first_owner_activations','credential_id','UPDATE') AS can_consume\`
+              has_column_privilege(current_user,'hc_first_owner_activations','credential_id','UPDATE') AS can_consume`
     );
     assert.deepEqual(op.rows[0],
       {can_issue:true,can_read_totp:false,can_consume:false});
