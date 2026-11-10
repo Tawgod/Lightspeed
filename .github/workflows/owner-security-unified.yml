@@ -1,0 +1,79 @@
+name: Owner Security unified integration
+on:
+  pull_request:
+    branches: [feature/owner-passkey-totp-enrollment-20261110]
+    paths:
+      - 'db/hc_admin_delegations.sql'
+      - 'db/hc_first_owner_operator_activation.sql'
+      - 'services/security/adminDelegationsPostgres.js'
+      - 'services/security/operatorFirstOwnerPasskeyCandidate.js'
+      - 'services/security/ownerPasskeyTotpEnrollmentCandidate.js'
+      - 'routes/employeeAdmin.js'
+      - 'routes/firstOwnerActivation.js'
+      - 'owner-setup/**'
+      - 'staff-security.html'
+      - 'staff-security-client.js'
+      - 'tests/employee-admin-multiple-owners-*.test.mjs'
+      - 'tests/owner-*.test.mjs'
+      - '.github/workflows/owner-security-unified.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  unified:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: hc_test
+          POSTGRES_PASSWORD: hc_test
+          POSTGRES_DB: hc_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U hc_test -d hc_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      HC_TEST_DATABASE_URL: postgres://hc_test:hc_test@127.0.0.1:5432/hc_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-owner-unified-${{ hashFiles('package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-owner-unified-
+      - run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Validate unified Owner code
+        run: |
+          node --check services/security/adminDelegationsPostgres.js
+          node --check services/security/operatorFirstOwnerPasskeyCandidate.js
+          node --check services/security/ownerPasskeyTotpEnrollmentCandidate.js
+          node --check routes/employeeAdmin.js
+          node --check routes/firstOwnerActivation.js
+          node --check staff-security-client.js
+          node --check owner-setup/client.js
+      - name: Unified Owner, Admin, passkey, Authenticator and Timeclock contracts
+        run: |
+          node --test --test-concurrency=1 \
+            tests/operator-first-owner-postgres.test.mjs \
+            tests/first-owner-passkey-registration-postgres.test.mjs \
+            tests/first-owner-activation-router.test.mjs \
+            tests/owner-passkey-totp-enrollment-postgres.test.mjs \
+            tests/owner-authenticator-ui-contract.test.mjs \
+            tests/primary-timeclock-totp-subsystem.test.mjs \
+            tests/shared-staff-security.test.mjs \
+            tests/employee-admin-multiple-owners-postgres.test.mjs \
+            tests/employee-admin-multiple-owners-router.test.mjs \
+            tests/employee-admin-delegations-postgres.test.mjs \
+            tests/employee-admin-owner-commissioning.test.mjs \
+            tests/employee-admin-delegated-router.test.mjs
