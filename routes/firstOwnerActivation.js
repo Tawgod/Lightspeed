@@ -45,6 +45,12 @@ export function createFirstOwnerActivationRouter({candidate,origin}={}){
    return res.type('html').send(data);
   }catch{return res.sendStatus(503);}
  });
+ router.get('/styles.css',async(_req,res)=>{
+  try{
+   const data=await readFile(new URL('../owner-setup/styles.css',import.meta.url));
+   return res.type('text/css').send(data);
+  }catch{return res.sendStatus(503);}
+ });
  router.get('/client.js',async(_req,res)=>{
   try{
    const data=await readFile(new URL('../owner-setup/client.js',import.meta.url));
