@@ -1,0 +1,32 @@
+name: Owner staging Timeclock credential checks
+on:
+  push:
+    branches:
+      - feature/owner-timeclock-scoped-credential-20261110
+  pull_request:
+    paths:
+      - 'timeclock/**'
+      - '.github/workflows/owner-staging-timeclock.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  scoped-identity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: timeclock
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Timeclock dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Check server and adapter syntax
+        run: |
+          node --check server.js
+          node --check ownerStagingIdentity.js
+      - name: Run isolated auth regression tests
+        run: node --test tests/owner-staging-identity.test.mjs
