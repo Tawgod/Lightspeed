@@ -1,6 +1,7 @@
 // Backend-only bridge to Timeclock employee PINs and scanner permissions.
-export function createTimeclockScannerIdentity({baseUrl,serviceSecret,fetchImpl=globalThis.fetch,timeoutMs=6000}={}){
+export function createTimeclockScannerIdentity({baseUrl,serviceSecret,fetchImpl=globalThis.fetch,timeoutMs=6000,mode='scanner'}={}){
   if(!baseUrl || !serviceSecret || serviceSecret.length<32)throw new Error('Scanner Timeclock integration not configured.');
+  if(!['scanner','owner-staging'].includes(mode)) throw new Error('Invalid Timeclock integration mode.');
   const root=new URL(baseUrl);
   if(!['https:','http:'].includes(root.protocol)||root.username||root.password||root.search||root.hash||root.pathname!=='/'){
     throw new Error('Invalid Timeclock service origin.');
@@ -11,7 +12,8 @@ export function createTimeclockScannerIdentity({baseUrl,serviceSecret,fetchImpl=
   async function request(endpoint,payload){
     const response=await fetchImpl(new URL(endpoint,root),{
       method:'POST',redirect:'error',signal:AbortSignal.timeout(timeoutMs),
-      headers:{'Content-Type':'application/json','Accept':'application/json','x-scanner-service-secret':serviceSecret},
+      headers:{'Content-Type':'application/json','Accept':'application/json',
+        [mode==='owner-staging'?'x-owner-staging-service-secret':'x-scanner-service-secret']:serviceSecret},
       body:JSON.stringify(payload)
     });
     if(!response.ok)throw Object.assign(new Error('Timeclock employee verification denied.'),{status:response.status===401?401:response.status===403?403:503});
@@ -20,7 +22,7 @@ export function createTimeclockScannerIdentity({baseUrl,serviceSecret,fetchImpl=
     return {id:data.employee.id,name:data.employee.name,canLookup:data.employee.canLookup,canApprove:data.employee.canApprove,role:typeof data.employee.role==='string'?data.employee.role:null,permissionSource:typeof data.employee.permissionSource==='string'?data.employee.permissionSource:'read_only',permissionReason:typeof data.employee.permissionReason==='string'?data.employee.permissionReason:null};
   }
   return {
-    verifyPin:pin=>request('/api/timeclock/integrations/scanner/verify-pin',{pin}),
-    authorize:employeeId=>request('/api/timeclock/integrations/scanner/authorize',{employeeId})
+    verifyPin:pin=>request('/api/timeclock/integrations/'+mode+'/verify-pin',{pin}),
+    authorize:employeeId=>request('/api/timeclock/integrations/'+mode+'/authorize',{employeeId})
   };
 }
