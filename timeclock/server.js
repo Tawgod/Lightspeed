@@ -1,4 +1,5 @@
 import {linkedScannerApproval} from './scannerLightspeedRoles.js';
+import {createOwnerStageIdentityRouter} from './ownerStagingIdentity.js';
 import express from 'express';
 import cors from 'cors';
 import pg from 'pg';
@@ -1644,6 +1645,11 @@ app.post('/api/timeclock/integrations/scanner/authorize', async (req,res) => {
     return res.json({employee:await scannerEffectivePermissions(employee)});
   }catch(error){return res.status(503).json({error:'Employee authorization unavailable.'});}
 });
+
+// Additive, independently gated Owner staging routes. Never change Scanner/PIN behavior.
+app.use('/api/timeclock/integrations/owner-staging', createOwnerStageIdentityRouter({
+  pool, pinHash, permissions: scannerEffectivePermissions
+}));
 
 // Existing Timeclock administrator authorizes each permission independently.
 app.post('/api/timeclock/admin/employees/:employeeId/scanner-permissions', async(req,res)=>{
