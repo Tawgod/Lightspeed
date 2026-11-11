@@ -37,10 +37,20 @@ app.use(createPublicBasePathMiddleware(PUBLIC_BASE_PATH));
 app.use(cors());
 app.use(express.json());
 
+async function sendPublicHtml(req, res, fileName) {
+  try {
+    const html = await fs.readFile(path.join(__dirname, fileName), 'utf8');
+    const baseHref = publicUrl(req.hcPublicBasePath || '', '/');
+    const rendered = html.replace(/<head([^>]*)>/i, '<head$1>\n  <base href="' + baseHref + '">');
+    res.type('html').send(rendered);
+  } catch (error) {
+    console.error('Public HTML render failed:', fileName, error);
+    res.status(500).send('Unable to load this Hobby Corner page.');
+  }
+}
+
 // Serve the Label Maker UI from the root directory
-app.get('/index.html', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
+app.get('/index.html', (req, res) => sendPublicHtml(req, res, 'index.html'));
 
 const LIGHTSPEED_DOMAIN = process.env.LIGHTSPEED_DOMAIN;
 const LIGHTSPEED_TOKEN = process.env.LIGHTSPEED_TOKEN;
@@ -177,9 +187,7 @@ app.use('/api/work-orders', createWorkOrderCombineRouter({
   token: LIGHTSPEED_TOKEN
 }));
 
-app.get('/special-orders', (req, res) => {
-  res.sendFile(path.join(__dirname, 'special-orders.html'));
-});
+app.get('/special-orders', (req, res) => sendPublicHtml(req, res, 'special-orders.html'));
 
 app.get('/special-orders.css', (req, res) => {
   res.set('Cache-Control','no-store');
@@ -212,27 +220,21 @@ app.get('/special-orders-client.js', (req, res) => {
   res.type('application/javascript').sendFile(path.join(__dirname, 'special-orders-client.js'));
 });
 
-app.get('/preorders', (req, res) => {
-  res.sendFile(path.join(__dirname, 'preorders.html'));
-});
+app.get('/preorders', (req, res) => sendPublicHtml(req, res, 'preorders.html'));
 
 app.get('/preorders-client.js', (req, res) => {
   res.set('Cache-Control','no-store');
   res.type('application/javascript').sendFile(path.join(__dirname, 'preorders-client.js'));
 });
 
-app.get('/ordering', (req, res) => {
-  res.sendFile(path.join(__dirname, 'ordering.html'));
-});
+app.get('/ordering', (req, res) => sendPublicHtml(req, res, 'ordering.html'));
 
 app.get('/ordering-client.js', (req, res) => {
   res.set('Cache-Control','no-store');
   res.type('application/javascript').sendFile(path.join(__dirname, 'ordering-client.js'));
 });
 
-app.get('/gw-preorders', (req, res) => {
-  res.sendFile(path.join(__dirname, 'gw-preorders.html'));
-});
+app.get('/gw-preorders', (req, res) => sendPublicHtml(req, res, 'gw-preorders.html'));
 
 app.get('/gw-preorders-client.js', (req, res) => {
   res.set('Cache-Control','no-store');
