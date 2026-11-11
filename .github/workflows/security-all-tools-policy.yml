@@ -10,6 +10,8 @@ on:
       - 'tests/core-operations-route-inventory.test.mjs'
       - 'services/security/coreOperationsRouteAdmission.js'
       - 'tests/core-operations-route-admission.test.mjs'
+      - 'services/security/coreOperationsProvisionalScopes.js'
+      - 'tests/core-operations-provisional-scopes.test.mjs'
       - 'tests/core-operations-route-seam.test.mjs'
       - 'services/security/coreOperationsBrowserCallerInventory.js'
       - 'tests/core-operations-browser-callers.test.mjs'
@@ -35,6 +37,8 @@ on:
       - 'tests/core-operations-route-inventory.test.mjs'
       - 'services/security/coreOperationsRouteAdmission.js'
       - 'tests/core-operations-route-admission.test.mjs'
+      - 'services/security/coreOperationsProvisionalScopes.js'
+      - 'tests/core-operations-provisional-scopes.test.mjs'
       - 'tests/core-operations-route-seam.test.mjs'
       - 'services/security/coreOperationsBrowserCallerInventory.js'
       - 'tests/core-operations-browser-callers.test.mjs'
@@ -96,10 +100,13 @@ jobs:
       - name: Test zero-default-grant backend Core Operations employee and machine admission
         run: |
           node --check services/security/coreOperationsRouteAdmission.js
+          node --check services/security/coreOperationsProvisionalScopes.js
           node --check tests/core-operations-route-admission.test.mjs
           node --check tests/core-operations-route-seam.test.mjs
+          node --check tests/core-operations-provisional-scopes.test.mjs
           node --test --test-concurrency=1 \
             tests/core-operations-route-admission.test.mjs \
-            tests/core-operations-route-seam.test.mjs
+            tests/core-operations-route-seam.test.mjs \
+            tests/core-operations-provisional-scopes.test.mjs
       - name: Verify Special Orders health metadata and legacy auth compatibility
         run: node --test --test-concurrency=1 tests/special-orders-auth-metadata.test.mjs
