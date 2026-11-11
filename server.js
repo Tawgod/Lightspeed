@@ -21,10 +21,18 @@ import { initializeScannerProductReviewQueue } from './services/scannerProductRe
 import { initializeScannerTestCreation } from './services/scannerTestCreationRouter.js';
 import { createScannerIsolatedTestWriter } from './services/scannerIsolatedTestWriter.js';
 import { createStaffAuthGateway } from './services/staffAuthGateway.js';
+import { createPublicBasePathMiddleware, normalizePublicBasePath, normalizePublicLandingPath, publicUrl } from './services/publicBasePath.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
+const PUBLIC_BASE_PATH = normalizePublicBasePath(process.env.HC_PUBLIC_BASE_PATH || '');
+const PUBLIC_LANDING_PATH = normalizePublicLandingPath(process.env.HC_PUBLIC_LANDING_PATH || '');
+
+// Keep existing root URLs working while also accepting the Timcorp gateway prefix.
+// The gateway should forward the public prefix unchanged; this middleware strips it
+// only for Express route matching and records that the request arrived via the prefix.
+app.use(createPublicBasePathMiddleware(PUBLIC_BASE_PATH));
 
 app.use(cors());
 app.use(express.json());
@@ -259,8 +267,8 @@ app.get('/extension', (req, res) => {
   <h1>Hobby Corner Lightspeed Toolkit</h1>
   <p>Download the current Chrome extension package, then install it as an unpacked extension.</p>
   <p style="display:flex;gap:10px;flex-wrap:wrap">
-    <a href="/extension/download" style="display:inline-block;padding:12px 18px;background:#222;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;">Download Extension ZIP</a>
-    <a href="https://special-orders-test-production.up.railway.app/special-orders" target="_blank" rel="noopener"
+    <a href="${publicUrl(PUBLIC_BASE_PATH, '/extension/download')}" style="display:inline-block;padding:12px 18px;background:#222;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;">Download Extension ZIP</a>
+    <a href="${publicUrl(PUBLIC_BASE_PATH, '/special-orders')}" target="_blank" rel="noopener"
        style="display:inline-block;padding:12px 18px;background:#0f766e;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;">Open Special Orders</a>
   </p>
   <ol>
@@ -293,6 +301,9 @@ app.get('/extension/download', async (req, res) => {
 
 // Health-check route
 app.get('/', (req, res) => {
+  if (req.hcPublicPathMatched && PUBLIC_BASE_PATH && PUBLIC_LANDING_PATH) {
+    return res.redirect(302, publicUrl(PUBLIC_BASE_PATH, PUBLIC_LANDING_PATH));
+  }
   res.send('Lightspeed Avery Label API is running.');
 });
 
