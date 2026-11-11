@@ -9,6 +9,7 @@ on:
       - 'services/security/coreOperationsRouteInventory.js'
       - 'tests/core-operations-route-inventory.test.mjs'
       - 'special-orders.js'
+      - 'routes/specialOrderProducts.js'
       - 'tests/special-orders-auth-metadata.test.mjs'
       - 'services/lightspeed/permissions.js'
       - 'services/lightspeed/secureReadPolicy.js'
@@ -24,6 +25,7 @@ on:
       - 'services/security/coreOperationsRouteInventory.js'
       - 'tests/core-operations-route-inventory.test.mjs'
       - 'special-orders.js'
+      - 'routes/specialOrderProducts.js'
       - 'tests/special-orders-auth-metadata.test.mjs'
       - '.github/workflows/security-all-tools-policy.yml'
   workflow_dispatch:
