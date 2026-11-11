@@ -6,6 +6,8 @@ on:
       - 'services/security/staffAccessBaseline.js'
       - 'services/security/adminPermissionCatalog.js'
       - 'tests/security-all-tools-operations.test.mjs'
+      - 'services/security/coreOperationsRouteInventory.js'
+      - 'tests/core-operations-route-inventory.test.mjs'
       - 'special-orders.js'
       - 'tests/special-orders-auth-metadata.test.mjs'
       - 'services/lightspeed/permissions.js'
@@ -19,6 +21,8 @@ on:
       - 'services/security/staffAccessBaseline.js'
       - 'services/security/adminPermissionCatalog.js'
       - 'tests/security-all-tools-operations.test.mjs'
+      - 'services/security/coreOperationsRouteInventory.js'
+      - 'tests/core-operations-route-inventory.test.mjs'
       - 'special-orders.js'
       - 'tests/special-orders-auth-metadata.test.mjs'
       - '.github/workflows/security-all-tools-policy.yml'
@@ -59,5 +63,10 @@ jobs:
           node --test --test-concurrency=1 \
             tests/shared-lightspeed-permissions.test.mjs \
             tests/shared-lightspeed-secure-read.test.mjs
+      - name: Inventory Special Orders, Ordering, GW and product route security without changing live authorization
+        run: |
+          node --check services/security/coreOperationsRouteInventory.js
+          node --check tests/core-operations-route-inventory.test.mjs
+          node --test --test-concurrency=1 tests/core-operations-route-inventory.test.mjs
       - name: Verify Special Orders health metadata and legacy auth compatibility
         run: node --test --test-concurrency=1 tests/special-orders-auth-metadata.test.mjs
