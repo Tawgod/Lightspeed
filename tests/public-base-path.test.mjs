@@ -65,9 +65,14 @@ test('browser entry files do not escape the configured gateway path', async () =
   ];
   for (const file of browserJsFiles) {
     const source = await fs.readFile(new URL('../' + file, import.meta.url), 'utf8');
-    assert.doesNotMatch(source, /fetch\s*\(\s*["']\/api\//, file + ' contains a root-absolute API fetch');
+    assert.doesNotMatch(source, /fetch\s*\(\s*["'\x60]\/api\//, file + ' contains a root-absolute API fetch');
   }
 
   const splitSource = await fs.readFile(new URL('../routes/orderSplit.js', import.meta.url), 'utf8');
-  assert.doesNotMatch(splitSource, /fetch\s*\(\s*["']\/api\//, 'order split test harness contains a root-absolute API fetch');
+  assert.doesNotMatch(splitSource, /fetch\s*\(\s*["'\x60]\/api\//, 'order split test harness contains a root-absolute API fetch');
+  assert.match(splitSource, /<base href=/, 'order split test harness must anchor relative API calls at the public base path');
+
+  const serverSource = await fs.readFile(new URL('../server.js', import.meta.url), 'utf8');
+  assert.match(serverSource, /createPublicBasePathMiddleware\(PUBLIC_BASE_PATH\)/);
+  assert.doesNotMatch(serverSource, /https:\/\/special-orders-test-production\.up\.railway\.app\/special-orders/);
 });
