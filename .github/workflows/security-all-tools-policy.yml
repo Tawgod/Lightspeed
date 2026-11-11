@@ -6,6 +6,11 @@ on:
       - 'services/security/staffAccessBaseline.js'
       - 'services/security/adminPermissionCatalog.js'
       - 'tests/security-all-tools-operations.test.mjs'
+      - 'services/lightspeed/permissions.js'
+      - 'services/lightspeed/secureReadPolicy.js'
+      - 'routes/sharedLightspeedRead.js'
+      - 'tests/shared-lightspeed-permissions.test.mjs'
+      - 'tests/shared-lightspeed-secure-read.test.mjs'
       - '.github/workflows/security-all-tools-policy.yml'
   pull_request:
     paths:
@@ -22,7 +27,7 @@ concurrency:
 jobs:
   policy:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -40,3 +45,13 @@ jobs:
             tests/shared-staff-security.test.mjs \
             tests/shared-staff-bridge.test.mjs \
             tests/security-all-tools-operations.test.mjs
+      - name: Install isolated HTTP test dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Test secure Lightspeed read grants and denied HTTP access
+        run: |
+          node --check services/lightspeed/permissions.js
+          node --check services/lightspeed/secureReadPolicy.js
+          node --check routes/sharedLightspeedRead.js
+          node --test --test-concurrency=1 \
+            tests/shared-lightspeed-permissions.test.mjs \
+            tests/shared-lightspeed-secure-read.test.mjs
