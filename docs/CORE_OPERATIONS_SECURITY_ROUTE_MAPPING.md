@@ -34,6 +34,24 @@ The source-derived `services/security/coreOperationsRouteInventory.js` explicitl
 - `special-orders.manage` and `ordering.manage` in the new policy candidate currently demand a recent passkey or approved IdP strong factor. That is an **unapproved broad granularity** for day-to-day staff workflows; split into normal stage/write and sensitive/high-impact operations only after owner approval and user acceptance. Existing employees' permissions remain unchanged.
 - Production does not have new staff security schema/roles/crypto credential providers configured, and Owner first enrollment is still staged. Do not point staff browsers at unprovisioned passkey/worker routes.
 
+## Browser source caller reconciliation — 2026-11-11
+
+In the current development source, all four Core Operations browser interfaces set `const api='/api/special-orders'` and call the shared `window.HCStaffAuth` client for authenticated requests. These are **observed browser reference patterns**, not evidence that every route is exercised at runtime or that service callers are absent.
+
+| Browser entry | Unique literal `api + '/...'` fragments in source | Examples requiring authorization design |
+| --- | ---: | --- |
+| `special-orders-client.js` | **37** | Create customer/product in Lightspeed, import workbook, edit Special Orders, supplier purchasing, GW sync |
+| `preorders-client.js` | **6** | Preorder allocation, Discord watch review |
+| `gw-preorders-client.js` | **6** | GW draft sync/review, external Discord publishing |
+| `ordering-client.js` | **10** | Item routing/status, purchase-order receipt into Special Orders, notification queue review |
+| **All four** | **59 per-client distinct references** | Some paths are shared across clients; this is **not** 59 unique HTTP endpoints or a complete runtime call graph |
+
+The machine-readable `services/security/coreOperationsBrowserCallerInventory.js` captures those 59 browser-source fragments and their file ownership, all with `review:'pending'`. `tests/core-operations-browser-callers.test.mjs` compares the checked-in inventory with current source and ensures these clients continue to use `HCStaffAuth` rather than an unrelated UI sign-in. CI watches the four client source files.
+
+**Critical limitations:** A literal fragment such as `/supplier-orders/` or `/items/` is a dynamic URL prefix, not an exact server route or permission. This source-only audit cannot determine which HTTP method, action, or employee grant applies at runtime, cannot prove what Discord workers call, and does not include API calls dynamically constructed by external services or extensions. It must not be used as access middleware, service trust or an automatic grant.
+
+**Next review:** correlate the actual method + full URL for each browser helper with the 87 server endpoints, including write side effects. Investigate Discord bot and scheduled processors on their owning repositories/services, then introduce independently verified service-bound credentials rather than making these automated calls depend on staff TOTP/passkeys.
+
 ## Safe next implementation stages
 
 1. Cross-reference every service/hybrid route with actual callers in `special-orders-client.js`, `preorders-client.js`, `gw-preorders-client.js`, `ordering-client.js`, Scanner/extension, Discord and scheduled jobs. Make an explicit verified caller matrix. Identify uncalled or diagnostic endpoints, but do not remove them without evidence.
