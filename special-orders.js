@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import multer from 'multer';
 import { importLegacyWorkbook } from './special-orders-import.js';
 import { registerSpecialOrderProductRoutes } from './routes/specialOrderProducts.js';
+import { coreOperationsAuditActor } from './services/security/coreOperationsAuditActor.js';
 
 const { Pool } = pg;
 const __filename = fileURLToPath(import.meta.url);
@@ -354,6 +355,12 @@ export function createSpecialOrdersRouter({
 }) {
   const router = express.Router();
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
+  // Existing attribution remains byte-compatible until a trusted backend
+  // deliberately supplies the new guard. In guarded mode browser-supplied
+  // actor names never override independently verified employee/service ID.
+  const auditActor = (request, legacy) => coreOperationsAuditActor(request, legacy, {
+    guardEnabled: coreOperationsAdmission != null
+  });
 
   router.get('/health', async (req, res) => {
     res.json({
@@ -2032,7 +2039,7 @@ export function createSpecialOrdersRouter({
       "WHEN COALESCE($6,gw_case_pack_size,1)>1 THEN 'SPLIT_TO_SINGLES' ELSE 'POST_AS_IS' END,"+
       "gw_reviewed_at=now(),gw_reviewed_by=COALESCE(NULLIF(trim($9),''),'gw-web') "+
       "FROM preorder_campaigns pc WHERE pp.id=$10 AND pc.id=pp.preorder_campaign_id AND pc.campaign_type='GW_WEEKLY' RETURNING pp.*";
-    const {rows}=await pool.query(sql,[itemDescription,sku,msrp,cost,postEnabled,packSize,singleName,singleMsrp,body.gw_reviewed_by??null,req.params.id]);
+    const {rows}=await pool.query(sql,[itemDescription,sku,msrp,cost,postEnabled,packSize,singleName,singleMsrp,auditActor(req, body.gw_reviewed_by??null),req.params.id]);
     if(!rows[0])return res.status(404).json({error:'GW preorder product not found.'});
     res.json(rows[0]);
   });
@@ -2321,7 +2328,7 @@ export function createSpecialOrdersRouter({
         await client.query(`
           INSERT INTO customer_pickup_events (customer_id,preorder_request_id,event_type,notes,created_by)
           VALUES ($1,$2,$3,$4,$5)
-        `,[a.customer_id,a.preorder_request_id,late?'LATE_PICKUP':'PICKED_UP',req.body?.note||null,req.body?.changed_by||null]);
+        `,[a.customer_id,a.preorder_request_id,late?'LATE_PICKUP':'PICKED_UP',req.body?.note||null,auditActor(req, req.body?.changed_by||null)]);
         await client.query('COMMIT');return res.json(r.rows[0]);
       }
       if(action==='NO_PICKUP'){
@@ -2334,7 +2341,7 @@ export function createSpecialOrdersRouter({
         await client.query(`
           INSERT INTO customer_pickup_events (customer_id,preorder_request_id,event_type,notes,created_by)
           VALUES ($1,$2,'NO_PICKUP',$3,$4)
-        `,[a.customer_id,a.preorder_request_id,req.body?.note||null,req.body?.changed_by||null]);
+        `,[a.customer_id,a.preorder_request_id,req.body?.note||null,auditActor(req, req.body?.changed_by||null)]);
         await client.query('COMMIT');return res.json(r.rows[0]);
       }
       await client.query('ROLLBACK');
@@ -2416,7 +2423,7 @@ export function createSpecialOrdersRouter({
 
       const orderResult = await client.query(
         'INSERT INTO special_orders (customer_id,source,notes,created_by) VALUES ($1,$2,$3,$4) RETURNING *',
-        [customerResult.rows[0].id, source, notes, created_by]
+        [customerResult.rows[0].id, source, notes, auditActor(req, created_by)]
       );
 
       const createdItems = [];
@@ -2459,7 +2466,7 @@ export function createSpecialOrdersRouter({
         }
         await client.query(
           'INSERT INTO order_status_history (special_order_item_id,new_status,note,changed_by) VALUES ($1,$2,$3,$4)',
-          [itemResult.rows[0].id, status, 'Order item created', created_by]
+          [itemResult.rows[0].id, status, 'Order item created', auditActor(req, created_by)]
         );
         createdItems.push(itemResult.rows[0]);
       }
@@ -2517,7 +2524,7 @@ export function createSpecialOrdersRouter({
       }
       await client.query(
         'INSERT INTO order_status_history (special_order_item_id,new_status,note,changed_by) VALUES ($1,$2,$3,$4)',
-        [created.rows[0].id,status,'Item added to existing order',item.created_by||null]
+        [created.rows[0].id,status,'Item added to existing order',auditActor(req, item.created_by||null)]
       );
       await client.query('COMMIT');
       res.status(201).json(created.rows[0]);
@@ -2705,7 +2712,7 @@ export function createSpecialOrdersRouter({
 
   router.patch('/items/:id/notes', requireDb, async (req,res)=>{
     const notes=req.body?.notes==null?null:String(req.body.notes).trim()||null;
-    const changedBy=String(req.body?.changed_by||'ordering-web').trim()||'ordering-web';
+    const changedBy=auditActor(req, String(auditActor(req, req.body?.changed_by||'ordering-web')).trim()||'ordering-web');
     const client=await pool.connect();
     try{
       await client.query('BEGIN');
@@ -2780,7 +2787,7 @@ export function createSpecialOrdersRouter({
       );
       await client.query(
         'INSERT INTO order_status_history (special_order_item_id,old_status,new_status,note,changed_by) VALUES ($1,$2,$3,$4,$5)',
-        [req.params.id, old.status, newStatus, req.body?.note || null, req.body?.changed_by || null]
+        [req.params.id, old.status, newStatus, req.body?.note || null, auditActor(req, req.body?.changed_by || null)]
       );
 
       if (['COMPLETED','CANCELLED'].includes(newStatus)) {
@@ -2939,7 +2946,7 @@ export function createSpecialOrdersRouter({
             supplierId?'Preferred supplier changed':'Preferred supplier cleared',
             oldSupplier.rows[0]?.name||null,
             newSupplier.rows[0]?.name||null,
-            req.body?.changed_by||'ordering-web'
+            auditActor(req, req.body?.changed_by||'ordering-web')
           ]
         );
       }
@@ -2949,7 +2956,7 @@ export function createSpecialOrdersRouter({
           : {rows:[]};
         await client.query(
           'INSERT INTO supplier_routing_history (special_order_item_id,product_id,product_category,supplier_id,selected_by) VALUES ($1,$2,$3,$4,$5)',
-          [item.id,item.product_id||null,productInfo.rows[0]?.product_category||null,supplierId,req.body?.changed_by||'ordering-web']
+          [item.id,item.product_id||null,productInfo.rows[0]?.product_category||null,supplierId,auditActor(req, req.body?.changed_by||'ordering-web')]
         );
       }
       if(supplierId){
@@ -3331,7 +3338,7 @@ export function createSpecialOrdersRouter({
           (supplier_id,status,supplier_order_number,notes,created_by,lightspeed_sync_status)
         VALUES ($1,'DRAFT',$2,$3,$4,'LOCAL_ONLY')
         RETURNING *
-      `, [supplier_id, supplier_order_number, notes, created_by]);
+      `, [supplier_id, supplier_order_number, notes, auditActor(req, created_by)]);
 
       for (const item of items) {
         const qty = Number(item.quantity || 0);
@@ -3637,7 +3644,7 @@ export function createSpecialOrdersRouter({
           INSERT INTO receiving_events
             (supplier_order_id,supplier_order_item_id,product_id,quantity_received,received_by,notes)
           VALUES ($1,$2,$3,$4,$5,$6)
-        `, [req.params.id, line.id, line.product_id, qty, received_by, notes]);
+        `, [req.params.id, line.id, line.product_id, qty, auditActor(req, received_by), notes]);
 
         let remaining = qty;
         const waiting = await client.query(`
@@ -3674,7 +3681,7 @@ export function createSpecialOrdersRouter({
             await client.query(`
               INSERT INTO order_status_history (special_order_item_id,old_status,new_status,note,changed_by)
               VALUES ($1,NULL,'RECEIVED','Allocated during receiving',$2)
-            `, [so.id, received_by]);
+            `, [so.id, auditActor(req, received_by)]);
           }
           allocated.push({ special_order_item_id:so.id, quantity:give });
           remaining -= give;
@@ -3740,7 +3747,7 @@ export function createSpecialOrdersRouter({
 
   router.post('/ordering/lightspeed-purchase-orders/:id/receive-special-orders', requireDb, async (req,res)=>{
     const allocations=Array.isArray(req.body?.allocations)?req.body.allocations:[];
-    const receivedBy=String(req.body?.received_by||'ordering-web').trim()||'ordering-web';
+    const receivedBy=auditActor(req, String(req.body?.received_by||'ordering-web').trim()||'ordering-web');
     if(!allocations.length)return res.status(400).json({error:'At least one Special Order allocation is required.'});
     let purchaseOrders;
     try{purchaseOrders=await getLightspeedOpenPurchaseOrders()}catch(error){return res.status(error.status||502).json({error:error.message})}
@@ -3853,7 +3860,7 @@ export function createSpecialOrdersRouter({
 
   router.patch('/notifications/:id/review', requireDb, async (req,res)=>{
     const action=String(req.body?.action||'').trim().toUpperCase();
-    const reviewedBy=String(req.body?.reviewed_by||'ordering-web').trim()||'ordering-web';
+    const reviewedBy=auditActor(req, String(req.body?.reviewed_by||'ordering-web').trim()||'ordering-web');
     if(!['ACKNOWLEDGED','SUPPRESSED'].includes(action))return res.status(400).json({error:'action must be ACKNOWLEDGED or SUPPRESSED.'});
     const db=await pool.connect();
     try{
