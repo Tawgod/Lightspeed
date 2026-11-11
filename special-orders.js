@@ -369,6 +369,12 @@ export function createSpecialOrdersRouter({
   });
 
   router.use(async (req, res, next) => {
+    // In an explicitly guarded staging composition, all business endpoints
+    // must use the independently verified staff/service gate below. Do NOT
+    // force independently authenticated service workers through the legacy
+    // browser/admin-key session as well, or let that key bypass the new gate.
+    // Keep /auth-check on its existing login behavior for compatibility.
+    if (coreOperationsAdmission != null && req.path !== '/auth-check') return next();
     const suppliedKey = String(req.get('x-hobby-corner-key') || '').trim();
     const configuredKey = String(adminKey || '').trim();
 
