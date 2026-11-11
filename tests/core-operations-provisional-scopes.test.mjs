@@ -1,0 +1,117 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {CORE_OPERATIONS_ROUTE_INVENTORY,coreOperationsRouteKey}
+  from '../services/security/coreOperationsRouteInventory.js';
+import {CORE_OPERATIONS_PROVISIONAL_SCOPES,reviewProvisionalScopes}
+  from '../services/security/coreOperationsProvisionalScopes.js';
+import {STAFF_ACCESS_ACTIONS,createStaffAccessBaseline}
+  from '../services/security/staffAccessBaseline.js';
+import {TOOL_OPERATIONS} from '../services/security/adminPermissionCatalog.js';
+import {createCoreOperationsRouteAdmission}
+  from '../services/security/coreOperationsRouteAdmission.js';
+
+const routine=new Set(['special-orders.notes.write','special-orders.routing.write','ordering.draft.write']);
+const now=Date.parse('2026-11-11T21:45:00Z');
+const reject=error=>error?.status===403 && error?.code==='HC_CORE_OPERATIONS_FORBIDDEN';
+function request(method,path,proof='none'){
+  const headers={'authorization':'Bearer verified-employee','x-fixture-proof':proof,
+    'x-hc-role':'owner','x-hobby-corner-key':'unsafe-old-key'};
+  return {method,path,headers,body:{role:'owner',employee:'42'},
+    get(name){return headers[String(name).toLowerCase()];}};
+}
+function staff(grants) {
+  return createStaffAccessBaseline({
+    now:()=>now,
+    verifyEmployeeSession:async request=>{
+      if(request.get('authorization')!=='Bearer verified-employee')throw Error('Unsigned');
+      return {id:'42',active:true,clockedIn:false};
+    },
+    verifyWorkstation:async request=>request.get('x-fixture-proof')==='station'
+      ? {verified:true,deviceId:'store-provisioned',expiresAtMs:now+60_000}:null,
+    verifyStepUp:async request=>['passkey','totp'].includes(request.get('x-fixture-proof'))
+      ? {verified:true,employeeId:'42',method:request.get('x-fixture-proof'),authenticatedAtMs:now-1000}:null,
+    checkPermission:async ({identity,operation})=>identity.id==='42'&&grants.has(operation)
+  });
+}
+const approval=scope=>({source:scope.source,method:scope.method,path:scope.path,
+  audience:'employee',operation:scope.operation});
+const inventory=new Map(CORE_OPERATIONS_ROUTE_INVENTORY.map(x=>[coreOperationsRouteKey(x),x]));
+
+test('every proposed split scope is known, uses an exact existing route, stays PENDING and has no duplicate method/path',()=>{
+  assert.ok(Object.isFrozen(CORE_OPERATIONS_PROVISIONAL_SCOPES));
+  assert.equal(CORE_OPERATIONS_PROVISIONAL_SCOPES.length,14);
+  assert.equal(new Set(CORE_OPERATIONS_PROVISIONAL_SCOPES.map(coreOperationsRouteKey)).size,14);
+  const reviews=reviewProvisionalScopes();
+  for(const route of reviews){
+    assert.ok(Object.isFrozen(route));
+    assert.equal(route.review,'pending');
+    assert.equal(route.routePresent,true,coreOperationsRouteKey(route));
+    assert.equal(route.knownToolOperation,true,route.operation);
+    assert.equal(TOOL_OPERATIONS.includes(route.operation),true);
+    assert.ok(inventory.get(coreOperationsRouteKey(route))?.review==='pending');
+    assert.equal(STAFF_ACCESS_ACTIONS[route.operation]?.assurance,route.assurance,route.operation);
+    assert.ok(typeof route.rationale==='string'&&route.rationale.length>20);
+  }
+});
+
+test('only audited local notes/routing/unsent supplier draft scope is a routine provisional action',()=>{
+  assert.deepEqual(CORE_OPERATIONS_PROVISIONAL_SCOPES
+    .filter(x=>x.assurance==='staff-device').map(x=>x.operation).sort(),[...routine].sort());
+  const status=CORE_OPERATIONS_PROVISIONAL_SCOPES.find(x=>x.path==='/items/:id/status');
+  assert.equal(status.assurance,'step-up'); // can CANCEL/COMPLETE and suppress notifications
+  for(const path of ['/supplier-orders/:id/push-lightspeed','/customers/create-lightspeed',
+    '/products/create-lightspeed','/preorders/gw/campaigns/:id/discord-publish',
+    '/notifications/:id/review','/preorders/products/:id/allocate']){
+    assert.ok(CORE_OPERATIONS_PROVISIONAL_SCOPES.some(x=>x.path===path&&x.assurance==='step-up'),path);
+  }
+});
+
+test('even proposed scopes allow nothing unless the server explicitly approves the exact route',async()=>{
+  const gate=createCoreOperationsRouteAdmission({staffAccess:staff(new Set(TOOL_OPERATIONS))});
+  for(const [method,path] of [['PATCH','/items/44/notes'],['POST','/supplier-orders'],
+    ['POST','/customers/create-lightspeed']]){
+    await assert.rejects(gate.authorize({request:request(method,path,'passkey')}),reject);
+  }
+});
+
+test('routine granted notes do not imply routing, status, live vendor writes or other scope',async()=>{
+  const notes=CORE_OPERATIONS_PROVISIONAL_SCOPES.find(x=>x.operation==='special-orders.notes.write');
+  const routing=CORE_OPERATIONS_PROVISIONAL_SCOPES.find(x=>x.operation==='special-orders.routing.write');
+  const vendor=CORE_OPERATIONS_PROVISIONAL_SCOPES.find(x=>x.operation==='ordering.vendor.push');
+  const status=CORE_OPERATIONS_PROVISIONAL_SCOPES.find(x=>x.operation==='special-orders.status.write');
+  const gate=createCoreOperationsRouteAdmission({
+    approvedRoutes:[notes,routing,status,vendor].map(approval),
+    staffAccess:staff(new Set([notes.operation]))
+  });
+  const result=await gate.authorize({request:request('PATCH','/items/44/notes','station')});
+  assert.equal(result.operation,notes.operation);
+  for(const [method,path,proof] of [
+    ['PATCH','/items/44/routing','station'],
+    ['PATCH','/items/44/status','passkey'],
+    ['POST','/supplier-orders/8/push-lightspeed','passkey']
+  ]) await assert.rejects(gate.authorize({request:request(method,path,proof)}),reject);
+});
+
+test('strong-only approved operations demand fresh passkey and exact grant; TOTP/station cannot write',async()=>{
+  const vendor=CORE_OPERATIONS_PROVISIONAL_SCOPES.find(x=>x.operation==='ordering.vendor.push');
+  const receive=CORE_OPERATIONS_PROVISIONAL_SCOPES.find(x=>x.operation==='ordering.receive');
+  const gate=createCoreOperationsRouteAdmission({
+    approvedRoutes:[vendor,receive].map(approval),
+    staffAccess:staff(new Set([vendor.operation]))
+  });
+  for(const proof of ['station','totp','none']){
+    await assert.rejects(gate.authorize({request:request('POST',
+      '/supplier-orders/8/push-lightspeed',proof)}),reject);
+  }
+  const result=await gate.authorize({request:request('POST','/supplier-orders/8/push-lightspeed','passkey')});
+  assert.equal(result.operation,vendor.operation);
+  await assert.rejects(gate.authorize({request:request('POST',
+    '/supplier-orders/8/receive','passkey')}),reject);
+});
+
+test('deployed service and Owner-only admin permissions cannot be snuck into a store route approval',()=>{
+  assert.throws(()=>createCoreOperationsRouteAdmission({
+    approvedRoutes:[{source:'special-orders.js',method:'GET',path:'/orders',
+      audience:'employee',operation:'admin.delegation.manage'}]
+  }),TypeError);
+});
