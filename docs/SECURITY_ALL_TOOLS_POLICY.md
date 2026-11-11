@@ -26,6 +26,18 @@ A Scanner `approve` action remains a *review/staging* permission only. It is not
 - Reuse existing `tests/shared-staff-security.test.mjs` and `tests/shared-staff-bridge.test.mjs` regressions.
 - `.github/workflows/security-all-tools-policy.yml`: bounded Node 22-only CI; no Railway deploy, database, secret access, external Lightspeed writes, or Chrome packaging.
 
+## Reviewed Phase 2 read components selectively reconciled
+
+Rather than blindly merging the diverged Phase 2 PR #33 branch, the candidate now ports **unchanged** source blobs from #33 and #38 after verifying that the existing Phase 1 `services/lightspeed/staffAdapter.js` and `policy.js` dependencies are **byte-identical** to those in the Owner candidate:
+
+- `services/lightspeed/permissions.js` + `tests/shared-lightspeed-permissions.test.mjs` from PR #33. Exact backend Lightspeed operation grants. Existing Scanner `canLookup` supports verified reads; `canApprove` does not imply a live write. All new writes remain off by default and require an independent grant.
+- `services/lightspeed/secureReadPolicy.js` + `tests/shared-lightspeed-secure-read.test.mjs` from PR #38. Requires signed Timeclock session, backend workstation or independent factor, general tools read admission **and** per-operation read grant.
+- `routes/sharedLightspeedRead.js` from PR #33. Read-only HTTP router that checks authorization before invoking vendor read adapters. Still deliberately **not mounted** on `server.js`.
+
+Existing `services/lightspeed/staffAdapter.js` and `policy.js` were compared by GitHub blob SHA across branches and matched exactly, so no base behavior was replaced.
+
+The expanded `security-all-tools-policy.yml` CI now checks read-policy syntax and uses the original PR #33/#38 regression suites, including denied HTTP calls making zero data-service calls. **Results of the expanded workflow must be verified at the new PR head before claiming tested.** No production service, vendor API, database or extension changed.
+
 ## Required subsequent integration
 
 1. Reconcile PR #32 Phase 1 and diverged PR #33 Phase 2, PR #38 secure-read admission, PR #34 Admin, PR #35 navigation, PR #51 transport safety, PR #59 Timeclock scoped Owner, and Owner setup PR #60. Preserve existing Core Operations and Timeclock behavior.
