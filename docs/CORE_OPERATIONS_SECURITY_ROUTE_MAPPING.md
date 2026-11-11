@@ -52,6 +52,19 @@ The machine-readable `services/security/coreOperationsBrowserCallerInventory.js`
 
 **Next review:** correlate the actual method + full URL for each browser helper with the 87 server endpoints, including write side effects. Investigate Discord bot and scheduled processors on their owning repositories/services, then introduce independently verified service-bound credentials rather than making these automated calls depend on staff TOTP/passkeys.
 
+## Independent production service caller audit — 2026-11-11
+
+Read-only verification of the real **Hobby Corner / production** Railway deployments and matching GitHub source shows these are **separate service identities**, not browser employee callers:
+
+| Production service | Deployed source, successful commit | Security-sensitive behavior found in its deployed entrypoint | Coordinated migration requirement |
+| --- | --- | --- | --- |
+| `Hobby-Corner-Discord-Bot` | `Tawgod/Hobby-Corner-Discord-Bot:main` deployment `3a8e9375-aad7-4c47-9721-66790febaeae` at `7c3af0eee516e52f3e767dbbbb7c03dd3a64d4f9` | `main.py`: Timeclock admin service calls for employees, PIN assignment, shifts, time entries/PTO; `timeclock_headers()` sends server secret `x-timeclock-admin-secret`. Discord role gating occurs in the bot code. Hourly master customer sync separately calls the customer-sync admin endpoint with service key. | Keep independent bot service grants, bind audit actions to verified Discord account/employee mapping when required; never let a Discord role or static service secret automatically grant personal Owner passkey privileges |
+| `Hobby-Corner-Rewards` | Same repo, deployment `07c0c365-a8d4-4a2e-a120-2034dccaee0, at `ce54862f67d678f8a1cb77302e520c59fb0c7118` | `rewards_service.py`: separate Rewards admin key protects overrides/sync endpoints, scheduled sync reads/writes Lightspeed through its own API token; consumer read endpoint exposes rewards snapshot by customer ID | Keep schedule and service token independent of employee session, restrict customer data and admin key surface; staged role-specific Rewards API and background job tests |
+
+The exact Git blobs of `main.py` at Discord's deployed commit and `rewards_service.py` at Rewards' deployed commit matched the checked `main` source at time of audit. The bot and Rewards services reported **SUCCESS** on Railway; this confirms code/runtime deployment status, not actual API permission or integration acceptance.
+
+**Important scope:** These deployed files show service calls to **Timeclock** and customer sync, *not necessarily* direct invocations of the 14 review-pending `/api/special-orders` endpoints. Do not attribute those Special Orders callbacks to this bot until their callers are traced. Source-level audit found the scheduled GW notification loop inside `special-orders.js`, but not its external submission orchestration. Keep unknown caller classifications pending.
+
 ## Safe next implementation stages
 
 1. Cross-reference every service/hybrid route with actual callers in `special-orders-client.js`, `preorders-client.js`, `gw-preorders-client.js`, `ordering-client.js`, Scanner/extension, Discord and scheduled jobs. Make an explicit verified caller matrix. Identify uncalled or diagnostic endpoints, but do not remove them without evidence.
