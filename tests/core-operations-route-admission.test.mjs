@@ -136,6 +136,11 @@ test('bad configs, prototype paths, unreviewed routes, encoded URLs, and failing
   assert.throws(()=>createCoreOperationsRouteAdmission({approvedRoutes:[{
     ...readApproval,operation:'admin.delegation.delete-all'
   }]}),TypeError);
+  // Known administrative privileges must not be assignable to ordinary
+  // feature routers either, even though the Admin catalog recognizes them.
+  assert.throws(()=>createCoreOperationsRouteAdmission({approvedRoutes:[{
+    ...readApproval,operation:'admin.delegation.manage'
+  }]}),TypeError);
   assert.throws(()=>createCoreOperationsRouteAdmission({approvedRoutes:[{
     ...serviceApproval,operation:'special-orders.manage'
   }]}),TypeError);
