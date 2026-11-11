@@ -1,4 +1,4 @@
-const api='/api/special-orders';
+const api='api/special-orders';
 let selectedCustomer=null, selectedOrderProduct=null, stagedItems=[];
 let allSuppliers=[], editingStagedIndex=null;
 let autoRefreshTimer=null;
