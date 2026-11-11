@@ -1,4 +1,4 @@
-import { isKnownPermission } from './adminPermissionCatalog.js';
+import { TOOL_OPERATIONS } from './adminPermissionCatalog.js';
 import { CORE_OPERATIONS_ROUTE_INVENTORY } from './coreOperationsRouteInventory.js';
 
 // Development-only, unmounted authorization boundary for the Core Operations
@@ -31,8 +31,10 @@ function compiledApproval(route) {
   if (match.length !== 1 || ['public-health', 'session-check'].includes(match[0].kind)) {
     throw new TypeError('Route not eligible for operation admission.');
   }
-  if (route.audience === 'employee' ? !isKnownPermission(route.operation)
-    : !SERVICE_OPERATION.test(route.operation)) throw new TypeError('Unrecognized operation.');
+  // Store API endpoints must NEVER accept Owner/Admin delegation or
+  // employee-security operations, even if they exist in the Admin catalog.
+  if (route.audience === 'employee' ? !TOOL_OPERATIONS.includes(route.operation)
+    : !SERVICE_OPERATION.test(route.operation)) throw new TypeError('Unrecognized tool operation.');
   return Object.freeze({
     source: route.source, method: route.method, path: route.path,
     audience: route.audience, operation: route.operation,
