@@ -340,6 +340,9 @@ export function createSpecialOrdersRouter({
   lightspeedToken,
   adminKey,
   verifyEmployee,
+  // Explicit trusted backend opt-in only. Existing routes remain unchanged when
+  // this is not passed by the server; browser headers are never configuration.
+  coreOperationsAdmission,
   liveMode = false,
   allowMigration = false,
   allowProductWrites = false,
@@ -400,6 +403,17 @@ export function createSpecialOrdersRouter({
       employee:employee?{id:employee.id,name:employee.name}:null
     });
   });
+
+  // Future coordinated security cutover: when a trusted server explicitly
+  // supplies the zero-default-grant admission gate, all business routes and
+  // nested product routes must pass it BEFORE accessing databases or vendors.
+  // Health/session-check stay on their pre-existing behavior.
+  if (coreOperationsAdmission != null) {
+    if (typeof coreOperationsAdmission.middleware !== 'function') {
+      throw new TypeError('A trusted Core Operations admission middleware is required.');
+    }
+    router.use(coreOperationsAdmission.middleware);
+  }
 
   router.post('/import/workbook', requireDb, upload.single('workbook'), async (req, res) => {
     if (!allowMigration) return res.status(423).json({ error: 'Legacy migration is disabled until Lightspeed go-live.' });
