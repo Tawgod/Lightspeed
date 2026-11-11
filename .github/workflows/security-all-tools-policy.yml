@@ -1,0 +1,42 @@
+name: Hobby Corner cross-tool security policy
+on:
+  push:
+    branches: [integration/security-all-tools-20261111]
+    paths:
+      - 'services/security/staffAccessBaseline.js'
+      - 'services/security/adminPermissionCatalog.js'
+      - 'tests/security-all-tools-operations.test.mjs'
+      - '.github/workflows/security-all-tools-policy.yml'
+  pull_request:
+    paths:
+      - 'services/security/staffAccessBaseline.js'
+      - 'services/security/adminPermissionCatalog.js'
+      - 'tests/security-all-tools-operations.test.mjs'
+      - '.github/workflows/security-all-tools-policy.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: security-all-tools-policy-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check shared security code syntax
+        run: |
+          node --check services/security/staffAccessBaseline.js
+          node --check services/security/staffSecurityBridge.js
+          node --check services/security/adminPermissionCatalog.js
+          node --check tests/security-all-tools-operations.test.mjs
+      - name: Test all cataloged tool actions with registered station, TOTP and passkey proof
+        run: |
+          node --test --test-concurrency=1 \
+            tests/shared-staff-security.test.mjs \
+            tests/shared-staff-bridge.test.mjs \
+            tests/security-all-tools-operations.test.mjs
