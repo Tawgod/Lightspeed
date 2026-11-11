@@ -38,6 +38,14 @@ Existing `services/lightspeed/staffAdapter.js` and `policy.js` were compared by 
 
 The expanded `security-all-tools-policy.yml` CI now checks read-policy syntax and uses the original PR #33/#38 regression suites, including denied HTTP calls making zero data-service calls. **Results of the expanded workflow must be verified at the new PR head before claiming tested.** No production service, vendor API, database or extension changed.
 
+## Special Orders backend inventory and narrow metadata hardening
+
+Audit of the **actual existing** `server.js` and `special-orders.js` mount shows `/api/special-orders` currently accepts either a legacy `x-hobby-corner-key` or a signed Timeclock bearer session, then lets feature handlers run without shared independent workstation/MFA proof or exact-operation security. No strict all-tool security cutover can be claimed while this remains live; migrating it requires per-route operation classification, trusted MFA/device/permissions adapters, server-controlled service jobs, and regression acceptance.
+
+The existing public Special Orders `/health` returned admin-key **length metadata**, while setup and denied-auth logging printed key-length metadata. This branch removes those fields/logging blocks without changing the login decision or worker endpoints; see `special-orders.js` + `tests/special-orders-auth-metadata.test.mjs`. The new HTTP regression checks the health response no longer includes key-length fields and that both denial and existing legacy-key compatibility still behave as before. **This is a development-only defense-in-depth hardening, not replacement for the legacy credential.** Before release, consider restricting the health response to minimal readiness data, avoiding internal config disclosure beyond the metadata removed here.
+
+Dependency note: local Codespaces first HTTP tests failed to load without `express`; operator installed project packages with `npm install --ignore-scripts --no-audit --no-fund --no-save --package-lock=false`. Re-run passed **12/12**, matching previous CI. npm emitted deprecation warnings for Multer 1.x and other packages; schedule a dependency audit/migration with functional regressions instead of blindly upgrading packages during the auth rollout.
+
 ## Required subsequent integration
 
 1. Reconcile PR #32 Phase 1 and diverged PR #33 Phase 2, PR #38 secure-read admission, PR #34 Admin, PR #35 navigation, PR #51 transport safety, PR #59 Timeclock scoped Owner, and Owner setup PR #60. Preserve existing Core Operations and Timeclock behavior.
