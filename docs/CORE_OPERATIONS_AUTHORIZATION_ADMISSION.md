@@ -49,6 +49,16 @@ The status route contains both common progression and cancellation, so its candi
 
 `tests/core-operations-provisional-scopes.test.mjs` verifies all 14 paths exist, no provisional entry automatically becomes an approval, normal vs protected proof, and exact-grant isolation. `tests/core-operations-route-seam.test.mjs` adds the service without legacy credential compatibility check. **Latest CI result must be checked separately.**
 
+## Verified audit attribution guard — 2026-11-11
+
+The source audit found that existing Special Orders handlers sometimes take `changed_by`, `created_by`, `received_by`, `reviewed_by` and `gw_reviewed_by` directly from client requests. These strings are **not a verified identity**, even if a browser presents a signed employee session.
+
+**New default-off development hardening:** `services/security/coreOperationsAuditActor.js` resolves the trusted principal from `req.hcCoreOperationsAdmission`, a property set only by the explicitly mounted trusted backend route admission middleware. In guarded mode it emits a stable `employee:<canonical id>` or `service:<verified id>` actor label and denies missing/malformed admissions. In legacy mode (new guard omitted in `server.js`) it returns the same legacy caller value unchanged.
+
+The current `special-orders.js` handlers now use this actor resolver for user-provided audit fields in Special Orders creation and additions, notes, status, routing, supplier draft and receiving records, preseason pickup events, GW review, Lightspeed PO receiving and notification review. The change **does not modify production until the trusted backend guard is injected**. Existing hardcoded system annotations (e.g. older `ordering-web`/Discord events) are not yet replaced; review every remaining internal audit origin before calling the full audit chain complete.
+
+`tests/core-operations-audit-actor.test.mjs` checks legacy compatibility, verified employee and scoped machine identity attribution, denial of malformed/missing admissions, a real Express HTTP guard-vs-forged-body request, and presence of guarded actor handling at known audit fields. These are isolated fixture tests: **no database audit rows were created or tested**. The latest CI outcome must be confirmed separately.
+
 ## Remaining blockers and next work
 
 1. **Granular permissions:** `special-orders.manage` and `ordering.manage` are provisional, excessively broad write actions. Before enabling, split routine order status/notes/staging from financial adjustments, purchasing, customer-data changes, live Lightspeed writes, payment/credit, external publication, and Owner/admin operations. Do not force a passkey for every routine entry or grant broad writes to any employee by default.
