@@ -1,10 +1,13 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const { normalizePublicBasePath, stripPublicBasePath } = require("./publicBasePath");
 const port = Number(process.env.PORT || 3000);
 const root = __dirname;
+const publicBasePath = normalizePublicBasePath(process.env.HC_PUBLIC_BASE_PATH || "");
 const types = {".html":"text/html; charset=utf-8",".json":"application/json; charset=utf-8",".js":"text/javascript; charset=utf-8",".css":"text/css; charset=utf-8"};
 http.createServer((req,res)=>{
+  req.url = stripPublicBasePath(req.url, publicBasePath);
   if(req.url === "/health"){res.writeHead(200,{"content-type":"application/json"});return res.end(JSON.stringify({ok:true,service:"hobby-corner-store-map"}));}
   const raw=(req.url||"/").split("?")[0];
   const rel=raw==="/"?"index.html":raw.replace(/^\/+/, "");
