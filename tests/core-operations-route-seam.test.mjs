@@ -105,6 +105,44 @@ test('explicit signed-employee route approval is checked independently of the le
   }finally{await web.close();}
 });
 
+test('trusted service caller can enter an explicitly guarded operation without the old employee/admin-key gate',async()=>{
+  const gate=createCoreOperationsRouteAdmission({
+    approvedRoutes:[{
+      source:'special-orders.js',method:'POST',
+      path:'/notifications/:id/claim-discord',
+      audience:'service',operation:'service.notifications.claim-discord'
+    }],
+    verifyServiceRequest:async request=>request.get('x-fixture-service-proof')==='valid'
+      ? {type:'service',id:'gw-worker',active:true}:null,
+    checkServiceGrant:async ({identity,operation})=>
+      identity.id==='gw-worker' && operation==='service.notifications.claim-discord'
+  });
+  const web=await serve(createSpecialOrdersRouter({
+    adminKey:key,coreOperationsAdmission:gate
+  }));
+  try{
+    const endpoint=web.base+'/notifications/123/claim-discord';
+    const oldCredential=await fetch(endpoint,{method:'POST',headers:legacyHeaders});
+    assert.equal(oldCredential.status,403);
+    await oldCredential.text();
+    const forgedService=await fetch(endpoint,{method:'POST',headers:{
+      'x-hc-service':'gw-worker','x-hc-role':'owner'
+    }});
+    assert.equal(forgedService.status,403);
+    await forgedService.text();
+    const authorized=await fetch(endpoint,{method:'POST',headers:{
+      'x-fixture-service-proof':'valid'
+    }});
+    // Machine identity + exact backend grant pass the new gate. The old
+    // middleware must NOT return 401 first. No DB is configured in this test.
+    assert.equal(authorized.status,503);
+    assert.match((await authorized.json()).error,/not configured/i);
+    const oldLogin=await fetch(web.base+'/auth-check',{headers:legacyHeaders});
+    assert.equal(oldLogin.status,200);
+    assert.equal((await oldLogin.json()).authMode,'legacy_admin_key');
+  }finally{await web.close();}
+});
+
 test('router rejects malformed guard configuration instead of silently skipping protection',()=>{
   assert.throws(()=>createSpecialOrdersRouter({
     adminKey:key,coreOperationsAdmission:{authorize:async()=>true}
