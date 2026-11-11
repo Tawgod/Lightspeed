@@ -14,7 +14,13 @@ async function serve(router){
   });
   return {
     base:'http://127.0.0.1:'+server.address().port+'/api/special-orders',
-    close:()=>new Promise(resolve=>server.close(resolve))
+    close:()=>{
+      const closed=new Promise(resolve=>server.close(resolve));
+      // All callers finish assertions first; avoid leaked idle loopback
+      // fetch sockets holding up CI after the test server closes.
+      server.closeAllConnections?.();
+      return closed;
+    }
   };
 }
 const legacyHeaders={'x-hobby-corner-key':key};
