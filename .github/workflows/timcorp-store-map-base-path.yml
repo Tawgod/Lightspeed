@@ -1,0 +1,21 @@
+name: Timcorp Store Map base-path focused check
+on:
+  push:
+    branches: ['feature/timcorp-base-path-store-map-20261111']
+    paths:
+      - 'store-map/server.js'
+      - 'store-map/publicBasePath.js'
+      - 'store-map/publicBasePath.test.js'
+      - '.github/workflows/timcorp-store-map-base-path.yml'
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - run: |
+          node --check store-map/server.js
+          node --check store-map/publicBasePath.js
+      - run: node --test store-map/publicBasePath.test.js
