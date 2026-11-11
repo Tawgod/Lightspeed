@@ -13,7 +13,7 @@ function req(method,path,headers={}) {
     get(name){return headers[String(name).toLowerCase()];}
   };
 }
-function staffAccess({factor='station',grants=new Set(['special-orders.read','special-orders.manage'])}={}) {
+function staffAccess({grants=new Set(['special-orders.read','special-orders.manage'])}={}) {
   return createStaffAccessBaseline({
     now:()=>NOW,
     verifyEmployeeSession:async request=>{
@@ -22,8 +22,8 @@ function staffAccess({factor='station',grants=new Set(['special-orders.read','sp
     },
     verifyWorkstation:async request=>request.get('x-fixture-proof')==='station'
       ? {verified:true,deviceId:'enrolled-fixture-01',expiresAtMs:NOW+60_000}:null,
-    verifyStepUp:async request=>request.get('x-fixture-proof')==='passkey'
-      ? {verified:true,employeeId:'42',method:'passkey',authenticatedAtMs:NOW-500}:null,
+    verifyStepUp:async request=>['passkey','totp'].includes(request.get('x-fixture-proof'))
+      ? {verified:true,employeeId:'42',method:request.get('x-fixture-proof'),authenticatedAtMs:NOW-500}:null,
     checkPermission:async ({operation,identity})=>identity.id==='42'&&grants.has(operation)
   });
 }
@@ -73,6 +73,9 @@ test('protected staff write requires fresh, bound passkey and exact write grant,
   const base={authorization:'Bearer signed-staff'};
   await assert.rejects(gate.authorize({request:req('POST','/orders',{
     ...base,'x-fixture-proof':'station'
+  })}),denied);
+  await assert.rejects(gate.authorize({request:req('POST','/orders',{
+    ...base,'x-fixture-proof':'totp'
   })}),denied);
   const granted=await gate.authorize({request:req('POST','/orders',{
     ...base,'x-fixture-proof':'passkey'
