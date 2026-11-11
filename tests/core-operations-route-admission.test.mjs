@@ -171,12 +171,14 @@ test('optional HTTP middleware rejects unauthorized calls BEFORE handlers, allow
       authorization:'Bearer signed-staff','x-hc-role':'owner'
     }});
     assert.equal(untrusted.status,403);
+    await untrusted.text();
     assert.equal(invoked,0);
     assert.equal(untrusted.headers.get('cache-control'),'no-store');
     const blockedWrite=await fetch(url,{method:'POST',headers:{
       authorization:'Bearer signed-staff','x-fixture-proof':'passkey'
     }});
     assert.equal(blockedWrite.status,403);
+    await blockedWrite.text();
     assert.equal(invoked,0);
     const allowed=await fetch(url,{headers:{
       authorization:'Bearer signed-staff','x-fixture-proof':'station'
