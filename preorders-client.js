@@ -1,4 +1,4 @@
-const api='/api/special-orders';
+const api='api/special-orders';
 function accessKey(){return window.HCStaffAuth?.legacyKey?.()||''}
 function authHeaders(extra={}){return window.HCStaffAuth?.headers?.(extra)||{...extra}}
 function authEmployee(){return window.HCStaffAuth?.employee?.()||null}
