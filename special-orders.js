@@ -2712,7 +2712,7 @@ export function createSpecialOrdersRouter({
 
   router.patch('/items/:id/notes', requireDb, async (req,res)=>{
     const notes=req.body?.notes==null?null:String(req.body.notes).trim()||null;
-    const changedBy=auditActor(req, String(auditActor(req, req.body?.changed_by||'ordering-web')).trim()||'ordering-web');
+    const changedBy=auditActor(req, String(req.body?.changed_by||'ordering-web').trim()||'ordering-web');
     const client=await pool.connect();
     try{
       await client.query('BEGIN');
