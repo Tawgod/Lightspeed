@@ -1,4 +1,4 @@
-const api='/api/special-orders';
+const api='api/special-orders';
 let workRows=[],suppliers=[],lsContext={purchase_orders:[],lightspeed_demand:[]},recommendations=new Map();
 
 function accessKey(){return window.HCStaffAuth?.legacyKey?.()||''}
