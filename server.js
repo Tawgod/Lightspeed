@@ -34,6 +34,10 @@ app.get('/index.html', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
+// Standalone label maker beta UI assets. Explicit routes; extension ZIP is unchanged.
+app.get('/label-ui/hc.css', (req, res) => res.sendFile(path.join(__dirname, 'shared-ui', 'hc.css')));
+app.get('/label-ui/hc-wordmark.webp', (req, res) => res.sendFile(path.join(__dirname, 'extension', 'product-scanner', 'hc-wordmark.webp')));
+
 const LIGHTSPEED_DOMAIN = process.env.LIGHTSPEED_DOMAIN;
 const LIGHTSPEED_TOKEN = process.env.LIGHTSPEED_TOKEN;
 let verifyStaffEmployee = async () => { throw Object.assign(new Error('Employee sign-in is not configured.'), { status:503 }); };
