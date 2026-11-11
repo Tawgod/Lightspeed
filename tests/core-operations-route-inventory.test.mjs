@@ -56,11 +56,11 @@ test('Discord/batch workers must be reviewed for a separate service identity, no
     ['POST','/notifications/:id/claim-discord'],
     ['POST','/notifications/:id/complete-discord'],
     ['POST','/products/registry-upsert'],
-    ['POST','/reconcile/products'],
+    ['POST','/reconcile/products','routes/specialOrderProducts.js'],
     ['POST','/customers/:id/purchase-metrics']
   ];
-  for (const [method,path] of examples) {
-    const route = routeMap.get(keyOf(method,path));
+  for (const [method,path,source] of examples) {
+    const route = routeMap.get(keyOf(method,path,source));
     assert.ok(route, path);
     assert.equal(route.kind, 'service-or-automation-review');
     assert.equal(route.caller, 'service-or-staff-unknown');
