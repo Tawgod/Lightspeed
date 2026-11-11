@@ -8,6 +8,12 @@ on:
       - 'tests/security-all-tools-operations.test.mjs'
       - 'services/security/coreOperationsRouteInventory.js'
       - 'tests/core-operations-route-inventory.test.mjs'
+      - 'services/security/coreOperationsBrowserCallerInventory.js'
+      - 'tests/core-operations-browser-callers.test.mjs'
+      - 'special-orders-client.js'
+      - 'preorders-client.js'
+      - 'gw-preorders-client.js'
+      - 'ordering-client.js'
       - 'special-orders.js'
       - 'routes/specialOrderProducts.js'
       - 'tests/special-orders-auth-metadata.test.mjs'
@@ -24,6 +30,12 @@ on:
       - 'tests/security-all-tools-operations.test.mjs'
       - 'services/security/coreOperationsRouteInventory.js'
       - 'tests/core-operations-route-inventory.test.mjs'
+      - 'services/security/coreOperationsBrowserCallerInventory.js'
+      - 'tests/core-operations-browser-callers.test.mjs'
+      - 'special-orders-client.js'
+      - 'preorders-client.js'
+      - 'gw-preorders-client.js'
+      - 'ordering-client.js'
       - 'special-orders.js'
       - 'routes/specialOrderProducts.js'
       - 'tests/special-orders-auth-metadata.test.mjs'
@@ -70,5 +82,10 @@ jobs:
           node --check services/security/coreOperationsRouteInventory.js
           node --check tests/core-operations-route-inventory.test.mjs
           node --test --test-concurrency=1 tests/core-operations-route-inventory.test.mjs
+      - name: Verify web client API references and common staff-login dependencies
+        run: |
+          node --check services/security/coreOperationsBrowserCallerInventory.js
+          node --check tests/core-operations-browser-callers.test.mjs
+          node --test --test-concurrency=1 tests/core-operations-browser-callers.test.mjs
       - name: Verify Special Orders health metadata and legacy auth compatibility
         run: node --test --test-concurrency=1 tests/special-orders-auth-metadata.test.mjs
