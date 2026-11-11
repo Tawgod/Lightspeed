@@ -17,6 +17,11 @@ const ROUTINE_TOOL_OPERATIONS = new Set([
   'purchase-orders.read', 'purchase-orders.draft',
   'inventory.read', 'sales.read', 'store-credit.read',
   'special-orders.read', 'ordering.read', 'consignment.read',
+  // Only reversible local notes/routing and unsent supplier-order drafting
+  // are candidates for routine verified-station access. Every operation
+  // still needs its own independent employee grant; none is pre-granted.
+  'special-orders.notes.write', 'special-orders.routing.write',
+  'ordering.draft.write',
   'timeclock.self.read', 'timeclock.self.clock'
 ]);
 const legacyActions = {
