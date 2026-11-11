@@ -28,7 +28,16 @@ export const TOOL_OPERATIONS=Object.freeze([
  'inventory.read','inventory.adjust','sales.read','sales.write',
  'store-credit.read','store-credit.write',
  'special-orders.read','special-orders.manage',
+ // Proposed exact Core Operations scopes: available to the security policy
+ // for staging tests, but NO staff grants, UI options or route allowlist are
+ // activated by their mere presence. Owner review remains required.
+ 'special-orders.notes.write','special-orders.routing.write',
+ 'special-orders.status.write','special-orders.create','special-orders.delete',
+ 'special-orders.notifications.send',
+ 'preorders.allocate','preorders.publish',
  'ordering.read','ordering.manage',
+ 'ordering.draft.write','ordering.receive','ordering.vendor.push',
+ 'customers.lightspeed.create',
  'consignment.read','consignment.manage',
  'timeclock.self.read','timeclock.self.clock'
 ]);
