@@ -151,7 +151,7 @@ Store Map branch adds:
 
 It covers prefix stripping, health-path behavior, root compatibility and unsafe path rejection.
 
-No new GitHub Actions workflow was added. This avoids adding CI cost for a small path-routing change. The focused helper tests were executed locally during preparation; source files were also read back from GitHub and statically checked for remaining root-absolute internal browser URLs.
+Two branch-only focused GitHub workflows were added because opening a PR would trigger several unrelated existing workflows. They perform no dependency install, browser download or database work. Exact-source runs: main web/API `43087301610` **SUCCESS** and Store Map `43087317304` **SUCCESS**. Local helper tests also passed, and source files were read back from GitHub and statically checked for remaining root-absolute internal browser URLs.
 
 ## Known integration conflicts / dependencies
 
