@@ -24,11 +24,13 @@ test('existing Special Orders behavior is untouched when the optional new guard 
   try{
     const health=await fetch(web.base+'/health');
     assert.equal(health.status,200);
+    await health.text();
     const auth=await fetch(web.base+'/auth-check',{headers:legacyHeaders});
     assert.equal(auth.status,200);
     assert.equal((await auth.json()).authMode,'legacy_admin_key');
     const lookup=await fetch(web.base+'/orders',{headers:legacyHeaders});
     assert.equal(lookup.status,503); // existing requireDb boundary, not a new auth block
+    await lookup.text();
   }finally{await web.close();}
 });
 
@@ -38,8 +40,12 @@ test('explicit zero-approved-route guard denies main and nested business handler
     adminKey:key,coreOperationsAdmission:gate
   }));
   try{
-    assert.equal((await fetch(web.base+'/health')).status,200);
-    assert.equal((await fetch(web.base+'/auth-check',{headers:legacyHeaders})).status,200);
+    const health=await fetch(web.base+'/health');
+    assert.equal(health.status,200);
+    await health.text();
+    const auth=await fetch(web.base+'/auth-check',{headers:legacyHeaders});
+    assert.equal(auth.status,200);
+    await auth.text();
     for(const [method,path] of [
       ['GET','/orders'],
       ['GET','/products/search?q=abc'],
@@ -81,6 +87,7 @@ test('explicit signed-employee route approval is checked independently of the le
   try{
     const rejected=await fetch(web.base+'/orders',{headers:legacyHeaders});
     assert.equal(rejected.status,403);
+    await rejected.text();
     const accepted=await fetch(web.base+'/orders',{headers:{
       authorization:'Bearer fixture-signed-staff',
       'x-fixture-workstation':'approved'
