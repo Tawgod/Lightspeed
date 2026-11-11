@@ -73,11 +73,15 @@ test('HTTP client headers and body do not set admission identity; only verified 
     staffAccess:staff
   });
   const app=express();app.use(express.json());
-  app.patch('/api/special-orders/items/:id/notes',
+  // Match production's app.use('/api/special-orders', router) so the
+  // authorization guard receives the relative /items/:id/notes path.
+  const router=express.Router();
+  router.patch('/items/:id/notes',
     admission.middleware,
     (req,res)=>res.json({
       actor:coreOperationsAuditActor(req,req.body?.changed_by,{guardEnabled:true})
     }));
+  app.use('/api/special-orders',router);
   const server=await new Promise(resolve=>{
     const s=app.listen(0,'127.0.0.1',()=>resolve(s));
   });
