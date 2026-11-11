@@ -1,0 +1,28 @@
+name: Shared UI beta foundation
+
+on:
+  pull_request:
+    paths:
+      - 'shared-ui/**'
+      - 'tests/shared-ui-beta.test.mjs'
+      - '.github/workflows/shared-ui-beta-tests.yml'
+  push:
+    branches:
+      - 'feature/shared-addon-ui-beta-foundation-20261027'
+    paths:
+      - 'shared-ui/**'
+      - 'tests/shared-ui-beta.test.mjs'
+      - '.github/workflows/shared-ui-beta-tests.yml'
+
+jobs:
+  ui-foundation:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify shared UI scope, assets and exact clipboard handling
+        run: node --test tests/shared-ui-beta.test.mjs
