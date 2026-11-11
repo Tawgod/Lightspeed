@@ -1,0 +1,31 @@
+name: Timcorp base-path focused check
+on:
+  push:
+    branches: ['feature/timcorp-base-path-hobby-corner-20261111']
+    paths:
+      - 'server.js'
+      - 'routes/orderSplit.js'
+      - 'services/publicBasePath.js'
+      - 'shared-ui/staff-auth.js'
+      - 'index.html'
+      - 'special-orders.html'
+      - 'ordering.html'
+      - 'preorders.html'
+      - 'gw-preorders.html'
+      - '*-client.js'
+      - 'tests/public-base-path.test.mjs'
+      - '.github/workflows/timcorp-base-path.yml'
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - run: |
+          node --check server.js
+          node --check routes/orderSplit.js
+          node --check services/publicBasePath.js
+          node --check shared-ui/staff-auth.js
+      - run: node --test tests/public-base-path.test.mjs
