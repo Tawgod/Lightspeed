@@ -350,11 +350,6 @@ export function createSpecialOrdersRouter({
   gwAutoSubmitAlertRoleId = null
 }) {
   const router = express.Router();
-  console.log('Special Orders auth diagnostic', {
-    configured: Boolean(adminKey),
-    length: adminKey ? String(adminKey).length : 0,
-    trimmedLength: adminKey ? String(adminKey).trim().length : 0
-  });
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
 
   router.get('/health', async (req, res) => {
@@ -363,8 +358,6 @@ export function createSpecialOrdersRouter({
       database: Boolean(pool),
       lightspeed: Boolean(lightspeedDomain && lightspeedToken),
       secured: Boolean(adminKey),
-      adminKeyLength: adminKey ? String(adminKey).length : 0,
-      adminKeyTrimmedLength: adminKey ? String(adminKey).trim().length : 0,
       liveMode: Boolean(liveMode),
       allowMigration: Boolean(allowMigration),
       allowProductWrites: Boolean(allowProductWrites),
@@ -396,11 +389,6 @@ export function createSpecialOrdersRouter({
       return res.status(503).json({ error:'Special Orders authentication is not configured.' });
     }
 
-    console.log('Special Orders auth denied', {
-      suppliedKeyLength: suppliedKey.length,
-      hasBearer: bearer.startsWith('Bearer '),
-      path: req.path
-    });
     return res.status(401).json({ error:'Timeclock employee sign-in or Special Orders admin key required.' });
   });
 
