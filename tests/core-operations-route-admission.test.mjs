@@ -187,6 +187,10 @@ test('optional HTTP middleware rejects unauthorized calls BEFORE handlers, allow
     assert.equal(invoked,1);
     assert.equal((await allowed.json()).ok,true);
   }finally{
-    await new Promise(resolve=>server.close(resolve));
+    const closed=new Promise(resolve=>server.close(resolve));
+    // Disposable loopback test only: never keep the CI job open on an idle
+    // undici connection after completing our authorization assertions.
+    server.closeAllConnections?.();
+    await closed;
   }
 });
