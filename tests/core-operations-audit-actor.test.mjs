@@ -117,7 +117,8 @@ test('sensitive guarded actor sinks use server attribution, not body claims',()=
     "const changedBy=auditActor(req,",
     "const receivedBy=auditActor(req,",
     "const reviewedBy=auditActor(req,",
-    'auditActor(req, body.gw_reviewed_by??null)'
+    'auditActor(req, body.gw_reviewed_by??null)',
+    "auditActor(req,'discord-bot')"
   ];
   for(const expression of required){
     assert.ok(content.includes(expression),'Missing guarded audit actor at '+expression);
