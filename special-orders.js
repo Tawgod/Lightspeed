@@ -3993,25 +3993,45 @@ export function createSpecialOrdersRouter({
     const success=req.body?.success===true;
     const externalId=req.body?.external_message_id?String(req.body.external_message_id):null;
     const error=req.body?.error?String(req.body.error):null;
-    const {rows}=await pool.query(
-      success
-        ? "UPDATE notifications SET status='SENT',external_message_id=$2,sent_at=now(),error=NULL WHERE id=$1 AND channel='DISCORD_READY' AND status='SENDING' RETURNING *"
-        : "UPDATE notifications SET status='ERROR',error=$2 WHERE id=$1 AND channel='DISCORD_READY' AND status='SENDING' RETURNING *",
-      [req.params.id,success?externalId:error]
-    );
-    if(!rows[0])return res.status(409).json({error:'Discord notification is not in SENDING state.'});
-    if(success && rows[0].special_order_item_id){
-      const old=await pool.query('SELECT status FROM special_order_items WHERE id=$1',[rows[0].special_order_item_id]);
-      const oldStatus=old.rows[0]?.status;
-      if(oldStatus && oldStatus!=='COMPLETED'){
-        await pool.query("UPDATE special_order_items SET status='CUSTOMER_NOTIFIED',updated_at=now() WHERE id=$1",[rows[0].special_order_item_id]);
-        await pool.query(
-          "INSERT INTO order_status_history (special_order_item_id,old_status,new_status,note,changed_by) VALUES ($1,$2,'CUSTOMER_NOTIFIED','Discord ready notification sent',$3)",
-          [rows[0].special_order_item_id,oldStatus,auditActor(req,'discord-bot')]
-        );
+    const db=await pool.connect();
+    try{
+      await db.query('BEGIN');
+      const {rows}=await db.query(
+        success
+          ? "UPDATE notifications SET status='SENT',external_message_id=$2,sent_at=now(),error=NULL WHERE id=$1 AND channel='DISCORD_READY' AND status='SENDING' RETURNING *"
+          : "UPDATE notifications SET status='ERROR',error=$2 WHERE id=$1 AND channel='DISCORD_READY' AND status='SENDING' RETURNING *",
+        [req.params.id,success?externalId:error]
+      );
+      if(!rows[0]){
+        await db.query('ROLLBACK');
+        return res.status(409).json({error:'Discord notification is not in SENDING state.'});
       }
+      if(success && rows[0].special_order_item_id){
+        const old=await db.query(
+          'SELECT status FROM special_order_items WHERE id=$1 FOR UPDATE',
+          [rows[0].special_order_item_id]
+        );
+        const oldStatus=old.rows[0]?.status;
+        if(oldStatus && oldStatus!=='COMPLETED'){
+          await db.query(
+            "UPDATE special_order_items SET status='CUSTOMER_NOTIFIED',updated_at=now() WHERE id=$1",
+            [rows[0].special_order_item_id]
+          );
+          await db.query(
+            "INSERT INTO order_status_history (special_order_item_id,old_status,new_status,note,changed_by) VALUES ($1,$2,'CUSTOMER_NOTIFIED','Discord ready notification sent',$3)",
+            [rows[0].special_order_item_id,oldStatus,auditActor(req,'discord-bot')]
+          );
+        }
+      }
+      await db.query('COMMIT');
+      res.json(rows[0]);
+    }catch(error){
+      await db.query('ROLLBACK').catch(()=>{});
+      console.error('[special-orders] Discord delivery completion failed:',error);
+      res.status(500).json({error:'Discord delivery completion failed.'});
+    }finally{
+      db.release();
     }
-    res.json(rows[0]);
   });
   router.get('/notifications/queue', requireDb, async (req, res) => {
     const { rows } = await pool.query(`
