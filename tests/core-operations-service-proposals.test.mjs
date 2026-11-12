@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {CORE_OPERATIONS_SERVICE_PROPOSALS,reviewCoreOperationsServiceProposals}
   from '../services/security/coreOperationsServiceProposals.js';
 import {coreOperationsRouteKey}
@@ -90,4 +91,12 @@ test('service grants remain exact across claim, complete and unrelated worker op
     gate.authorize({request:request('GET','/notifications/discord-delivery')}),
     reject
   );
+});
+
+
+test('GW mark-submitted SQL pins quantity parameter type before numeric multiplication',()=>{
+  const source=readFileSync(new URL('../special-orders.js',import.meta.url),'utf8');
+  assert.ok(source.includes('submitted_quantity=$1::integer,ordered_quantity=$1::integer'));
+  assert.ok(source.includes('ELSE $1::integer*msrp END'));
+  assert.equal(source.includes('ELSE $1*msrp END'),false);
 });
