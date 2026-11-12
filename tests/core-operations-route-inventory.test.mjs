@@ -114,3 +114,18 @@ test('customer profile route inventory preserves the conditional live Lightspeed
   assert.match(source,/if \(body\.sync_lightspeed === true\)/);
   assert.match(source,/method:'PUT'/);
 });
+
+
+test('supplier add-items inventory reflects its locked DRAFT-only write boundary',()=>{
+  const route=routeMap.get(keyOf('POST','/supplier-orders/:id/items'));
+  assert.ok(route);
+  assert.equal(route.kind,'locked-draft-write');
+  assert.equal(route.operation,'ordering.draft.write');
+  const source=readFileSync(new URL('../special-orders.js', import.meta.url),'utf8');
+  const start=source.indexOf("router.post('/supplier-orders/:id/items'");
+  const end=source.indexOf("router.get('/supplier-orders/:id'",start);
+  assert.ok(start>=0&&end>start);
+  const handler=source.slice(start,end);
+  assert.match(handler,/FOR UPDATE/);
+  assert.match(handler,/DRAFT/);
+});

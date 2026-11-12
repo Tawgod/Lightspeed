@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {CORE_OPERATIONS_ROUTE_INVENTORY,coreOperationsRouteKey}
   from '../services/security/coreOperationsRouteInventory.js';
 import {CORE_OPERATIONS_PROVISIONAL_SCOPES,reviewProvisionalScopes}
@@ -11,7 +12,8 @@ import {createCoreOperationsRouteAdmission}
   from '../services/security/coreOperationsRouteAdmission.js';
 
 const routine=['special-orders.notes.write','special-orders.routing.write','ordering.draft.write',
-  'ordering.suppliers.sync','ordering.suppliers.sync','ordering.context.refresh','customers.profile.write'];
+  'ordering.draft.write','ordering.suppliers.sync','ordering.suppliers.sync',
+  'ordering.context.refresh','customers.profile.write'];
 const now=Date.parse('2026-11-11T21:45:00Z');
 const reject=error=>error?.status===403 && error?.code==='HC_CORE_OPERATIONS_FORBIDDEN';
 function request(method,path,proof='none'){
@@ -40,8 +42,8 @@ const inventory=new Map(CORE_OPERATIONS_ROUTE_INVENTORY.map(x=>[coreOperationsRo
 
 test('every proposed split scope is known, uses an exact existing route, stays PENDING and has no duplicate method/path',()=>{
   assert.ok(Object.isFrozen(CORE_OPERATIONS_PROVISIONAL_SCOPES));
-  assert.equal(CORE_OPERATIONS_PROVISIONAL_SCOPES.length,18);
-  assert.equal(new Set(CORE_OPERATIONS_PROVISIONAL_SCOPES.map(coreOperationsRouteKey)).size,18);
+  assert.equal(CORE_OPERATIONS_PROVISIONAL_SCOPES.length,19);
+  assert.equal(new Set(CORE_OPERATIONS_PROVISIONAL_SCOPES.map(coreOperationsRouteKey)).size,19);
   const reviews=reviewProvisionalScopes();
   for(const route of reviews){
     assert.ok(Object.isFrozen(route));
@@ -139,4 +141,23 @@ test('cache-refreshing GET routes require exact sync grants instead of generic r
   assert.equal((await exact.authorize({request:request('GET','/suppliers','station')})).operation,'ordering.suppliers.sync');
   assert.equal((await exact.authorize({request:request('GET','/products/9/recommended-suppliers','station')})).operation,'ordering.suppliers.sync');
   assert.equal((await exact.authorize({request:request('GET','/ordering/lightspeed-context','station')})).operation,'ordering.context.refresh');
+});
+
+
+test('only the row-locked supplier-order add-items route joins routine draft editing',()=>{
+  const scope=CORE_OPERATIONS_PROVISIONAL_SCOPES.find(x=>x.path==='/supplier-orders/:id/items');
+  assert.ok(scope);
+  assert.equal(scope.operation,'ordering.draft.write');
+  assert.equal(scope.assurance,'staff-device');
+  const source=readFileSync(new URL('../special-orders.js', import.meta.url),'utf8');
+  const start=source.indexOf("router.post('/supplier-orders/:id/items'");
+  const end=source.indexOf("router.get('/supplier-orders/:id'",start);
+  assert.ok(start>=0&&end>start);
+  const handler=source.slice(start,end);
+  assert.match(handler,/SELECT \* FROM supplier_orders WHERE id=\$1 FOR UPDATE/);
+  assert.match(handler,/status\)\.toUpperCase\(\)!=='DRAFT'/);
+  for(const path of ['/supplier-orders/:id','/supplier-order-items/:id']){
+    const candidate=CORE_OPERATIONS_PROVISIONAL_SCOPES.find(x=>x.path===path);
+    assert.equal(candidate,undefined,path+' remains conservative pending locked-state review');
+  }
 });

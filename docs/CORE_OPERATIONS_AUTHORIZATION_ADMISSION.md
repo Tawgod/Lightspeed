@@ -238,3 +238,10 @@ The candidate policy therefore must not authorize these routes with generic `ord
 `PATCH /customers/:lightspeedId/profile` has two materially different effects behind one route. Ordinary profile edits update the local customer record, while a strict boolean `sync_lightspeed: true` first performs a live Lightspeed customer `PUT` and then persists the local profile. A local-edit permission must therefore never implicitly authorize the vendor mutation.
 
 The review-only admission candidate requires `bodyPolicy: 'customer-profile-sync-v1'` on this exact employee route. Local-only requests use `customers.profile.write` (routine verified-station candidate plus exact grant). Boolean `true` upgrades the required operation to `customers.lightspeed.update`, which remains a strong passkey/security-key/approved-IdP-MFA operation with its own exact backend grant. Ambiguous string, numeric, array, or object values for `sync_lightspeed` fail closed. Static approval of the customer profile route without this policy is rejected. This remains unmounted development policy; no customer or Lightspeed record was changed.
+
+
+## Supplier-order draft mutation review — 2026-11-12
+
+The supplier-order editing routes are not equivalent merely because they currently share `ordering.manage`. `POST /supplier-orders/:id/items` opens a database transaction, locks the parent supplier order with `SELECT ... FOR UPDATE`, and rechecks that its status is `DRAFT` before inserting lines. It is therefore a review-pending candidate for the existing exact routine `ordering.draft.write` operation.
+
+By contrast, `PATCH /supplier-orders/:id`, `PATCH /supplier-order-items/:id`, and `DELETE /supplier-order-items/:id` read the DRAFT state before a later mutation without locking the parent row in the same transaction. They stay outside the routine draft proposal until their state check is made race-safe or they remain under stronger authorization. `PATCH /supplier-order-items/:id/source-link` has no DRAFT-state restriction at all and also remains conservative. This policy review changes no handler behavior and grants no route.
