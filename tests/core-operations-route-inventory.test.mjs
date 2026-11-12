@@ -85,3 +85,20 @@ test('live Lightspeed writes and read-via-POST actions cannot be incorrectly inf
     assert.equal(routeMap.get(keyOf(method,path,source)).kind,'read-via-post');
   }
 });
+
+
+test('GET routes with hidden supplier-cache writes are not classified as generic reads', () => {
+  const cases = [
+    ['GET','/suppliers','ordering.suppliers.sync'],
+    ['GET','/products/:id/recommended-suppliers','ordering.suppliers.sync'],
+    ['GET','/ordering/lightspeed-context','ordering.context.refresh']
+  ];
+  for (const [method,path,operation] of cases) {
+    const route=routeMap.get(keyOf(method,path));
+    assert.ok(route,path);
+    assert.equal(route.kind,'read-with-local-sync',path);
+    assert.equal(route.operation,operation,path);
+    assert.notEqual(route.operation,'ordering.read',path);
+    assert.notEqual(route.operation,'products.read',path);
+  }
+});

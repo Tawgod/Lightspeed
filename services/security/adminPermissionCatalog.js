@@ -39,7 +39,8 @@ export const TOOL_OPERATIONS=Object.freeze([
  'preorders.allocate','preorders.publish',
  'ordering.read','ordering.manage',
  'ordering.draft.write','ordering.receive','ordering.vendor.push',
- 'customers.lightspeed.create',
+ 'ordering.suppliers.sync','ordering.context.refresh',
+ 'customers.lightspeed.create'
  'consignment.read','consignment.manage',
  'timeclock.self.read','timeclock.self.clock'
 ]);

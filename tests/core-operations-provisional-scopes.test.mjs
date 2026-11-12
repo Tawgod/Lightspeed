@@ -10,7 +10,8 @@ import {TOOL_OPERATIONS} from '../services/security/adminPermissionCatalog.js';
 import {createCoreOperationsRouteAdmission}
   from '../services/security/coreOperationsRouteAdmission.js';
 
-const routine=new Set(['special-orders.notes.write','special-orders.routing.write','ordering.draft.write']);
+const routine=['special-orders.notes.write','special-orders.routing.write','ordering.draft.write',
+  'ordering.suppliers.sync','ordering.suppliers.sync','ordering.context.refresh'];
 const now=Date.parse('2026-11-11T21:45:00Z');
 const reject=error=>error?.status===403 && error?.code==='HC_CORE_OPERATIONS_FORBIDDEN';
 function request(method,path,proof='none'){
@@ -39,8 +40,8 @@ const inventory=new Map(CORE_OPERATIONS_ROUTE_INVENTORY.map(x=>[coreOperationsRo
 
 test('every proposed split scope is known, uses an exact existing route, stays PENDING and has no duplicate method/path',()=>{
   assert.ok(Object.isFrozen(CORE_OPERATIONS_PROVISIONAL_SCOPES));
-  assert.equal(CORE_OPERATIONS_PROVISIONAL_SCOPES.length,14);
-  assert.equal(new Set(CORE_OPERATIONS_PROVISIONAL_SCOPES.map(coreOperationsRouteKey)).size,14);
+  assert.equal(CORE_OPERATIONS_PROVISIONAL_SCOPES.length,17);
+  assert.equal(new Set(CORE_OPERATIONS_PROVISIONAL_SCOPES.map(coreOperationsRouteKey)).size,17);
   const reviews=reviewProvisionalScopes();
   for(const route of reviews){
     assert.ok(Object.isFrozen(route));
@@ -114,4 +115,28 @@ test('deployed service and Owner-only admin permissions cannot be snuck into a s
     approvedRoutes:[{source:'special-orders.js',method:'GET',path:'/orders',
       audience:'employee',operation:'admin.delegation.manage'}]
   }),TypeError);
+});
+
+
+test('cache-refreshing GET routes require exact sync grants instead of generic read grants',async()=>{
+  const selected=CORE_OPERATIONS_PROVISIONAL_SCOPES.filter(x=>[
+    '/suppliers','/products/:id/recommended-suppliers','/ordering/lightspeed-context'
+  ].includes(x.path));
+  assert.equal(selected.length,3);
+  const approved=selected.map(approval);
+  const generic=createCoreOperationsRouteAdmission({
+    approvedRoutes:approved,
+    staffAccess:staff(new Set(['ordering.read','products.read']))
+  });
+  for(const [method,path] of [
+    ['GET','/suppliers'],['GET','/products/9/recommended-suppliers'],['GET','/ordering/lightspeed-context']
+  ]) await assert.rejects(generic.authorize({request:request(method,path,'station')}),reject);
+
+  const exact=createCoreOperationsRouteAdmission({
+    approvedRoutes:approved,
+    staffAccess:staff(new Set(['ordering.suppliers.sync','ordering.context.refresh']))
+  });
+  assert.equal((await exact.authorize({request:request('GET','/suppliers','station')})).operation,'ordering.suppliers.sync');
+  assert.equal((await exact.authorize({request:request('GET','/products/9/recommended-suppliers','station')})).operation,'ordering.suppliers.sync');
+  assert.equal((await exact.authorize({request:request('GET','/ordering/lightspeed-context','station')})).operation,'ordering.context.refresh');
 });
