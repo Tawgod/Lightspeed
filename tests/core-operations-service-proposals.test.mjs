@@ -30,6 +30,27 @@ test('service proposals are exact existing review-pending service/automation rou
     assert.equal(route.inventoryCaller,'service-or-staff-unknown',coreOperationsRouteKey(route));
     assert.match(route.operation,/^service\.[a-z][a-z0-9.-]{2,95}$/);
     assert.ok(route.rationale.length>30);
+    assert.ok(['historical-discord-bot-branch-only','no-current-caller-observed'].includes(route.callerEvidence));
+    assert.ok(route.callerDetail.length>40);
+  }
+});
+
+test('caller evidence distinguishes historical Discord-bot routes from currently unobserved GW submit callbacks',()=>{
+  const byOperation=new Map(CORE_OPERATIONS_SERVICE_PROPOSALS.map(x=>[x.operation,x]));
+  for(const operation of [
+    'service.preorders.discord-watch.capture',
+    'service.preorders.gw.discord-reaction',
+    'service.notifications.discord-delivery.read',
+    'service.notifications.claim-discord',
+    'service.notifications.complete-discord'
+  ]){
+    assert.equal(byOperation.get(operation)?.callerEvidence,'historical-discord-bot-branch-only');
+  }
+  for(const operation of [
+    'service.preorders.gw.auto-submit-failure',
+    'service.preorders.gw.mark-submitted'
+  ]){
+    assert.equal(byOperation.get(operation)?.callerEvidence,'no-current-caller-observed');
   }
 });
 
