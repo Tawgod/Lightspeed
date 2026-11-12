@@ -31,5 +31,6 @@ test('SCRAM + real role privilege validation and wrong-password denial, rollback
  const s=readFileSync(new URL('../scripts/commission-owner-stage-db-credentials.mjs',import.meta.url),'utf8');
  for(const x of ['SCRAM-SHA-256','verifyOwnerStagingDatabasePrivileges','not-a-valid-generated-password',
   'PASSWORD NULL',"hc_first_owner_activations"])assert.ok(s.includes(x));
- assert.doesNotMatch(s,/console\.log\([^)]*PASSWORD/i);
+ assert.doesNotMatch(s,/console\.log\([^\n]*e\.HC_OWNER_DB_(?:RUNTIME|OPERATOR)_PASSWORD/i);
+ assert.doesNotMatch(s,/process\.stdout\.write\([^\n]*e\.HC_OWNER_DB_(?:RUNTIME|OPERATOR)_PASSWORD/i);
 });
