@@ -40,7 +40,7 @@ export const TOOL_OPERATIONS=Object.freeze([
  'ordering.read','ordering.manage',
  'ordering.draft.write','ordering.receive','ordering.vendor.push',
  'ordering.suppliers.sync','ordering.context.refresh',
- 'customers.lightspeed.create',
+ 'customers.profile.write','customers.lightspeed.create','customers.lightspeed.update',
  'consignment.read','consignment.manage',
  'timeclock.self.read','timeclock.self.clock'
 ]);

@@ -137,6 +137,53 @@ test('allocation suggestions refresh query demands exact strong grant but ordina
   }
 });
 
+test('customer profile local edits cannot smuggle a live Lightspeed customer update',async()=>{
+  const profile={source:'special-orders.js',method:'PATCH',path:'/customers/:lightspeedId/profile',
+    audience:'employee',operation:'customers.profile.write',bodyPolicy:'customer-profile-sync-v1'};
+  assert.throws(()=>createCoreOperationsRouteAdmission({
+    approvedRoutes:[{...profile,bodyPolicy:undefined}]
+  }),TypeError);
+  assert.throws(()=>createCoreOperationsRouteAdmission({
+    approvedRoutes:[{...readApproval,bodyPolicy:'customer-profile-sync-v1'}]
+  }),TypeError);
+
+  const gate=createCoreOperationsRouteAdmission({
+    approvedRoutes:[profile],
+    staffAccess:staffAccess({grants:new Set(['customers.profile.write','customers.lightspeed.update'])})
+  });
+  const local=req('PATCH','/customers/ls-55/profile',{
+    authorization:'Bearer signed-staff','x-fixture-proof':'station'
+  });
+  local.body={name:'Local Only',sync_lightspeed:false};
+  const localResult=await gate.authorize({request:local});
+  assert.equal(localResult.operation,'customers.profile.write');
+  assert.equal(localResult.assurance,'workstation');
+
+  const live=req('PATCH','/customers/ls-55/profile',{
+    authorization:'Bearer signed-staff','x-fixture-proof':'station'
+  });
+  live.body={name:'Live Update',sync_lightspeed:true};
+  await assert.rejects(gate.authorize({request:live}),denied);
+  live.headers['x-fixture-proof']='totp';
+  await assert.rejects(gate.authorize({request:live}),denied);
+  live.headers['x-fixture-proof']='passkey';
+  const liveResult=await gate.authorize({request:live});
+  assert.equal(liveResult.operation,'customers.lightspeed.update');
+  assert.equal(liveResult.assurance,'step-up');
+
+  const localOnly=createCoreOperationsRouteAdmission({
+    approvedRoutes:[profile],staffAccess:staffAccess({grants:new Set(['customers.profile.write'])})
+  });
+  await assert.rejects(localOnly.authorize({request:live}),denied);
+  for(const value of ['true',1,['true'],{value:true}]){
+    const ambiguous=req('PATCH','/customers/ls-55/profile',{
+      authorization:'Bearer signed-staff','x-fixture-proof':'passkey'
+    });
+    ambiguous.body={name:'Ambiguous',sync_lightspeed:value};
+    await assert.rejects(gate.authorize({request:ambiguous}),denied);
+  }
+});
+
 test('service action requires a separate validated machine credential plus exact backend service operation grant',async()=>{
   const seen=[];
   const gate=createCoreOperationsRouteAdmission({

@@ -11,7 +11,7 @@ import {createCoreOperationsRouteAdmission}
   from '../services/security/coreOperationsRouteAdmission.js';
 
 const routine=['special-orders.notes.write','special-orders.routing.write','ordering.draft.write',
-  'ordering.suppliers.sync','ordering.suppliers.sync','ordering.context.refresh'];
+  'ordering.suppliers.sync','ordering.suppliers.sync','ordering.context.refresh','customers.profile.write'];
 const now=Date.parse('2026-11-11T21:45:00Z');
 const reject=error=>error?.status===403 && error?.code==='HC_CORE_OPERATIONS_FORBIDDEN';
 function request(method,path,proof='none'){
@@ -40,8 +40,8 @@ const inventory=new Map(CORE_OPERATIONS_ROUTE_INVENTORY.map(x=>[coreOperationsRo
 
 test('every proposed split scope is known, uses an exact existing route, stays PENDING and has no duplicate method/path',()=>{
   assert.ok(Object.isFrozen(CORE_OPERATIONS_PROVISIONAL_SCOPES));
-  assert.equal(CORE_OPERATIONS_PROVISIONAL_SCOPES.length,17);
-  assert.equal(new Set(CORE_OPERATIONS_PROVISIONAL_SCOPES.map(coreOperationsRouteKey)).size,17);
+  assert.equal(CORE_OPERATIONS_PROVISIONAL_SCOPES.length,18);
+  assert.equal(new Set(CORE_OPERATIONS_PROVISIONAL_SCOPES.map(coreOperationsRouteKey)).size,18);
   const reviews=reviewProvisionalScopes();
   for(const route of reviews){
     assert.ok(Object.isFrozen(route));

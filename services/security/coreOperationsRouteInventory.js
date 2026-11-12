@@ -78,7 +78,7 @@ export const CORE_OPERATIONS_ROUTE_INVENTORY = Object.freeze([
   Object.freeze({"source":"special-orders.js","method":"GET","path":"/customers/search","kind":"read","caller":"staff-candidate","operation":"special-orders.read","review":"pending"}),
   Object.freeze({"source":"special-orders.js","method":"POST","path":"/customers/create-lightspeed","kind":"vendor-write","caller":"staff-candidate","operation":null,"review":"pending"}),
   Object.freeze({"source":"special-orders.js","method":"GET","path":"/customers/:lightspeedId/profile","kind":"read","caller":"staff-candidate","operation":"special-orders.read","review":"pending"}),
-  Object.freeze({"source":"special-orders.js","method":"PATCH","path":"/customers/:lightspeedId/profile","kind":"local-write","caller":"staff-candidate","operation":"special-orders.manage","review":"pending"}),
+  Object.freeze({"source":"special-orders.js","method":"PATCH","path":"/customers/:lightspeedId/profile","kind":"body-sensitive-local-or-vendor-write","caller":"staff-candidate","operation":"customers.profile.write","review":"pending"}),
   Object.freeze({"source":"special-orders.js","method":"POST","path":"/address/verify-usps","kind":"read-via-post","caller":"staff-candidate","operation":"special-orders.read","review":"pending"}),
   Object.freeze({"source":"special-orders.js","method":"GET","path":"/products/:id/inventory","kind":"read","caller":"staff-candidate","operation":"products.read","review":"pending"}),
   Object.freeze({"source":"special-orders.js","method":"POST","path":"/products/registry-upsert","kind":"service-or-automation-review","caller":"service-or-staff-unknown","operation":null,"review":"pending"}),

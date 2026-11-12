@@ -19,6 +19,10 @@ const SERVICE_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
 const ALLOCATION_REFRESH_POLICY_VERSION = 'allocation-refresh-v1';
 const ALLOCATION_REFRESH_OPERATION = 'special-orders.purchase-metrics.refresh';
 const ALLOCATION_REFRESH_ROUTE = '/preorders/products/:id/allocation-suggestions';
+const CUSTOMER_PROFILE_POLICY_VERSION = 'customer-profile-sync-v1';
+const CUSTOMER_PROFILE_LOCAL_OPERATION = 'customers.profile.write';
+const CUSTOMER_PROFILE_VENDOR_OPERATION = 'customers.lightspeed.update';
+const CUSTOMER_PROFILE_ROUTE = '/customers/:lightspeedId/profile';
 
 function routePattern(template) {
   if (typeof template !== 'string' || !template.startsWith('/')) throw new TypeError('Invalid route.');
@@ -53,6 +57,9 @@ function compiledApproval(route) {
   const allocationRoute = route.source === 'special-orders.js' &&
     route.method === 'GET' && route.path === ALLOCATION_REFRESH_ROUTE &&
     route.audience === 'employee' && route.operation === 'special-orders.read';
+  const customerProfileRoute = route.source === 'special-orders.js' &&
+    route.method === 'PATCH' && route.path === CUSTOMER_PROFILE_ROUTE &&
+    route.audience === 'employee';
   if (route.queryPolicy !== undefined &&
       (route.queryPolicy !== ALLOCATION_REFRESH_POLICY_VERSION || !allocationRoute)) {
     throw new TypeError('Allocation refresh query policy applies only to the exact staff read.');
@@ -62,6 +69,14 @@ function compiledApproval(route) {
   if (allocationRoute && route.queryPolicy !== ALLOCATION_REFRESH_POLICY_VERSION) {
     throw new TypeError('Allocation read requires explicit side-effect query policy.');
   }
+  if (route.bodyPolicy !== undefined && (
+      route.bodyPolicy !== CUSTOMER_PROFILE_POLICY_VERSION || !customerProfileRoute ||
+      route.operation !== CUSTOMER_PROFILE_LOCAL_OPERATION
+  )) throw new TypeError('Customer profile body policy applies only to the exact local profile operation.');
+  if (customerProfileRoute && (
+      route.operation !== CUSTOMER_PROFILE_LOCAL_OPERATION ||
+      route.bodyPolicy !== CUSTOMER_PROFILE_POLICY_VERSION
+  )) throw new TypeError('Customer profile writes require explicit local/vendor body policy.');
   // This routine operation is intentionally prohibited as a static route
   // approval: request-body classification and locked DB-origin validation
   // MUST both run to prevent privilege downgrades.
@@ -73,6 +88,7 @@ function compiledApproval(route) {
     audience: route.audience, operation: route.operation,
     statusPolicy: route.statusPolicy || null,
     queryPolicy: route.queryPolicy || null,
+    bodyPolicy: route.bodyPolicy || null,
     pattern: routePattern(route.path)
   });
 }
@@ -138,8 +154,18 @@ export function createCoreOperationsRouteAdmission({
         if (value !== undefined && typeof value !== 'string') throw DENIED();
         isAllocationRefresh=value==='1';
       }
+      let isCustomerVendorSync=false;
+      if (route.bodyPolicy === CUSTOMER_PROFILE_POLICY_VERSION) {
+        const value=request.body?.sync_lightspeed;
+        // The live handler only treats boolean true as a vendor sync. Reject
+        // ambiguous strings/numbers/arrays so parser or client drift cannot
+        // silently choose the lower-assurance local profile operation.
+        if (value !== undefined && typeof value !== 'boolean') throw DENIED();
+        isCustomerVendorSync=value===true;
+      }
       const operation = transition?.operation ||
-        (isAllocationRefresh ? ALLOCATION_REFRESH_OPERATION : route.operation);
+        (isAllocationRefresh ? ALLOCATION_REFRESH_OPERATION :
+          (isCustomerVendorSync ? CUSTOMER_PROFILE_VENDOR_OPERATION : route.operation));
       let admitted;
       try { admitted = await staffAccess.authorize({request, action: operation}); }
       catch { throw DENIED(); }

@@ -231,3 +231,10 @@ This is a **reusable, default-disabled integration seam**, not a completed secur
 Three existing GET routes are not side-effect-free: `GET /suppliers`, `GET /products/:id/recommended-suppliers`, and `GET /ordering/lightspeed-context` all call `syncLightspeedSuppliers()`, which reads Lightspeed suppliers and upserts the local `suppliers` cache. The context route also reads live purchase-order, fulfillment, and sale context.
 
 The candidate policy therefore must not authorize these routes with generic `ordering.read` or `products.read`. They are review-pending exact operations: `ordering.suppliers.sync` for supplier refresh/recommendations and `ordering.context.refresh` for the broader context refresh. Both remain routine verified-station candidates because the vendor calls are reads and the local writes are cache refreshes, but each still requires an independent exact backend grant. No route is approved merely because these operation names exist, and the production server still does not mount this candidate guard.
+
+
+## Customer profile local/vendor body split — 2026-11-12
+
+`PATCH /customers/:lightspeedId/profile` has two materially different effects behind one route. Ordinary profile edits update the local customer record, while a strict boolean `sync_lightspeed: true` first performs a live Lightspeed customer `PUT` and then persists the local profile. A local-edit permission must therefore never implicitly authorize the vendor mutation.
+
+The review-only admission candidate requires `bodyPolicy: 'customer-profile-sync-v1'` on this exact employee route. Local-only requests use `customers.profile.write` (routine verified-station candidate plus exact grant). Boolean `true` upgrades the required operation to `customers.lightspeed.update`, which remains a strong passkey/security-key/approved-IdP-MFA operation with its own exact backend grant. Ambiguous string, numeric, array, or object values for `sync_lightspeed` fail closed. Static approval of the customer profile route without this policy is rejected. This remains unmounted development policy; no customer or Lightspeed record was changed.

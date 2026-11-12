@@ -102,3 +102,15 @@ test('GET routes with hidden supplier-cache writes are not classified as generic
     assert.notEqual(route.operation,'products.read',path);
   }
 });
+
+
+test('customer profile route inventory preserves the conditional live Lightspeed PUT boundary', () => {
+  const route=routeMap.get(keyOf('PATCH','/customers/:lightspeedId/profile'));
+  assert.ok(route);
+  assert.equal(route.kind,'body-sensitive-local-or-vendor-write');
+  assert.equal(route.operation,'customers.profile.write');
+  const source=readFileSync(new URL('../special-orders.js', import.meta.url),'utf8');
+  assert.match(source,/router\.patch\('\/customers\/:lightspeedId\/profile'/);
+  assert.match(source,/if \(body\.sync_lightspeed === true\)/);
+  assert.match(source,/method:'PUT'/);
+});

@@ -28,6 +28,9 @@ const ROUTINE_TOOL_OPERATIONS = new Set([
   // local supplier cache. Keep them routine for store workflow, but distinct
   // from generic ordering/products reads and independently grantable.
   'ordering.suppliers.sync', 'ordering.context.refresh',
+  // Local customer contact/profile editing is a routine store task. Live
+  // Lightspeed customer mutation remains a separate strong operation.
+  'customers.profile.write',
   'timeclock.self.read', 'timeclock.self.clock'
 ]);
 const legacyActions = {
