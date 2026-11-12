@@ -1,0 +1,24 @@
+name: HC one-time Owner staging database bootstrap safety
+on:
+  push:
+    branches: ['feature/owner-db-isolated-bootstrap-20261112']
+  pull_request:
+    paths:
+      - 'scripts/bootstrap-owner-stage-database.mjs'
+      - 'tests/bootstrap-owner-stage-database.test.mjs'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Never run live database script in CI; test safety gates only
+        run: |
+          node --check scripts/bootstrap-owner-stage-database.mjs
+          node --test tests/bootstrap-owner-stage-database.test.mjs
