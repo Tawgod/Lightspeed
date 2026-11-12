@@ -10,8 +10,12 @@
 - Security admission stays **unmounted** and zero-grant by default. The separate query-sensitive `allocation-refresh-v1` operation remains review-only.
 - No direct Lightspeed write, live message, role grant, scanner/Chrome release or Railway deployment.
 
-## Gateway contract is NOT finalized
-User-requested target `https://timcorp-productions.com` and earlier Hobby Corner proposal `/hobby-corner` differ from the current actual central gateway `Tawgod/timcorp-projects-foundation` at `https://timcorp-projects.com`, which advertises `/HobbyCorner/` but leaves it not connected (HTTP 503). Do not infer the aliases are equivalent. The prefix is configurable, and isolated tests cover both spellings, but **central routing or DNS must not be updated without user decision and approval**.
+## Confirmed shared hostname and pending gateway activation — 2026-11-12
+The owner confirmed **`https://timcorp-projects.com`** as the intended shared hostname. The earlier `timcorp-productions.com` destination is superseded; do not configure a new domain or treat it as an alias.
+
+The connected central gateway `Tawgod/timcorp-projects-foundation:main` documents **`/HobbyCorner/`** as its currently reserved path, but it is **not connected (HTTP 503)**. Use `/HobbyCorner/` as the *working integration convention*, pending central gateway-owner confirmation and nonproduction proxy/browser verification. Do not infer that the old lowercase `/hobby-corner` path is an active alias. No route registry, DNS, Railway variables, or central gateway was changed.
+
+**Proposed staging-only application configuration after approval:** `HC_PUBLIC_BASE_PATH=/HobbyCorner` and `HC_PUBLIC_LANDING_PATH=/store-operations`. The employee landing would be `https://timcorp-projects.com/HobbyCorner/store-operations` **only after** the gateway route is activated and verified. Existing Railway URLs must remain operational.
 
 ## Acceptance before staging approval
 - Run focused combined policy, Timcorp/basepath and navigation/dashboard/Admin contract tests in CI/isolated local test. No production dependencies.
