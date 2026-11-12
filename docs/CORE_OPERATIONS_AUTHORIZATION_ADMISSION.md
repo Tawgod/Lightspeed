@@ -78,6 +78,23 @@ When this guarded split is *explicitly enabled*, the middleware validates a stri
 
 `tests/core-operations-status-transitions.test.mjs` exercises ten statuses, invalid/malformed payloads, denial of static routine grants, workstation vs TOTP vs passkey proof, exact grants, locked previous-status checks and actual optional-router HTTP behavior without a database. The handler-source ordering check ensures the locked-state check precedes `UPDATE special_order_items`. **No Postgres row-transition integration, physical employee MFA or real Lightspeed/Discord effects have been tested.** The existing legacy/default path remains unchanged, including its current status handling.
 
+## Manual isolated PostgreSQL status acceptance — 2026-11-12
+
+**In Development / awaiting Codespaces run.** To test the real SQL transaction rather than just mock HTTP/source ordering, added:
+
+- `scripts/run-isolated-security-status-postgres.sh` — a manually executed bash wrapper that **creates a brand-new Docker `postgres:18` container**, dynamically maps its port to **`127.0.0.1` only**, confirms readiness, passes a dedicated test-only DB URL, and **always attempts to remove its own container** on exit. It never reads or reuses `DATABASE_URL` or a Railway database URL. It unsets inherited Lightspeed, Discord and Timeclock service secrets for the subprocess.
+- `tests/core-operations-status-postgres-isolated.test.mjs` — only accepts the hard-coded disposable test user/db/password on loopback and refuses any other database URL. Applies the application's real Special Orders SQL schema to the disposable database, then uses the real Express router and independently verified **fixture** staff/factor/grant callbacks. The test checks routine progress, an attempted downgrade from RECEIVED, strong-only CANCELLED suppression of pending notifications, server-derived `employee:42` status history, concurrent SELECT ... FOR UPDATE protection against a stale routine authorization, and forged/unrecognized requests. No actual store customer, vendor, worker, Google, Railway or Lightspeed data is read or changed.
+
+**Codespaces operator command (not production):**
+
+```bash
+cd /workspaces/Lightspeed-security && git pull --ff-only && bash scripts/run-isolated-security-status-postgres.sh
+```
+
+The wrapper requires a working Docker daemon inside the remote Codespace and may pull the PostgreSQL 18 image. If Docker is unavailable or the loopback binding cannot be verified, it **fails without connecting to any database**. Existing project npm dependencies (including `express` and `pg`) must already be installed in Codespaces. This integration test deliberately does not run on GitHub Actions so routine code-only updates do not launch unnecessary database services.
+
+**Test boundaries:** This is a disposable local database and simulated staff verifier, not production integration, a device enrollment test, live Lightspeed operation, or staff UX acceptance. Until the owner runs and reports the command, **do not label it passed**. Confirm the container is gone after use, review results, then continue to full test credential/witness and state-transition policy decisions before allowing any guarded production route.
+
 ## Remaining blockers and next work
 
 1. **Granular permissions:** `special-orders.manage` and `ordering.manage` are provisional, excessively broad write actions. Before enabling, split routine order status/notes/staging from financial adjustments, purchasing, customer-data changes, live Lightspeed writes, payment/credit, external publication, and Owner/admin operations. Do not force a passkey for every routine entry or grant broad writes to any employee by default.
