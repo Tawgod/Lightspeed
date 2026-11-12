@@ -251,7 +251,7 @@ export function createOrderSplitRouter({ domain, token }) {
 
       res.type('html').send(`<!doctype html>
 <html>
-<head><meta charset="utf-8"><title>Order Split Test</title></head>
+<head><meta charset="utf-8"><base href="${escapeHtml((req.hcPublicBasePath || '') + '/')}"><title>Order Split Test</title></head>
 <body style="font-family:Arial,sans-serif;max-width:1100px;margin:30px auto;padding:0 20px;">
 <h1>Order Split Test — Sale ${sale.invoice_number || saleRef}</h1>
 <p><strong>Use the actions below only for test orders.</strong></p>
@@ -295,7 +295,7 @@ async function convertDeposit() {
   btn.disabled = true;
   out.textContent = 'Converting deposit to store credit...';
   try {
-    const response = await fetch('/api/order-split/sales/${encodeURIComponent(saleRef)}/convert-deposit', {
+    const response = await fetch('api/order-split/sales/${encodeURIComponent(saleRef)}/convert-deposit', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ amount })
@@ -314,7 +314,7 @@ async function repairPickup() {
   const out = document.getElementById('result');
   out.textContent = 'Repairing pickup metadata...';
   try {
-    const response = await fetch('/api/order-split/sales/${encodeURIComponent(saleRef)}/repair-pickup', {
+    const response = await fetch('api/order-split/sales/${encodeURIComponent(saleRef)}/repair-pickup', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({})
@@ -331,7 +331,7 @@ async function loadDestinations() {
   const note = document.getElementById('destination-note');
   if (!select || !note) return;
   try {
-    const response = await fetch('/api/work-orders/sales/${encodeURIComponent(saleRef)}/combine-preview');
+    const response = await fetch('api/work-orders/sales/${encodeURIComponent(saleRef)}/combine-preview');
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Could not load destinations.');
     const orders = data.otherOpenWorkOrders || [];
@@ -375,7 +375,7 @@ async function splitSelected(loadRegister = false) {
   btn.disabled = true;
   out.textContent = loadRegister ? 'Preparing selected pickup...' : 'Running combined split...';
   try {
-    const response = await fetch('/api/order-split/sales/${encodeURIComponent(saleRef)}/split', {
+    const response = await fetch('api/order-split/sales/${encodeURIComponent(saleRef)}/split', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ items, destinationSaleRef: destinationSaleRef || null })
@@ -409,7 +409,7 @@ async function removeOriginal(lineItemId) {
   const out = document.getElementById('result');
   out.textContent = 'Updating original sale...';
   try {
-    const response = await fetch('/api/order-split/sales/${encodeURIComponent(saleRef)}/remove-from-original', {
+    const response = await fetch('api/order-split/sales/${encodeURIComponent(saleRef)}/remove-from-original', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ lineItemId })
@@ -428,7 +428,7 @@ async function createCopy(lineItemId, quantity) {
   const out = document.getElementById('result');
   out.textContent = 'Creating parked test sale...';
   try {
-    const response = await fetch('/api/order-split/sales/${encodeURIComponent(saleRef)}/create-test-copy', {
+    const response = await fetch('api/order-split/sales/${encodeURIComponent(saleRef)}/create-test-copy', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ lineItemId, quantity: 1 })

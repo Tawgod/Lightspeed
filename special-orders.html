@@ -3,26 +3,18 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Hobby Corner Special Orders</title>
-<link rel="stylesheet" href="/special-orders.css">
-<link rel="stylesheet" href="/shared-ui/hc.css">
-<link rel="stylesheet" href="/shared-ui/core-ops-compat.css">
+<link rel="stylesheet" href="special-orders.css">
+<link rel="stylesheet" href="shared-ui/hc.css">
+<link rel="stylesheet" href="shared-ui/core-ops-compat.css">
+<script type="module" src="shared-ui/operations-nav.mjs"></script>
 </head>
 <body class="hc-ui"><div class="wrap hc-page">
     <nav class="hc-operations-nav hc-core-header" aria-label="Hobby Corner tools">
-    <a class="hc-operations-brand" href="/special-orders" aria-label="Hobby Corner Store Operations home">
-      <img src="/shared-ui/assets/hc-wordmark.webp" alt="Hobby Corner" width="174" height="48">
+    <a class="hc-operations-brand" href="special-orders" aria-label="Hobby Corner Store Operations home">
+      <img src="shared-ui/assets/hc-wordmark.webp" alt="Hobby Corner" width="174" height="48">
       <span class="hc-brand-subtitle">Store Operations</span>
     </a>
-    <div class="hc-operations-links">
-      <a href="/special-orders" aria-current="page">Special Orders</a>
-      <a href="/ordering">Ordering</a>
-      <a href="/preorders">Preorders</a>
-      <a href="/gw-preorders">GW Preorders</a>
-      <details class="hc-operations-more"><summary>More tools</summary><div class="hc-operations-menu">
-        <a href="https://consignment-beta-test.up.railway.app/consignment" target="_blank" rel="noopener noreferrer">Consignment <span class="hc-nav-beta">Beta / Test</span></a>
-        <a href="https://lightspeed-api-production-c087.up.railway.app/extension" target="_blank" rel="noopener noreferrer">Lightspeed Toolkit</a>
-      </div></details>
-    </div>
+    <div class="hc-operations-links" data-current-tool="special-orders" aria-label="All Hobby Corner tools"></div>
     <div class="hc-operations-auth" aria-label="Employee session">
       <label class="hc-header-login-label" for="employeePin">Employee PIN</label>
       <input id="employeePin" class="hc-header-pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" placeholder="4-digit PIN">
@@ -42,6 +34,36 @@
   <div class="card"><div class="value" id="preorder">—</div><div class="label">Preorders</div></div>
   <div class="card"><div class="value" id="ready_or_held">—</div><div class="label">Received / held</div></div>
 </div>
+<section class="hc-priority-review panel" aria-labelledby="hc-priority-title">
+  <div class="hc-priority-heading">
+    <div><h2 id="hc-priority-title">Priority Review</h2><p class="hc-muted">Items requiring staff follow-up. Only verified information is counted.</p></div>
+    <span id="hc-priority-total" class="hc-priority-count" aria-live="polite">Awaiting data</span>
+  </div>
+  <div class="hc-priority-items" role="list">
+    <div role="listitem" class="hc-priority-item">
+      <div><strong>Old open orders (30+ days)</strong><p>Open items created at least 30 days ago; review outstanding customer requests.</p></div>
+      <div class="hc-priority-action"><strong id="hc-priority-old" aria-live="polite">—</strong><a href="#orders">Review orders</a></div>
+    </div>
+    <div role="listitem" class="hc-priority-item">
+      <div><strong>Ordered over 7 days</strong><p>Supplier follow-up may be required; excludes items without an ordered timestamp.</p></div>
+      <div class="hc-priority-action"><strong id="hc-priority-aging" aria-live="polite">—</strong><a href="#orders" id="hc-priority-attention-link">Filter orders</a></div>
+    </div>
+    <div role="listitem" class="hc-priority-item">
+      <div><strong>Lightspeed supplier sync failures</strong><p>Supplier orders reporting an error when synchronizing.</p></div>
+      <div class="hc-priority-action"><strong id="hc-priority-sync" aria-live="polite">—</strong><a href="ordering">Open Ordering</a></div>
+    </div>
+    <div role="listitem" class="hc-priority-item">
+      <div><strong>Customer delivery failures</strong><p>Failed queued notification deliveries; investigate before retrying.</p></div>
+      <div class="hc-priority-action"><strong id="hc-priority-delivery" aria-live="polite">—</strong><a href="ordering#deliveryQueue">Review delivery queue</a></div>
+    </div>
+    <div role="listitem" class="hc-priority-item">
+      <div><strong>Other bugs &amp; system errors</strong><p>General application incident monitoring is not connected to this panel yet.</p></div>
+      <span class="hc-priority-unavailable">Not connected</span>
+    </div>
+  </div>
+  <p id="hc-priority-source" class="hc-muted" role="status">Sign in to load operational review counts.</p>
+
+</section>
 <div class="panel">
   <h2>New Special Order</h2>
 
@@ -306,5 +328,5 @@
   <div class="toolbar"><input id="legacyWorkbook" type="file" accept=".xlsx" style="max-width:320px"><button onclick="importWorkbook()">Import legacy workbook</button></div>
 </div>
 </div>
-<script src="/shared-ui/staff-auth.js"></script>
-<script src="/special-orders-client.js"></script></body></html>
+<script src="shared-ui/staff-auth.js"></script>
+<script src="special-orders-client.js"></script></body></html>

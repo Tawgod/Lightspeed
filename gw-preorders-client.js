@@ -1,4 +1,4 @@
-const api='/api/special-orders';
+const api=new URL('api/special-orders',document.baseURI).pathname;
 let noticeTimer=null,lastPreviewCampaignId=null,lastPreview=null;
 
 function showNotice(text,ms=0){const e=document.getElementById('notice');if(noticeTimer)clearTimeout(noticeTimer);e.textContent=text;e.style.display='block';if(ms)noticeTimer=setTimeout(()=>{e.style.display='none'},ms)}

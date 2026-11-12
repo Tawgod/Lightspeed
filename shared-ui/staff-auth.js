@@ -18,6 +18,10 @@
     }
   }
 
+  function notifyAuthChanged(){
+    if(typeof window.dispatchEvent==='function'&&typeof Event==='function')
+      window.dispatchEvent(new Event('hc-staff-auth-changed'));
+  }
   function employee(){return readSession()?.employee||null}
 
   function headers(extra={}){
@@ -27,11 +31,17 @@
     return legacy?{...extra,'x-hobby-corner-key':legacy}:{...extra};
   }
 
+  function staffSessionUrl(){
+    if(typeof document==='undefined'||typeof document.baseURI!=='string')
+      return '/api/staff-auth/session';
+    return new URL('api/staff-auth/session',document.baseURI).pathname;
+  }
+
   async function signIn(pin){
     const clean=String(pin||'').trim();
     if(!/^\d{4}$/.test(clean))throw new Error('Enter your 4-digit Timeclock PIN.');
 
-    const response=await fetch('/api/staff-auth/session',{
+    const response=await fetch(staffSessionUrl(),{
       method:'POST',
       cache:'no-store',
       headers:{'Content-Type':'application/json'},
@@ -54,13 +64,14 @@
     };
     sessionStorage.setItem(SESSION_KEY,JSON.stringify(session));
     sessionStorage.removeItem(LEGACY_KEY);
+    notifyAuthChanged();
     return session;
   }
 
   async function verify(){
     const session=readSession();
     if(!session)return null;
-    const response=await fetch('/api/staff-auth/session',{
+    const response=await fetch(staffSessionUrl(),{
       cache:'no-store',
       headers:headers()
     });
@@ -78,6 +89,7 @@
 
   function signOut(){
     sessionStorage.removeItem(SESSION_KEY);
+    notifyAuthChanged();
   }
 
   function setLegacyKey(value){
@@ -85,6 +97,7 @@
     if(clean)sessionStorage.setItem(LEGACY_KEY,clean);
     else sessionStorage.removeItem(LEGACY_KEY);
     sessionStorage.removeItem(SESSION_KEY);
+    notifyAuthChanged();
   }
 
   function legacyKey(){return String(sessionStorage.getItem(LEGACY_KEY)||'')}
