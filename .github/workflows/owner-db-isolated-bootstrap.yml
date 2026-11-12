@@ -6,6 +6,8 @@ on:
     paths:
       - 'scripts/bootstrap-owner-stage-database.mjs'
       - 'tests/bootstrap-owner-stage-database.test.mjs'
+      - 'scripts/prepare-owner-locked-login-roles.mjs'
+      - 'tests/prepare-owner-locked-login-roles.test.mjs'
 permissions:
   contents: read
 jobs:
@@ -22,3 +24,5 @@ jobs:
         run: |
           node --check scripts/bootstrap-owner-stage-database.mjs
           node --test tests/bootstrap-owner-stage-database.test.mjs
+          node --check scripts/prepare-owner-locked-login-roles.mjs
+          node --test tests/prepare-owner-locked-login-roles.test.mjs
