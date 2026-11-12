@@ -31,6 +31,7 @@ export const TOOL_OPERATIONS=Object.freeze([
  // Proposed exact Core Operations scopes: available to the security policy
  // for staging tests, but NO staff grants, UI options or route allowlist are
  // activated by their mere presence. Owner review remains required.
+ 'special-orders.purchase-metrics.refresh',
  'special-orders.notes.write','special-orders.routing.write',
  'special-orders.status.progress','special-orders.status.write',
  'special-orders.create','special-orders.delete',
