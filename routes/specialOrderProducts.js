@@ -299,11 +299,15 @@ export function registerSpecialOrderProductRoutes(router, deps) {
   });
 
   // Twice-daily conservative cleanup. Advisory locking makes this safe across replicas.
-  setTimeout(()=>{
+  // Unref the startup delay as well as the recurring timer so tests and
+  // graceful process shutdown are not held open for two minutes solely by
+  // background reconciliation scheduling.
+  const reconcileStartupTimer=setTimeout(()=>{
     reconcileLocalProducts({limit:250,apply:true,source:'scheduled'}).catch(
       e=>console.error('[special-orders] scheduled product reconciliation failed',e)
     );
   },120000);
+  if(reconcileStartupTimer.unref)reconcileStartupTimer.unref();
   const reconcileTimer=setInterval(()=>{
     reconcileLocalProducts({limit:250,apply:true,source:'scheduled'}).catch(
       e=>console.error('[special-orders] scheduled product reconciliation failed',e)
