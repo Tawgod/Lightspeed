@@ -212,7 +212,7 @@ test('disposable PostgreSQL 18: guarded status change, locked state, audit and n
       const functionName='hc_fixture_reject_suppression';
       await db.query(
         "CREATE FUNCTION "+functionName+"() RETURNS trigger LANGUAGE plpgsql "+
-        "AS $ BEGIN RAISE EXCEPTION 'fixture induced notification failure'; END; $"
+        "AS 'BEGIN RAISE EXCEPTION ''fixture induced notification failure''; END;'"
       );
       await db.query(
         "CREATE TRIGGER hc_fixture_block_suppression BEFORE UPDATE OF status ON notifications "+
