@@ -17,6 +17,14 @@ if ! command -v node >/dev/null 2>&1; then
   echo "Node.js must be installed in Codespaces." >&2
   exit 2
 fi
+if ! node --check tests/core-operations-status-postgres-isolated.test.mjs; then
+  echo "Local-only test failed JavaScript syntax validation; no database was started." >&2
+  exit 2
+fi
+if ! npm ls express pg --depth=0 >/dev/null 2>&1; then
+  echo "Missing project dependencies in Codespaces. Install npm packages there first." >&2
+  exit 2
+fi
 
 CONTAINER_ID=""
 cleanup() {
