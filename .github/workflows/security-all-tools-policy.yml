@@ -1,0 +1,142 @@
+name: Hobby Corner cross-tool security policy
+on:
+  push:
+    branches: [integration/security-all-tools-20261111]
+    paths:
+      - 'services/security/staffAccessBaseline.js'
+      - 'services/security/adminPermissionCatalog.js'
+      - 'tests/security-all-tools-operations.test.mjs'
+      - 'services/security/coreOperationsRouteInventory.js'
+      - 'tests/core-operations-route-inventory.test.mjs'
+      - 'services/security/coreOperationsRouteAdmission.js'
+      - 'tests/core-operations-route-admission.test.mjs'
+      - 'services/security/coreOperationsProvisionalScopes.js'
+      - 'tests/core-operations-provisional-scopes.test.mjs'
+      - 'services/security/coreOperationsServiceProposals.js'
+      - 'tests/core-operations-service-proposals.test.mjs'
+      - 'services/security/coreOperationsStatusTransitions.js'
+      - 'tests/core-operations-status-transitions.test.mjs'
+      - 'services/security/coreOperationsAuditActor.js'
+      - 'tests/core-operations-audit-actor.test.mjs'
+      - 'tests/core-operations-route-seam.test.mjs'
+      - 'services/security/coreOperationsBrowserCallerInventory.js'
+      - 'tests/core-operations-browser-callers.test.mjs'
+      - 'services/gwFormFetchPolicy.js'
+      - 'tests/gw-form-fetch-policy.test.mjs'
+      - 'special-orders-client.js'
+      - 'preorders-client.js'
+      - 'gw-preorders-client.js'
+      - 'ordering-client.js'
+      - 'special-orders.js'
+      - 'routes/specialOrderProducts.js'
+      - 'tests/special-orders-auth-metadata.test.mjs'
+      - 'services/lightspeed/permissions.js'
+      - 'services/lightspeed/secureReadPolicy.js'
+      - 'routes/sharedLightspeedRead.js'
+      - 'tests/shared-lightspeed-permissions.test.mjs'
+      - 'tests/shared-lightspeed-secure-read.test.mjs'
+      - '.github/workflows/security-all-tools-policy.yml'
+  pull_request:
+    paths:
+      - 'services/security/staffAccessBaseline.js'
+      - 'services/security/adminPermissionCatalog.js'
+      - 'tests/security-all-tools-operations.test.mjs'
+      - 'services/security/coreOperationsRouteInventory.js'
+      - 'tests/core-operations-route-inventory.test.mjs'
+      - 'services/security/coreOperationsRouteAdmission.js'
+      - 'tests/core-operations-route-admission.test.mjs'
+      - 'services/security/coreOperationsProvisionalScopes.js'
+      - 'tests/core-operations-provisional-scopes.test.mjs'
+      - 'services/security/coreOperationsServiceProposals.js'
+      - 'tests/core-operations-service-proposals.test.mjs'
+      - 'services/security/coreOperationsStatusTransitions.js'
+      - 'tests/core-operations-status-transitions.test.mjs'
+      - 'services/security/coreOperationsAuditActor.js'
+      - 'tests/core-operations-audit-actor.test.mjs'
+      - 'tests/core-operations-route-seam.test.mjs'
+      - 'services/security/coreOperationsBrowserCallerInventory.js'
+      - 'tests/core-operations-browser-callers.test.mjs'
+      - 'services/gwFormFetchPolicy.js'
+      - 'tests/gw-form-fetch-policy.test.mjs'
+      - 'special-orders-client.js'
+      - 'preorders-client.js'
+      - 'gw-preorders-client.js'
+      - 'ordering-client.js'
+      - 'special-orders.js'
+      - 'routes/specialOrderProducts.js'
+      - 'tests/special-orders-auth-metadata.test.mjs'
+      - '.github/workflows/security-all-tools-policy.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: security-all-tools-policy-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check shared security code syntax
+        run: |
+          node --check services/security/staffAccessBaseline.js
+          node --check services/security/staffSecurityBridge.js
+          node --check services/security/adminPermissionCatalog.js
+          node --check tests/security-all-tools-operations.test.mjs
+      - name: Test all cataloged tool actions with registered station, TOTP and passkey proof
+        run: |
+          node --test --test-concurrency=1 \
+            tests/shared-staff-security.test.mjs \
+            tests/shared-staff-bridge.test.mjs \
+            tests/security-all-tools-operations.test.mjs
+      - name: Install isolated HTTP test dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Test secure Lightspeed read grants and denied HTTP access
+        run: |
+          node --check services/lightspeed/permissions.js
+          node --check services/lightspeed/secureReadPolicy.js
+          node --check routes/sharedLightspeedRead.js
+          node --test --test-concurrency=1 \
+            tests/shared-lightspeed-permissions.test.mjs \
+            tests/shared-lightspeed-secure-read.test.mjs
+      - name: Inventory Special Orders, Ordering, GW and product route security without changing live authorization
+        run: |
+          node --check services/security/coreOperationsRouteInventory.js
+          node --check tests/core-operations-route-inventory.test.mjs
+          node --test --test-concurrency=1 tests/core-operations-route-inventory.test.mjs
+      - name: Test GW form fetch redirect and response boundaries
+        run: |
+          node --check services/gwFormFetchPolicy.js
+          node --check tests/gw-form-fetch-policy.test.mjs
+          node --test --test-concurrency=1 tests/gw-form-fetch-policy.test.mjs
+      - name: Verify web client API references and common staff-login dependencies
+        run: |
+          node --check services/security/coreOperationsBrowserCallerInventory.js
+          node --check tests/core-operations-browser-callers.test.mjs
+          node --test --test-concurrency=1 tests/core-operations-browser-callers.test.mjs
+      - name: Test zero-default-grant backend Core Operations employee and machine admission
+        run: |
+          node --check services/security/coreOperationsRouteAdmission.js
+          node --check services/security/coreOperationsProvisionalScopes.js
+          node --check tests/core-operations-route-admission.test.mjs
+          node --check tests/core-operations-route-seam.test.mjs
+          node --check tests/core-operations-provisional-scopes.test.mjs
+          node --check services/security/coreOperationsServiceProposals.js
+          node --check tests/core-operations-service-proposals.test.mjs
+          node --check services/security/coreOperationsStatusTransitions.js
+          node --check tests/core-operations-status-transitions.test.mjs
+          node --check services/security/coreOperationsAuditActor.js
+          node --check tests/core-operations-audit-actor.test.mjs
+          node --test --test-concurrency=1 \
+            tests/core-operations-route-admission.test.mjs \
+            tests/core-operations-route-seam.test.mjs \
+            tests/core-operations-provisional-scopes.test.mjs \
+            tests/core-operations-service-proposals.test.mjs \
+            tests/core-operations-status-transitions.test.mjs \
+            tests/core-operations-audit-actor.test.mjs
+      - name: Verify Special Orders health metadata and legacy auth compatibility
+        run: node --test --test-concurrency=1 tests/special-orders-auth-metadata.test.mjs

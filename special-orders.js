@@ -6,6 +6,9 @@ import { fileURLToPath } from 'url';
 import multer from 'multer';
 import { importLegacyWorkbook } from './special-orders-import.js';
 import { registerSpecialOrderProductRoutes } from './routes/specialOrderProducts.js';
+import { coreOperationsAuditActor } from './services/security/coreOperationsAuditActor.js';
+import { permitsLockedStatusTransition } from './services/security/coreOperationsStatusTransitions.js';
+import { fetchAllowedGwFormHtml } from './services/gwFormFetchPolicy.js';
 
 const { Pool } = pg;
 const __filename = fileURLToPath(import.meta.url);
@@ -340,6 +343,9 @@ export function createSpecialOrdersRouter({
   lightspeedToken,
   adminKey,
   verifyEmployee,
+  // Explicit trusted backend opt-in only. Existing routes remain unchanged when
+  // this is not passed by the server; browser headers are never configuration.
+  coreOperationsAdmission,
   liveMode = false,
   allowMigration = false,
   allowProductWrites = false,
@@ -350,12 +356,13 @@ export function createSpecialOrdersRouter({
   gwAutoSubmitAlertRoleId = null
 }) {
   const router = express.Router();
-  console.log('Special Orders auth diagnostic', {
-    configured: Boolean(adminKey),
-    length: adminKey ? String(adminKey).length : 0,
-    trimmedLength: adminKey ? String(adminKey).trim().length : 0
-  });
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
+  // Existing attribution remains byte-compatible until a trusted backend
+  // deliberately supplies the new guard. In guarded mode browser-supplied
+  // actor names never override independently verified employee/service ID.
+  const auditActor = (request, legacy) => coreOperationsAuditActor(request, legacy, {
+    guardEnabled: coreOperationsAdmission != null
+  });
 
   router.get('/health', async (req, res) => {
     res.json({
@@ -363,8 +370,6 @@ export function createSpecialOrdersRouter({
       database: Boolean(pool),
       lightspeed: Boolean(lightspeedDomain && lightspeedToken),
       secured: Boolean(adminKey),
-      adminKeyLength: adminKey ? String(adminKey).length : 0,
-      adminKeyTrimmedLength: adminKey ? String(adminKey).trim().length : 0,
       liveMode: Boolean(liveMode),
       allowMigration: Boolean(allowMigration),
       allowProductWrites: Boolean(allowProductWrites),
@@ -373,6 +378,12 @@ export function createSpecialOrdersRouter({
   });
 
   router.use(async (req, res, next) => {
+    // In an explicitly guarded staging composition, all business endpoints
+    // must use the independently verified staff/service gate below. Do NOT
+    // force independently authenticated service workers through the legacy
+    // browser/admin-key session as well, or let that key bypass the new gate.
+    // Keep /auth-check on its existing login behavior for compatibility.
+    if (coreOperationsAdmission != null && req.path !== '/auth-check') return next();
     const suppliedKey = String(req.get('x-hobby-corner-key') || '').trim();
     const configuredKey = String(adminKey || '').trim();
 
@@ -396,11 +407,6 @@ export function createSpecialOrdersRouter({
       return res.status(503).json({ error:'Special Orders authentication is not configured.' });
     }
 
-    console.log('Special Orders auth denied', {
-      suppliedKeyLength: suppliedKey.length,
-      hasBearer: bearer.startsWith('Bearer '),
-      path: req.path
-    });
     return res.status(401).json({ error:'Timeclock employee sign-in or Special Orders admin key required.' });
   });
 
@@ -412,6 +418,17 @@ export function createSpecialOrdersRouter({
       employee:employee?{id:employee.id,name:employee.name}:null
     });
   });
+
+  // Future coordinated security cutover: when a trusted server explicitly
+  // supplies the zero-default-grant admission gate, all business routes and
+  // nested product routes must pass it BEFORE accessing databases or vendors.
+  // Health/session-check stay on their pre-existing behavior.
+  if (coreOperationsAdmission != null) {
+    if (typeof coreOperationsAdmission.middleware !== 'function') {
+      throw new TypeError('A trusted Core Operations admission middleware is required.');
+    }
+    router.use(coreOperationsAdmission.middleware);
+  }
 
   router.post('/import/workbook', requireDb, upload.single('workbook'), async (req, res) => {
     if (!allowMigration) return res.status(423).json({ error: 'Legacy migration is disabled until Lightspeed go-live.' });
@@ -1050,25 +1067,9 @@ export function createSpecialOrdersRouter({
   }
 
   async function fetchGwFormPreview(sourceUrl){
-    let input;
-    try{input=new URL(String(sourceUrl||'').trim())}
-    catch{throw Object.assign(new Error('Enter a valid GW Want Number Form URL.'),{status:400})}
-    const allowedHost=/^(?:info\.games-workshop\.com|docs\.google\.com)$/i.test(input.hostname);
-    if(input.protocol!=='https:'||!allowedHost){
-      throw Object.assign(new Error('GW scrape accepts only Games Workshop tracking links or Google Forms URLs.'),{status:400});
-    }
-    const response=await fetch(input.toString(),{
-      redirect:'follow',
-      headers:{
-        'User-Agent':'Mozilla/5.0 HobbyCorner-GW-Preorder-Scraper/1.0',
-        'Accept':'text/html,application/xhtml+xml'
-      }
-    });
-    if(!response.ok)throw Object.assign(new Error('GW form fetch failed: '+response.status+' '+response.statusText),{status:502});
-    const html=await response.text();
-    if(html.length>8*1024*1024)throw Object.assign(new Error('GW form response was unexpectedly large.'),{status:502});
-    const parsed=parseGwGoogleForm(html,response.url||input.toString());
-    return {...parsed,source_url:input.toString(),http_status:response.status,html_bytes:Buffer.byteLength(html)};
+    const fetched=await fetchAllowedGwFormHtml(sourceUrl);
+    const parsed=parseGwGoogleForm(fetched.html,fetched.finalUrl);
+    return {...parsed,source_url:fetched.sourceUrl,http_status:fetched.httpStatus,html_bytes:fetched.htmlBytes};
   }
 
 
@@ -1790,53 +1791,79 @@ export function createSpecialOrdersRouter({
     const discordUsername=String(body.discord_username||'').trim();
     const action=String(body.action||'').toUpperCase();
     if(!messageId||!discordUserId||!['ADD','REMOVE'].includes(action))return res.status(400).json({error:'message_id, discord_user_id, and ADD/REMOVE action are required.'});
-    const mapped=await pool.query(
-      "SELECT m.*,pp.item_description,pp.gw_single_item_name,pp.gw_case_pack_size FROM preorder_discord_messages m JOIN preorder_products pp ON pp.id=m.preorder_product_id WHERE m.message_id=$1",
-      [messageId]
-    );
-    const m=mapped.rows[0];
-    if(!m)return res.status(404).json({error:'Discord message is not mapped to a GW preorder item.'});
-    const customerResult=await pool.query("SELECT id,name,discord_user_id FROM customers WHERE discord_user_id=$1 LIMIT 1",[discordUserId]);
-    const customer=customerResult.rows[0]||null;
-    await pool.query(
-      "INSERT INTO preorder_discord_reactions (preorder_campaign_id,preorder_product_id,message_id,discord_user_id,discord_username,customer_id,action) VALUES ($1,$2,$3,$4,$5,$6,$7)",
-      [m.preorder_campaign_id,m.preorder_product_id,messageId,discordUserId,discordUsername||null,customer?.id||null,action]
-    );
-    if(!customer)return res.status(202).json({ok:true,matched_customer:false});
-    const sourceKey='discord-gw:'+messageId+':'+discordUserId;
-    if(action==='ADD'){
-      await pool.query(
-        "INSERT INTO preorder_requests (preorder_product_id,customer_id,requested_quantity,status,notes,source_key) VALUES ($1,$2,1,'REQUESTED',$3,$4) "+
-        "ON CONFLICT (source_key) DO UPDATE SET status='REQUESTED',requested_quantity=1,notes=EXCLUDED.notes",
-        [m.preorder_product_id,customer.id,'Discord reaction by '+(discordUsername||discordUserId),sourceKey]
+    const db=await pool.connect();
+    try{
+      await db.query('BEGIN');
+      const mapped=await db.query(
+        "SELECT m.*,pp.item_description,pp.gw_single_item_name,pp.gw_case_pack_size FROM preorder_discord_messages m JOIN preorder_products pp ON pp.id=m.preorder_product_id WHERE m.message_id=$1",
+        [messageId]
       );
-      await pool.query(
-        "INSERT INTO notifications (preorder_campaign_id,customer_id,channel,recipient,status,message,not_before) "+
-        "VALUES ($1,$2,'DISCORD_GW_ORDER_CONFIRMATION',$3,'PENDING','GW preorder confirmation',now()+interval '10 minutes') "+
-        "ON CONFLICT (preorder_campaign_id,customer_id,channel) WHERE preorder_campaign_id IS NOT NULL AND customer_id IS NOT NULL AND channel='DISCORD_GW_ORDER_CONFIRMATION' AND status IN ('PENDING','QUEUED') "+
-        "DO UPDATE SET status='PENDING',not_before=now()+interval '10 minutes',error=NULL",
-        [m.preorder_campaign_id,customer.id,discordUserId]
+      const m=mapped.rows[0];
+      if(!m){
+        await db.query('ROLLBACK');
+        return res.status(404).json({error:'Discord message is not mapped to a GW preorder item.'});
+      }
+      const customerResult=await db.query(
+        "SELECT id,name,discord_user_id FROM customers WHERE discord_user_id=$1 LIMIT 1",
+        [discordUserId]
       );
-    }else{
-      const priorConfirmation=await pool.query(
-        "SELECT id FROM notifications WHERE preorder_campaign_id=$1 AND customer_id=$2 AND channel='DISCORD_GW_ORDER_CONFIRMATION' AND status='SENT' LIMIT 1",
-        [m.preorder_campaign_id,customer.id]
+      const customer=customerResult.rows[0]||null;
+      await db.query(
+        "INSERT INTO preorder_discord_reactions (preorder_campaign_id,preorder_product_id,message_id,discord_user_id,discord_username,customer_id,action) VALUES ($1,$2,$3,$4,$5,$6,$7)",
+        [m.preorder_campaign_id,m.preorder_product_id,messageId,discordUserId,discordUsername||null,customer?.id||null,action]
       );
-      await pool.query("UPDATE preorder_requests SET status='CANCELLED',notes=COALESCE(notes,'')||' | Discord reaction removed' WHERE source_key=$1",[sourceKey]);
-      if(priorConfirmation.rows[0]){
-        const removed=(m.gw_case_pack_size>1?(m.gw_single_item_name||m.item_description):m.item_description);
-        await pool.query(
-          "INSERT INTO notifications (preorder_campaign_id,customer_id,channel,recipient,status,message,metadata,not_before) "+
-          "VALUES ($1,$2,'DISCORD_GW_ORDER_UPDATE',$3,'PENDING','GW preorder update',$4::jsonb,now()) "+
-          "ON CONFLICT (preorder_campaign_id,customer_id,channel) WHERE preorder_campaign_id IS NOT NULL AND customer_id IS NOT NULL AND channel='DISCORD_GW_ORDER_UPDATE' AND status IN ('PENDING','QUEUED') "+
-          "DO UPDATE SET status='PENDING',metadata=EXCLUDED.metadata,not_before=now(),error=NULL",
-          [m.preorder_campaign_id,customer.id,discordUserId,JSON.stringify({removed_item:removed})]
+      if(!customer){
+        await db.query('COMMIT');
+        return res.status(202).json({ok:true,matched_customer:false});
+      }
+      const sourceKey='discord-gw:'+messageId+':'+discordUserId;
+      if(action==='ADD'){
+        await db.query(
+          "INSERT INTO preorder_requests (preorder_product_id,customer_id,requested_quantity,status,notes,source_key) VALUES ($1,$2,1,'REQUESTED',$3,$4) "+
+          "ON CONFLICT (source_key) DO UPDATE SET status='REQUESTED',requested_quantity=1,notes=EXCLUDED.notes",
+          [m.preorder_product_id,customer.id,'Discord reaction by '+(discordUsername||discordUserId),sourceKey]
+        );
+        await db.query(
+          "INSERT INTO notifications (preorder_campaign_id,customer_id,channel,recipient,status,message,not_before) "+
+          "VALUES ($1,$2,'DISCORD_GW_ORDER_CONFIRMATION',$3,'PENDING','GW preorder confirmation',now()+interval '10 minutes') "+
+          "ON CONFLICT (preorder_campaign_id,customer_id,channel) WHERE preorder_campaign_id IS NOT NULL AND customer_id IS NOT NULL AND channel='DISCORD_GW_ORDER_CONFIRMATION' AND status IN ('PENDING','QUEUED') "+
+          "DO UPDATE SET status='PENDING',not_before=now()+interval '10 minutes',error=NULL",
+          [m.preorder_campaign_id,customer.id,discordUserId]
         );
       }else{
-        await pool.query("UPDATE notifications SET status='SUPPRESSED',suppression_reason='No current items after pre-confirmation removal',suppressed_at=now() WHERE preorder_campaign_id=$1 AND customer_id=$2 AND channel='DISCORD_GW_ORDER_CONFIRMATION' AND status IN ('PENDING','QUEUED') AND NOT EXISTS (SELECT 1 FROM preorder_requests pr JOIN preorder_products pp ON pp.id=pr.preorder_product_id WHERE pp.preorder_campaign_id=$1 AND pr.customer_id=$2 AND pr.status='REQUESTED')",[m.preorder_campaign_id,customer.id]);
+        const priorConfirmation=await db.query(
+          "SELECT id FROM notifications WHERE preorder_campaign_id=$1 AND customer_id=$2 AND channel='DISCORD_GW_ORDER_CONFIRMATION' AND status='SENT' LIMIT 1",
+          [m.preorder_campaign_id,customer.id]
+        );
+        await db.query(
+          "UPDATE preorder_requests SET status='CANCELLED',notes=COALESCE(notes,'')||' | Discord reaction removed' WHERE source_key=$1",
+          [sourceKey]
+        );
+        if(priorConfirmation.rows[0]){
+          const removed=(m.gw_case_pack_size>1?(m.gw_single_item_name||m.item_description):m.item_description);
+          await db.query(
+            "INSERT INTO notifications (preorder_campaign_id,customer_id,channel,recipient,status,message,metadata,not_before) "+
+            "VALUES ($1,$2,'DISCORD_GW_ORDER_UPDATE',$3,'PENDING','GW preorder update',$4::jsonb,now()) "+
+            "ON CONFLICT (preorder_campaign_id,customer_id,channel) WHERE preorder_campaign_id IS NOT NULL AND customer_id IS NOT NULL AND channel='DISCORD_GW_ORDER_UPDATE' AND status IN ('PENDING','QUEUED') "+
+            "DO UPDATE SET status='PENDING',metadata=EXCLUDED.metadata,not_before=now(),error=NULL",
+            [m.preorder_campaign_id,customer.id,discordUserId,JSON.stringify({removed_item:removed})]
+          );
+        }else{
+          await db.query(
+            "UPDATE notifications SET status='SUPPRESSED',suppression_reason='No current items after pre-confirmation removal',suppressed_at=now() WHERE preorder_campaign_id=$1 AND customer_id=$2 AND channel='DISCORD_GW_ORDER_CONFIRMATION' AND status IN ('PENDING','QUEUED') AND NOT EXISTS (SELECT 1 FROM preorder_requests pr JOIN preorder_products pp ON pp.id=pr.preorder_product_id WHERE pp.preorder_campaign_id=$1 AND pr.customer_id=$2 AND pr.status='REQUESTED')",
+            [m.preorder_campaign_id,customer.id]
+          );
+        }
       }
+      await db.query('COMMIT');
+      res.json({ok:true,matched_customer:true,customer_id:customer.id,action});
+    }catch(error){
+      await db.query('ROLLBACK').catch(()=>{});
+      console.error('[special-orders] GW Discord reaction processing failed:',error);
+      res.status(500).json({error:'GW Discord reaction processing failed.'});
+    }finally{
+      db.release();
     }
-    res.json({ok:true,matched_customer:true,customer_id:customer.id,action});
   });
   router.get('/preorders/gw/campaigns/:id/discord-preview', requireDb, async (req,res)=>{
     try{
@@ -2024,7 +2051,7 @@ export function createSpecialOrdersRouter({
       "WHEN COALESCE($6,gw_case_pack_size,1)>1 THEN 'SPLIT_TO_SINGLES' ELSE 'POST_AS_IS' END,"+
       "gw_reviewed_at=now(),gw_reviewed_by=COALESCE(NULLIF(trim($9),''),'gw-web') "+
       "FROM preorder_campaigns pc WHERE pp.id=$10 AND pc.id=pp.preorder_campaign_id AND pc.campaign_type='GW_WEEKLY' RETURNING pp.*";
-    const {rows}=await pool.query(sql,[itemDescription,sku,msrp,cost,postEnabled,packSize,singleName,singleMsrp,body.gw_reviewed_by??null,req.params.id]);
+    const {rows}=await pool.query(sql,[itemDescription,sku,msrp,cost,postEnabled,packSize,singleName,singleMsrp,auditActor(req, body.gw_reviewed_by??null),req.params.id]);
     if(!rows[0])return res.status(404).json({error:'GW preorder product not found.'});
     res.json(rows[0]);
   });
@@ -2073,8 +2100,8 @@ export function createSpecialOrdersRouter({
         const submitted=Math.max(0,Number(p.requested_total||0)+Number(p.store_order_quantity||0));
         await client.query(`
           UPDATE preorder_products
-          SET submitted_quantity=$1,ordered_quantity=$1,
-              submitted_value=CASE WHEN msrp IS NULL THEN NULL ELSE $1*msrp END
+          SET submitted_quantity=$1::integer,ordered_quantity=$1::integer,
+              submitted_value=CASE WHEN msrp IS NULL THEN NULL ELSE $1::integer*msrp END
           WHERE id=$2
         `,[submitted,p.id]);
       }
@@ -2313,7 +2340,7 @@ export function createSpecialOrdersRouter({
         await client.query(`
           INSERT INTO customer_pickup_events (customer_id,preorder_request_id,event_type,notes,created_by)
           VALUES ($1,$2,$3,$4,$5)
-        `,[a.customer_id,a.preorder_request_id,late?'LATE_PICKUP':'PICKED_UP',req.body?.note||null,req.body?.changed_by||null]);
+        `,[a.customer_id,a.preorder_request_id,late?'LATE_PICKUP':'PICKED_UP',req.body?.note||null,auditActor(req, req.body?.changed_by||null)]);
         await client.query('COMMIT');return res.json(r.rows[0]);
       }
       if(action==='NO_PICKUP'){
@@ -2326,7 +2353,7 @@ export function createSpecialOrdersRouter({
         await client.query(`
           INSERT INTO customer_pickup_events (customer_id,preorder_request_id,event_type,notes,created_by)
           VALUES ($1,$2,'NO_PICKUP',$3,$4)
-        `,[a.customer_id,a.preorder_request_id,req.body?.note||null,req.body?.changed_by||null]);
+        `,[a.customer_id,a.preorder_request_id,req.body?.note||null,auditActor(req, req.body?.changed_by||null)]);
         await client.query('COMMIT');return res.json(r.rows[0]);
       }
       await client.query('ROLLBACK');
@@ -2408,7 +2435,7 @@ export function createSpecialOrdersRouter({
 
       const orderResult = await client.query(
         'INSERT INTO special_orders (customer_id,source,notes,created_by) VALUES ($1,$2,$3,$4) RETURNING *',
-        [customerResult.rows[0].id, source, notes, created_by]
+        [customerResult.rows[0].id, source, notes, auditActor(req, created_by)]
       );
 
       const createdItems = [];
@@ -2451,7 +2478,7 @@ export function createSpecialOrdersRouter({
         }
         await client.query(
           'INSERT INTO order_status_history (special_order_item_id,new_status,note,changed_by) VALUES ($1,$2,$3,$4)',
-          [itemResult.rows[0].id, status, 'Order item created', created_by]
+          [itemResult.rows[0].id, status, 'Order item created', auditActor(req, created_by)]
         );
         createdItems.push(itemResult.rows[0]);
       }
@@ -2509,7 +2536,7 @@ export function createSpecialOrdersRouter({
       }
       await client.query(
         'INSERT INTO order_status_history (special_order_item_id,new_status,note,changed_by) VALUES ($1,$2,$3,$4)',
-        [created.rows[0].id,status,'Item added to existing order',item.created_by||null]
+        [created.rows[0].id,status,'Item added to existing order',auditActor(req, item.created_by||null)]
       );
       await client.query('COMMIT');
       res.status(201).json(created.rows[0]);
@@ -2697,7 +2724,7 @@ export function createSpecialOrdersRouter({
 
   router.patch('/items/:id/notes', requireDb, async (req,res)=>{
     const notes=req.body?.notes==null?null:String(req.body.notes).trim()||null;
-    const changedBy=String(req.body?.changed_by||'ordering-web').trim()||'ordering-web';
+    const changedBy=auditActor(req, String(req.body?.changed_by||'ordering-web').trim()||'ordering-web');
     const client=await pool.connect();
     try{
       await client.query('BEGIN');
@@ -2758,6 +2785,19 @@ export function createSpecialOrdersRouter({
         return res.status(404).json({ error: 'Order item not found.' });
       }
       const old = oldResult.rows[0];
+      // This second check runs UNDER the existing SELECT ... FOR UPDATE lock.
+      // Target-only classification would allow reopening a completed or
+      // received item by asking for an innocent-looking local status.
+      // Existing behavior is preserved when the new gate is not enabled.
+      if (coreOperationsAdmission != null &&
+          !permitsLockedStatusTransition(
+            req.hcCoreOperationsAdmission, old.status, newStatus
+          )) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({
+          error: 'A stronger permission is required for this status transition.'
+        });
+      }
       const stamps = {
         ORDERED: 'ordered_at = COALESCE(ordered_at, now())',
         RECEIVED: 'received_at = COALESCE(received_at, now())',
@@ -2772,7 +2812,7 @@ export function createSpecialOrdersRouter({
       );
       await client.query(
         'INSERT INTO order_status_history (special_order_item_id,old_status,new_status,note,changed_by) VALUES ($1,$2,$3,$4,$5)',
-        [req.params.id, old.status, newStatus, req.body?.note || null, req.body?.changed_by || null]
+        [req.params.id, old.status, newStatus, req.body?.note || null, auditActor(req, req.body?.changed_by || null)]
       );
 
       if (['COMPLETED','CANCELLED'].includes(newStatus)) {
@@ -2931,7 +2971,7 @@ export function createSpecialOrdersRouter({
             supplierId?'Preferred supplier changed':'Preferred supplier cleared',
             oldSupplier.rows[0]?.name||null,
             newSupplier.rows[0]?.name||null,
-            req.body?.changed_by||'ordering-web'
+            auditActor(req, req.body?.changed_by||'ordering-web')
           ]
         );
       }
@@ -2941,7 +2981,7 @@ export function createSpecialOrdersRouter({
           : {rows:[]};
         await client.query(
           'INSERT INTO supplier_routing_history (special_order_item_id,product_id,product_category,supplier_id,selected_by) VALUES ($1,$2,$3,$4,$5)',
-          [item.id,item.product_id||null,productInfo.rows[0]?.product_category||null,supplierId,req.body?.changed_by||'ordering-web']
+          [item.id,item.product_id||null,productInfo.rows[0]?.product_category||null,supplierId,auditActor(req, req.body?.changed_by||'ordering-web')]
         );
       }
       if(supplierId){
@@ -3323,7 +3363,7 @@ export function createSpecialOrdersRouter({
           (supplier_id,status,supplier_order_number,notes,created_by,lightspeed_sync_status)
         VALUES ($1,'DRAFT',$2,$3,$4,'LOCAL_ONLY')
         RETURNING *
-      `, [supplier_id, supplier_order_number, notes, created_by]);
+      `, [supplier_id, supplier_order_number, notes, auditActor(req, created_by)]);
 
       for (const item of items) {
         const qty = Number(item.quantity || 0);
@@ -3629,7 +3669,7 @@ export function createSpecialOrdersRouter({
           INSERT INTO receiving_events
             (supplier_order_id,supplier_order_item_id,product_id,quantity_received,received_by,notes)
           VALUES ($1,$2,$3,$4,$5,$6)
-        `, [req.params.id, line.id, line.product_id, qty, received_by, notes]);
+        `, [req.params.id, line.id, line.product_id, qty, auditActor(req, received_by), notes]);
 
         let remaining = qty;
         const waiting = await client.query(`
@@ -3666,7 +3706,7 @@ export function createSpecialOrdersRouter({
             await client.query(`
               INSERT INTO order_status_history (special_order_item_id,old_status,new_status,note,changed_by)
               VALUES ($1,NULL,'RECEIVED','Allocated during receiving',$2)
-            `, [so.id, received_by]);
+            `, [so.id, auditActor(req, received_by)]);
           }
           allocated.push({ special_order_item_id:so.id, quantity:give });
           remaining -= give;
@@ -3732,7 +3772,7 @@ export function createSpecialOrdersRouter({
 
   router.post('/ordering/lightspeed-purchase-orders/:id/receive-special-orders', requireDb, async (req,res)=>{
     const allocations=Array.isArray(req.body?.allocations)?req.body.allocations:[];
-    const receivedBy=String(req.body?.received_by||'ordering-web').trim()||'ordering-web';
+    const receivedBy=auditActor(req, String(req.body?.received_by||'ordering-web').trim()||'ordering-web');
     if(!allocations.length)return res.status(400).json({error:'At least one Special Order allocation is required.'});
     let purchaseOrders;
     try{purchaseOrders=await getLightspeedOpenPurchaseOrders()}catch(error){return res.status(error.status||502).json({error:error.message})}
@@ -3845,7 +3885,7 @@ export function createSpecialOrdersRouter({
 
   router.patch('/notifications/:id/review', requireDb, async (req,res)=>{
     const action=String(req.body?.action||'').trim().toUpperCase();
-    const reviewedBy=String(req.body?.reviewed_by||'ordering-web').trim()||'ordering-web';
+    const reviewedBy=auditActor(req, String(req.body?.reviewed_by||'ordering-web').trim()||'ordering-web');
     if(!['ACKNOWLEDGED','SUPPRESSED'].includes(action))return res.status(400).json({error:'action must be ACKNOWLEDGED or SUPPRESSED.'});
     const db=await pool.connect();
     try{
@@ -3944,8 +3984,10 @@ export function createSpecialOrdersRouter({
     const {rows}=await pool.query(
       "SELECT n.id,n.special_order_item_id,n.customer_id,n.recipient,n.message,n.created_at,c.name AS customer_name,i.requested_name "+
       "FROM notifications n LEFT JOIN customers c ON c.id=n.customer_id LEFT JOIN special_order_items i ON i.id=n.special_order_item_id "+
-      "WHERE n.channel='DISCORD_READY' AND n.status='QUEUED' AND (n.not_before IS NULL OR n.not_before<=now()) "+
-      "ORDER BY n.created_at LIMIT $1",
+      "WHERE n.channel='DISCORD_READY' AND ("+
+      "(n.status='QUEUED' AND (n.not_before IS NULL OR n.not_before<=now())) OR "+
+      "(n.status='SENDING' AND n.not_before IS NOT NULL AND n.not_before<=now())"+
+      ") ORDER BY n.created_at LIMIT $1",
       [limit]
     );
     res.json(rows);
@@ -3953,7 +3995,11 @@ export function createSpecialOrdersRouter({
 
   router.post('/notifications/:id/claim-discord', requireDb, async (req,res)=>{
     const {rows}=await pool.query(
-      "UPDATE notifications SET status='SENDING',error=NULL WHERE id=$1 AND channel='DISCORD_READY' AND status='QUEUED' RETURNING *",
+      "UPDATE notifications SET status='SENDING',error=NULL,not_before=now()+interval '5 minutes' "+
+      "WHERE id=$1 AND channel='DISCORD_READY' AND ("+
+      "(status='QUEUED' AND (not_before IS NULL OR not_before<=now())) OR "+
+      "(status='SENDING' AND not_before IS NOT NULL AND not_before<=now())"+
+      ") RETURNING *",
       [req.params.id]
     );
     if(!rows[0])return res.status(409).json({error:'Discord notification is no longer available to claim.'});
@@ -3964,25 +4010,45 @@ export function createSpecialOrdersRouter({
     const success=req.body?.success===true;
     const externalId=req.body?.external_message_id?String(req.body.external_message_id):null;
     const error=req.body?.error?String(req.body.error):null;
-    const {rows}=await pool.query(
-      success
-        ? "UPDATE notifications SET status='SENT',external_message_id=$2,sent_at=now(),error=NULL WHERE id=$1 AND channel='DISCORD_READY' AND status='SENDING' RETURNING *"
-        : "UPDATE notifications SET status='ERROR',error=$2 WHERE id=$1 AND channel='DISCORD_READY' AND status='SENDING' RETURNING *",
-      [req.params.id,success?externalId:error]
-    );
-    if(!rows[0])return res.status(409).json({error:'Discord notification is not in SENDING state.'});
-    if(success && rows[0].special_order_item_id){
-      const old=await pool.query('SELECT status FROM special_order_items WHERE id=$1',[rows[0].special_order_item_id]);
-      const oldStatus=old.rows[0]?.status;
-      if(oldStatus && oldStatus!=='COMPLETED'){
-        await pool.query("UPDATE special_order_items SET status='CUSTOMER_NOTIFIED',updated_at=now() WHERE id=$1",[rows[0].special_order_item_id]);
-        await pool.query(
-          "INSERT INTO order_status_history (special_order_item_id,old_status,new_status,note,changed_by) VALUES ($1,$2,'CUSTOMER_NOTIFIED','Discord ready notification sent','discord-bot')",
-          [rows[0].special_order_item_id,oldStatus]
-        );
+    const db=await pool.connect();
+    try{
+      await db.query('BEGIN');
+      const {rows}=await db.query(
+        success
+          ? "UPDATE notifications SET status='SENT',external_message_id=$2,sent_at=now(),error=NULL,not_before=NULL WHERE id=$1 AND channel='DISCORD_READY' AND status='SENDING' RETURNING *"
+          : "UPDATE notifications SET status='ERROR',error=$2,not_before=NULL WHERE id=$1 AND channel='DISCORD_READY' AND status='SENDING' RETURNING *",
+        [req.params.id,success?externalId:error]
+      );
+      if(!rows[0]){
+        await db.query('ROLLBACK');
+        return res.status(409).json({error:'Discord notification is not in SENDING state.'});
       }
+      if(success && rows[0].special_order_item_id){
+        const old=await db.query(
+          'SELECT status FROM special_order_items WHERE id=$1 FOR UPDATE',
+          [rows[0].special_order_item_id]
+        );
+        const oldStatus=old.rows[0]?.status;
+        if(oldStatus && oldStatus!=='COMPLETED'){
+          await db.query(
+            "UPDATE special_order_items SET status='CUSTOMER_NOTIFIED',updated_at=now() WHERE id=$1",
+            [rows[0].special_order_item_id]
+          );
+          await db.query(
+            "INSERT INTO order_status_history (special_order_item_id,old_status,new_status,note,changed_by) VALUES ($1,$2,'CUSTOMER_NOTIFIED','Discord ready notification sent',$3)",
+            [rows[0].special_order_item_id,oldStatus,auditActor(req,'discord-bot')]
+          );
+        }
+      }
+      await db.query('COMMIT');
+      res.json(rows[0]);
+    }catch(error){
+      await db.query('ROLLBACK').catch(()=>{});
+      console.error('[special-orders] Discord delivery completion failed:',error);
+      res.status(500).json({error:'Discord delivery completion failed.'});
+    }finally{
+      db.release();
     }
-    res.json(rows[0]);
   });
   router.get('/notifications/queue', requireDb, async (req, res) => {
     const { rows } = await pool.query(`

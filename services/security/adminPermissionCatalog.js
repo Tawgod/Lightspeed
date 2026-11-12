@@ -28,7 +28,23 @@ export const TOOL_OPERATIONS=Object.freeze([
  'inventory.read','inventory.adjust','sales.read','sales.write',
  'store-credit.read','store-credit.write',
  'special-orders.read','special-orders.manage',
+ // Proposed exact Core Operations scopes: available to the security policy
+ // for staging tests, but NO staff grants, UI options or route allowlist are
+ // activated by their mere presence. Owner review remains required.
+ 'special-orders.purchase-metrics.refresh',
+ 'special-orders.notes.write','special-orders.routing.write',
+ 'special-orders.status.progress','special-orders.status.write',
+ 'special-orders.create','special-orders.delete',
+ 'special-orders.notifications.stage','special-orders.notifications.send',
+ 'special-orders.import','special-orders.items.write',
+ 'special-orders.product-link.write','special-orders.source-link.write',
+ 'preorders.allocate','preorders.publish','preorders.watch.write',
+ 'preorders.gw.write','preorders.allocation.status',
  'ordering.read','ordering.manage',
+ 'ordering.draft.write','ordering.draft.edit','ordering.receive','ordering.vendor.push',
+ 'ordering.catalog.write','ordering.source-link.write',
+ 'ordering.suppliers.sync','ordering.context.refresh',
+ 'customers.profile.write','customers.lightspeed.create','customers.lightspeed.update',
  'consignment.read','consignment.manage',
  'timeclock.self.read','timeclock.self.clock'
 ]);
