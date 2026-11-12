@@ -31,11 +31,17 @@
     return legacy?{...extra,'x-hobby-corner-key':legacy}:{...extra};
   }
 
+  function staffSessionUrl(){
+    if(typeof document==='undefined'||typeof document.baseURI!=='string')
+      return '/api/staff-auth/session';
+    return new URL('api/staff-auth/session',document.baseURI).pathname;
+  }
+
   async function signIn(pin){
     const clean=String(pin||'').trim();
     if(!/^\d{4}$/.test(clean))throw new Error('Enter your 4-digit Timeclock PIN.');
 
-    const response=await fetch(new URL('api/staff-auth/session',document.baseURI).pathname,{
+    const response=await fetch(staffSessionUrl(),{
       method:'POST',
       cache:'no-store',
       headers:{'Content-Type':'application/json'},
@@ -65,7 +71,7 @@
   async function verify(){
     const session=readSession();
     if(!session)return null;
-    const response=await fetch(new URL('api/staff-auth/session',document.baseURI).pathname,{
+    const response=await fetch(staffSessionUrl(),{
       cache:'no-store',
       headers:headers()
     });
