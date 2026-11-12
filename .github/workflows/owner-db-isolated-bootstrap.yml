@@ -8,6 +8,8 @@ on:
       - 'tests/bootstrap-owner-stage-database.test.mjs'
       - 'scripts/prepare-owner-locked-login-roles.mjs'
       - 'tests/prepare-owner-locked-login-roles.test.mjs'
+      - 'scripts/commission-owner-stage-db-credentials.mjs'
+      - 'tests/commission-owner-stage-db-credentials.test.mjs'
 permissions:
   contents: read
 jobs:
@@ -26,3 +28,5 @@ jobs:
           node --test tests/bootstrap-owner-stage-database.test.mjs
           node --check scripts/prepare-owner-locked-login-roles.mjs
           node --test tests/prepare-owner-locked-login-roles.test.mjs
+          node --check scripts/commission-owner-stage-db-credentials.mjs
+          node --test tests/commission-owner-stage-db-credentials.test.mjs
