@@ -1,7 +1,6 @@
 name: HC PR63 isolated Railway HTTPS read-only smoke
 on:
-  push:
-    branches: ['feature/shared-foundation-security-web-20261112']
+  pull_request:
     paths:
       - 'tests/staging-pr63-http-smoke.test.mjs'
       - '.github/workflows/staging-pr63-http-smoke.yml'
