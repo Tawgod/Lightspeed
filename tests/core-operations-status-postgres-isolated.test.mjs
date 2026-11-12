@@ -121,6 +121,12 @@ test('disposable PostgreSQL 18: guarded status change, locked state, audit and n
         audience:'employee',operation:STATUS_SENSITIVE_OPERATION,
         statusPolicy:STATUS_POLICY_VERSION
       },{
+        source:'special-orders.js',method:'GET',path:'/notifications/discord-delivery',
+        audience:'service',operation:'service.notifications.discord-delivery.read'
+      },{
+        source:'special-orders.js',method:'POST',path:'/notifications/:id/claim-discord',
+        audience:'service',operation:'service.notifications.claim-discord'
+      },{
         source:'special-orders.js',method:'POST',path:'/notifications/:id/complete-discord',
         audience:'service',operation:'service.notifications.complete-discord'
       },{
@@ -138,7 +144,9 @@ test('disposable PostgreSQL 18: guarded status change, locked state, audit and n
       },
       checkServiceGrant:async ({identity,operation})=>
         (identity.id==='discord-delivery' &&
-          operation==='service.notifications.complete-discord') ||
+          ['service.notifications.discord-delivery.read',
+           'service.notifications.claim-discord',
+           'service.notifications.complete-discord'].includes(operation)) ||
         (identity.id==='gw-discord-events' &&
           operation==='service.preorders.gw.discord-reaction') ||
         (identity.id==='gw-submit-worker' &&
@@ -173,6 +181,35 @@ test('disposable PostgreSQL 18: guarded status change, locked state, audit and n
       );
       const data=await response.json();
       return {status:response.status,body:data};
+    }
+    async function discordDeliveryQueue(){
+      const response=await fetch(
+        'http://127.0.0.1:'+server.address().port+
+          '/api/special-orders/notifications/discord-delivery',
+        {headers:{
+          'x-fixture-service':'discord-delivery',
+          'x-hobby-corner-key':'fixture-legacy-key-not-auth'
+        }}
+      );
+      const body=await response.json();
+      return {status:response.status,body};
+    }
+    async function claimDiscord(notificationId){
+      const response=await fetch(
+        'http://127.0.0.1:'+server.address().port+
+          '/api/special-orders/notifications/'+notificationId+'/claim-discord',
+        {
+          method:'POST',
+          headers:{
+            'content-type':'application/json',
+            'x-fixture-service':'discord-delivery',
+            'x-hobby-corner-key':'fixture-legacy-key-not-auth'
+          },
+          body:'{}'
+        }
+      );
+      const body=await response.json();
+      return {status:response.status,body};
     }
     async function completeDiscord(notificationId,{success=true,externalId='fixture-message-1'}={}){
       const response=await fetch(
@@ -360,6 +397,48 @@ test('disposable PostgreSQL 18: guarded status change, locked state, audit and n
         await locker.query('ROLLBACK').catch(()=>{});
         await locker.end();
       }
+    });
+
+    await t.test('Discord delivery claim lease prevents fresh theft and reclaims expired SENDING work',async()=>{
+      const id=await newItem('RECEIVED');
+      const notificationId=await addDiscordNotification(id,'QUEUED');
+
+      const initialQueue=await discordDeliveryQueue();
+      assert.equal(initialQueue.status,200,JSON.stringify(initialQueue.body));
+      assert.equal(initialQueue.body.some(x=>String(x.id)===String(notificationId)),true);
+
+      const claimed=await claimDiscord(notificationId);
+      assert.equal(claimed.status,200,JSON.stringify(claimed.body));
+      assert.equal(claimed.body.status,'SENDING');
+      assert.ok(claimed.body.not_before);
+
+      const stolen=await claimDiscord(notificationId);
+      assert.equal(stolen.status,409,JSON.stringify(stolen.body));
+      const hiddenFresh=await discordDeliveryQueue();
+      assert.equal(hiddenFresh.status,200,JSON.stringify(hiddenFresh.body));
+      assert.equal(hiddenFresh.body.some(x=>String(x.id)===String(notificationId)),false);
+
+      await db.query(
+        "UPDATE notifications SET not_before=now()-interval '1 second' WHERE id=$1",
+        [notificationId]
+      );
+      const visibleExpired=await discordDeliveryQueue();
+      assert.equal(visibleExpired.status,200,JSON.stringify(visibleExpired.body));
+      assert.equal(visibleExpired.body.some(x=>String(x.id)===String(notificationId)),true);
+
+      const reclaimed=await claimDiscord(notificationId);
+      assert.equal(reclaimed.status,200,JSON.stringify(reclaimed.body));
+      assert.equal(reclaimed.body.status,'SENDING');
+
+      const completed=await completeDiscord(notificationId,{externalId:'fixture-lease-message'});
+      assert.equal(completed.status,200,JSON.stringify(completed.body));
+      const notification=await db.query(
+        'SELECT status,not_before,external_message_id FROM notifications WHERE id=$1',
+        [notificationId]
+      );
+      assert.equal(notification.rows[0].status,'SENT');
+      assert.equal(notification.rows[0].not_before,null);
+      assert.equal(notification.rows[0].external_message_id,'fixture-lease-message');
     });
 
     await t.test('scoped Discord service completion atomically marks notification sent and records verified service actor',async()=>{
