@@ -1,5 +1,18 @@
 name: Timcorp and unified navigation integration smoke
 on:
+  pull_request:
+    paths:
+      - 'services/publicBasePath.js'
+      - 'server.js'
+      - 'shared-ui/**'
+      - '*-client.js'
+      - '*.html'
+      - 'routes/orderSplit.js'
+      - 'tests/public-base-path.test.mjs'
+      - 'tests/*navigation*.test.mjs'
+      - 'tests/store-operations-dashboard.test.mjs'
+      - 'tests/core-ops-auth-session.test.mjs'
+      - '.github/workflows/timcorp-unified-nav-compose.yml'
   push:
     branches: ['feature/timcorp-unified-nav-integration-20261112']
     paths:
