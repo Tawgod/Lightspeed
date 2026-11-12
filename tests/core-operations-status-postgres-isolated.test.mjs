@@ -222,6 +222,8 @@ test('disposable PostgreSQL 18: guarded status change, locked state, audit and n
       try{
         const failed=await change(id,'CANCELLED','passkey');
         assert.equal(failed.status,400,JSON.stringify(failed.body));
+        assert.match(String(failed.body?.error||''),/fixture induced notification failure/,
+          'The rollback must be caused by the deliberately injected DB trigger');
         const final=await state(id);
         assert.equal(final.status,'ORDERED');
         assert.equal(final.cancelled_at,null);
