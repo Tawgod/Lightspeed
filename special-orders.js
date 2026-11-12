@@ -7,6 +7,7 @@ import multer from 'multer';
 import { importLegacyWorkbook } from './special-orders-import.js';
 import { registerSpecialOrderProductRoutes } from './routes/specialOrderProducts.js';
 import { coreOperationsAuditActor } from './services/security/coreOperationsAuditActor.js';
+import { permitsLockedStatusTransition } from './services/security/coreOperationsStatusTransitions.js';
 
 const { Pool } = pg;
 const __filename = fileURLToPath(import.meta.url);
@@ -2773,6 +2774,19 @@ export function createSpecialOrdersRouter({
         return res.status(404).json({ error: 'Order item not found.' });
       }
       const old = oldResult.rows[0];
+      // This second check runs UNDER the existing SELECT ... FOR UPDATE lock.
+      // Target-only classification would allow reopening a completed or
+      // received item by asking for an innocent-looking local status.
+      // Existing behavior is preserved when the new gate is not enabled.
+      if (coreOperationsAdmission != null &&
+          !permitsLockedStatusTransition(
+            req.hcCoreOperationsAdmission, old.status, newStatus
+          )) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({
+          error: 'A stronger permission is required for this status transition.'
+        });
+      }
       const stamps = {
         ORDERED: 'ordered_at = COALESCE(ordered_at, now())',
         RECEIVED: 'received_at = COALESCE(received_at, now())',
