@@ -43,8 +43,8 @@ const inventory=new Map(CORE_OPERATIONS_ROUTE_INVENTORY.map(x=>[coreOperationsRo
 
 test('every proposed split scope is known, uses an exact existing route, stays PENDING and has no duplicate method/path',()=>{
   assert.ok(Object.isFrozen(CORE_OPERATIONS_PROVISIONAL_SCOPES));
-  assert.equal(CORE_OPERATIONS_PROVISIONAL_SCOPES.length,20);
-  assert.equal(new Set(CORE_OPERATIONS_PROVISIONAL_SCOPES.map(coreOperationsRouteKey)).size,20);
+  assert.equal(CORE_OPERATIONS_PROVISIONAL_SCOPES.length,38);
+  assert.equal(new Set(CORE_OPERATIONS_PROVISIONAL_SCOPES.map(coreOperationsRouteKey)).size,38);
   const reviews=reviewProvisionalScopes();
   for(const route of reviews){
     assert.ok(Object.isFrozen(route));
@@ -187,4 +187,52 @@ test('notification staging is routine and cannot authorize the separate delivery
   });
   await assert.rejects(onlySend.authorize({request:request('POST','/items/44/notifications/ready','passkey')}),reject);
   assert.equal((await onlySend.authorize({request:request('PATCH','/notifications/9/review','passkey')})).operation,send.operation);
+});
+
+
+test('every legacy broad employee-write placeholder now has a separate exact review-pending proposal',()=>{
+  const proposals=new Map(CORE_OPERATIONS_PROVISIONAL_SCOPES.map(x=>[coreOperationsRouteKey(x),x]));
+  const broad=CORE_OPERATIONS_ROUTE_INVENTORY.filter(x=>
+    ['special-orders.manage','ordering.manage'].includes(x.operation));
+  assert.ok(broad.length>20,'expected the original broad write inventory to remain visible for audit');
+  for(const route of broad){
+    const scope=proposals.get(coreOperationsRouteKey(route));
+    assert.ok(scope,'missing exact proposal: '+coreOperationsRouteKey(route));
+    assert.notEqual(scope.operation,route.operation,coreOperationsRouteKey(route));
+    assert.ok(TOOL_OPERATIONS.includes(scope.operation),scope.operation);
+  }
+  assert.equal(CORE_OPERATIONS_PROVISIONAL_SCOPES.some(x=>
+    ['special-orders.manage','ordering.manage'].includes(x.operation)),false,
+    'no reviewed candidate route should grant a broad manage permission');
+});
+
+test('newly classified remaining writes stay strong and semantically separated',()=>{
+  const expected=new Map([
+    ['special-orders.js POST /import/workbook','special-orders.import'],
+    ['special-orders.js PATCH /preorders/discord-watch/:id','preorders.watch.write'],
+    ['special-orders.js POST /preorders/gw/sync-draft','preorders.gw.write'],
+    ['special-orders.js POST /preorders/gw/campaigns','preorders.gw.write'],
+    ['special-orders.js PATCH /preorders/gw/products/:id','preorders.gw.write'],
+    ['special-orders.js PATCH /preorders/allocations/:id','preorders.allocation.status'],
+    ['special-orders.js POST /orders/:id/items','special-orders.items.write'],
+    ['special-orders.js PATCH /items/:id','special-orders.items.write'],
+    ['special-orders.js POST /departments','ordering.catalog.write'],
+    ['special-orders.js POST /supplier-departments','ordering.catalog.write'],
+    ['special-orders.js POST /suppliers','ordering.catalog.write'],
+    ['special-orders.js POST /supplier-products','ordering.catalog.write'],
+    ['special-orders.js PATCH /items/:id/source-link','special-orders.source-link.write'],
+    ['special-orders.js PATCH /supplier-order-items/:id/source-link','ordering.source-link.write'],
+    ['special-orders.js PATCH /supplier-orders/:id','ordering.draft.edit'],
+    ['special-orders.js PATCH /supplier-order-items/:id','ordering.draft.edit'],
+    ['special-orders.js DELETE /supplier-order-items/:id','ordering.draft.edit'],
+    ['routes/specialOrderProducts.js PATCH /items/:id/link-product','special-orders.product-link.write']
+  ]);
+  const proposals=new Map(CORE_OPERATIONS_PROVISIONAL_SCOPES.map(x=>[coreOperationsRouteKey(x),x]));
+  for(const [key,operation] of expected){
+    const scope=proposals.get(key);
+    assert.ok(scope,key);
+    assert.equal(scope.operation,operation,key);
+    assert.equal(scope.assurance,'step-up',key);
+    assert.equal(STAFF_ACCESS_ACTIONS[operation]?.assurance,'step-up',operation);
+  }
 });

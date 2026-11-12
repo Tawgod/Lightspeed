@@ -252,3 +252,12 @@ By contrast, `PATCH /supplier-orders/:id`, `PATCH /supplier-order-items/:id`, an
 `POST /items/:id/notifications/ready` does not itself queue a message for the Discord delivery worker. Under a row lock it validates the item state and customer destination, deduplicates existing work, and inserts a `DISCORD_READY` notification in `PENDING` status. The Discord delivery endpoint only returns `QUEUED` work or expired `SENDING` leases. A separate `PATCH /notifications/:id/review` acknowledgement is what creates/updates `QUEUED` delivery.
 
 The candidate policy therefore separates these effects. Ready-notification creation is review-pending `special-orders.notifications.stage` with routine verified-station assurance plus its own exact grant. Employee review/queueing remains `special-orders.notifications.send` with strong step-up and its independent exact grant. Either grant alone cannot authorize the other route. Source-drift tests pin the PENDING-vs-QUEUED boundary. No message was sent and no production notification behavior changed.
+
+
+## Broad employee-write placeholder closure — 2026-11-12
+
+All routes in the original Core Operations inventory that still carry the legacy placeholder `special-orders.manage` or `ordering.manage` now have a separate exact, review-pending proposal. No entry in `CORE_OPERATIONS_PROVISIONAL_SCOPES` uses either broad manage permission. The newly classified remainder stays conservatively **step-up**; this pass does not make any additional workflow routine.
+
+The new exact operation families are: `special-orders.import`, `special-orders.items.write`, `special-orders.product-link.write`, `special-orders.source-link.write`, `preorders.watch.write`, `preorders.gw.write`, `preorders.allocation.status`, `ordering.catalog.write`, `ordering.source-link.write`, and `ordering.draft.edit`. Shared operation names do not imply route access: the server must still explicitly approve each source + method + path, and the employee must independently hold that exact operation grant.
+
+The unlocked supplier-order draft edit/delete routes and unrestricted source-link routes remain strong by design. They may be reconsidered for routine station access only after their state checks become race-safe and source/state invariants have dedicated tests. The inventory keeps its original broad labels as historical audit input; the separate proposal layer is the candidate authorization mapping. Nothing is mounted or granted by this classification.
