@@ -94,3 +94,70 @@ test('live Lightspeed writes and read-via-POST actions cannot be incorrectly inf
     assert.equal(routeMap.get(keyOf(method,path,source)).kind,'read-via-post');
   }
 });
+
+
+test('GET routes with hidden supplier-cache writes are not classified as generic reads', () => {
+  const cases = [
+    ['GET','/suppliers','ordering.suppliers.sync'],
+    ['GET','/products/:id/recommended-suppliers','ordering.suppliers.sync'],
+    ['GET','/ordering/lightspeed-context','ordering.context.refresh']
+  ];
+  for (const [method,path,operation] of cases) {
+    const route=routeMap.get(keyOf(method,path));
+    assert.ok(route,path);
+    assert.equal(route.kind,'read-with-local-sync',path);
+    assert.equal(route.operation,operation,path);
+    assert.notEqual(route.operation,'ordering.read',path);
+    assert.notEqual(route.operation,'products.read',path);
+  }
+});
+
+
+test('customer profile route inventory preserves the conditional live Lightspeed PUT boundary', () => {
+  const route=routeMap.get(keyOf('PATCH','/customers/:lightspeedId/profile'));
+  assert.ok(route);
+  assert.equal(route.kind,'body-sensitive-local-or-vendor-write');
+  assert.equal(route.operation,'customers.profile.write');
+  const source=readFileSync(new URL('../special-orders.js', import.meta.url),'utf8');
+  assert.match(source,/router\.patch\('\/customers\/:lightspeedId\/profile'/);
+  assert.match(source,/if \(body\.sync_lightspeed === true\)/);
+  assert.match(source,/method:'PUT'/);
+});
+
+
+test('supplier add-items inventory reflects its locked DRAFT-only write boundary',()=>{
+  const route=routeMap.get(keyOf('POST','/supplier-orders/:id/items'));
+  assert.ok(route);
+  assert.equal(route.kind,'locked-draft-write');
+  assert.equal(route.operation,'ordering.draft.write');
+  const source=readFileSync(new URL('../special-orders.js', import.meta.url),'utf8');
+  const start=source.indexOf("router.post('/supplier-orders/:id/items'");
+  const end=source.indexOf("router.get('/supplier-orders/:id'",start);
+  assert.ok(start>=0&&end>start);
+  const handler=source.slice(start,end);
+  assert.match(handler,/FOR UPDATE/);
+  assert.match(handler,/DRAFT/);
+});
+
+
+test('ready notification route stages PENDING work and delivery worker excludes PENDING',()=>{
+  const route=routeMap.get(keyOf('POST','/items/:id/notifications/ready'));
+  assert.ok(route);
+  assert.equal(route.kind,'notification-stage-pending');
+  assert.equal(route.operation,'special-orders.notifications.stage');
+  const source=readFileSync(new URL('../special-orders.js', import.meta.url),'utf8');
+  const stageStart=source.indexOf("router.post('/items/:id/notifications/ready'");
+  const stageEnd=source.indexOf("router.patch('/items/:id'",stageStart);
+  assert.ok(stageStart>=0&&stageEnd>stageStart);
+  const stage=source.slice(stageStart,stageEnd);
+  assert.match(stage,/channel,recipient,status,message/);
+  assert.match(stage,/DISCORD_READY[^\n]*PENDING/);
+
+  const workerStart=source.indexOf("router.get('/notifications/discord-delivery'");
+  const workerEnd=source.indexOf("router.post('/notifications/:id/claim-discord'",workerStart);
+  assert.ok(workerStart>=0&&workerEnd>workerStart);
+  const worker=source.slice(workerStart,workerEnd);
+  assert.match(worker,/n\.status='QUEUED'/);
+  assert.match(worker,/n\.status='SENDING'/);
+  assert.doesNotMatch(worker,/n\.status='PENDING'/);
+});

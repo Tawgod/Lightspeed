@@ -224,3 +224,47 @@ Do not mark the seven-case acceptance complete until all seven nested checks and
 6. **Deployment:** present a separately reviewed staged service rollout with recovery and operator acceptance; no production DB/security privileges/Owner first activation until explicit approval.
 
 This is a **reusable, default-disabled integration seam**, not a completed security cutover. The old production routing still operates under its prior authentication scheme.
+
+
+## Hidden-write GET classification — 2026-11-12
+
+Three existing GET routes are not side-effect-free: `GET /suppliers`, `GET /products/:id/recommended-suppliers`, and `GET /ordering/lightspeed-context` all call `syncLightspeedSuppliers()`, which reads Lightspeed suppliers and upserts the local `suppliers` cache. The context route also reads live purchase-order, fulfillment, and sale context.
+
+The candidate policy therefore must not authorize these routes with generic `ordering.read` or `products.read`. They are review-pending exact operations: `ordering.suppliers.sync` for supplier refresh/recommendations and `ordering.context.refresh` for the broader context refresh. Both remain routine verified-station candidates because the vendor calls are reads and the local writes are cache refreshes, but each still requires an independent exact backend grant. No route is approved merely because these operation names exist, and the production server still does not mount this candidate guard.
+
+
+## Customer profile local/vendor body split — 2026-11-12
+
+`PATCH /customers/:lightspeedId/profile` has two materially different effects behind one route. Ordinary profile edits update the local customer record, while a strict boolean `sync_lightspeed: true` first performs a live Lightspeed customer `PUT` and then persists the local profile. A local-edit permission must therefore never implicitly authorize the vendor mutation.
+
+The review-only admission candidate requires `bodyPolicy: 'customer-profile-sync-v1'` on this exact employee route. Local-only requests use `customers.profile.write` (routine verified-station candidate plus exact grant). Boolean `true` upgrades the required operation to `customers.lightspeed.update`, which remains a strong passkey/security-key/approved-IdP-MFA operation with its own exact backend grant. Ambiguous string, numeric, array, or object values for `sync_lightspeed` fail closed. Static approval of the customer profile route without this policy is rejected. This remains unmounted development policy; no customer or Lightspeed record was changed.
+
+
+## Supplier-order draft mutation review — 2026-11-12
+
+The supplier-order editing routes are not equivalent merely because they currently share `ordering.manage`. `POST /supplier-orders/:id/items` opens a database transaction, locks the parent supplier order with `SELECT ... FOR UPDATE`, and rechecks that its status is `DRAFT` before inserting lines. It is therefore a review-pending candidate for the existing exact routine `ordering.draft.write` operation.
+
+By contrast, `PATCH /supplier-orders/:id`, `PATCH /supplier-order-items/:id`, and `DELETE /supplier-order-items/:id` read the DRAFT state before a later mutation without locking the parent row in the same transaction. They stay outside the routine draft proposal until their state check is made race-safe or they remain under stronger authorization. `PATCH /supplier-order-items/:id/source-link` has no DRAFT-state restriction at all and also remains conservative. This policy review changes no handler behavior and grants no route.
+
+
+## Ready-notification staging vs delivery approval — 2026-11-12
+
+`POST /items/:id/notifications/ready` does not itself queue a message for the Discord delivery worker. Under a row lock it validates the item state and customer destination, deduplicates existing work, and inserts a `DISCORD_READY` notification in `PENDING` status. The Discord delivery endpoint only returns `QUEUED` work or expired `SENDING` leases. A separate `PATCH /notifications/:id/review` acknowledgement is what creates/updates `QUEUED` delivery.
+
+The candidate policy therefore separates these effects. Ready-notification creation is review-pending `special-orders.notifications.stage` with routine verified-station assurance plus its own exact grant. Employee review/queueing remains `special-orders.notifications.send` with strong step-up and its independent exact grant. Either grant alone cannot authorize the other route. Source-drift tests pin the PENDING-vs-QUEUED boundary. No message was sent and no production notification behavior changed.
+
+
+## Broad employee-write placeholder closure — 2026-11-12
+
+All routes in the original Core Operations inventory that still carry the legacy placeholder `special-orders.manage` or `ordering.manage` now have a separate exact, review-pending proposal. No entry in `CORE_OPERATIONS_PROVISIONAL_SCOPES` uses either broad manage permission. The newly classified remainder stays conservatively **step-up**; this pass does not make any additional workflow routine.
+
+The new exact operation families are: `special-orders.import`, `special-orders.items.write`, `special-orders.product-link.write`, `special-orders.source-link.write`, `preorders.watch.write`, `preorders.gw.write`, `preorders.allocation.status`, `ordering.catalog.write`, `ordering.source-link.write`, and `ordering.draft.edit`. Shared operation names do not imply route access: the server must still explicitly approve each source + method + path, and the employee must independently hold that exact operation grant.
+
+The unlocked supplier-order draft edit/delete routes and unrestricted source-link routes remain strong by design. They may be reconsidered for routine station access only after their state checks become race-safe and source/state invariants have dedicated tests. The inventory keeps its original broad labels as historical audit input; the separate proposal layer is the candidate authorization mapping. Nothing is mounted or granted by this classification.
+
+
+## GW form server-side redirect boundary — 2026-11-12
+
+The GW form scraper previously validated only the initial `info.games-workshop.com` or `docs.google.com` URL and then delegated redirects to `fetch(..., {redirect:'follow'})`. That leaves the server unable to enforce the host allowlist on every redirect hop. The development branch now uses a dedicated fetch policy that performs redirects manually, requires HTTPS and the default port, rejects URL credentials, and revalidates every destination against the exact approved hosts before issuing the next request.
+
+The same helper enforces a maximum redirect count and reads the response through a byte-limited stream rather than reading an arbitrarily large body before checking size. Focused tests cover the intended Games Workshop-to-Google redirect, malicious redirect denial before a second request, relative approved redirects, redirect-loop limits, URL edge cases and response-size rejection. This is a source hardening change only on the review branch; it has not been deployed.

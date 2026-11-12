@@ -24,6 +24,16 @@ const ROUTINE_TOOL_OPERATIONS = new Set([
   // Only transitions between verified local OOS/ready/backorder states are
   // routine. Origin must be verified under the database row lock.
   'special-orders.status.progress', 'ordering.draft.write',
+  // Staging a notification only creates a PENDING review item. The separate
+  // notification-send operation remains strong and is what can queue delivery.
+  'special-orders.notifications.stage',
+  // These GET-backed operations call Lightspeed read APIs and also upsert the
+  // local supplier cache. Keep them routine for store workflow, but distinct
+  // from generic ordering/products reads and independently grantable.
+  'ordering.suppliers.sync', 'ordering.context.refresh',
+  // Local customer contact/profile editing is a routine store task. Live
+  // Lightspeed customer mutation remains a separate strong operation.
+  'customers.profile.write',
   'timeclock.self.read', 'timeclock.self.clock'
 ]);
 const legacyActions = {
