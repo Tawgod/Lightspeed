@@ -184,6 +184,61 @@ test('disposable PostgreSQL 18: guarded status change, locked state, audit and n
       assert.equal((await state(id)).status,'CANCELLED');
     });
 
+    await t.test('completion suppresses pending and queued notifications but preserves already sent notices',async()=>{
+      const id=await newItem('ORDERED');
+      await addNotification(id,'PENDING');
+      await addNotification(id,'QUEUED');
+      await addNotification(id,'SENT');
+      const unauthorized=await change(id,'COMPLETED','station');
+      assert.equal(unauthorized.status,403);
+      assert.deepEqual((await notificationState(id)).sort(),['PENDING','QUEUED','SENT'].sort());
+      const approved=await change(id,'COMPLETED','passkey');
+      assert.equal(approved.status,200,JSON.stringify(approved.body));
+      const final=await state(id);
+      assert.equal(final.status,'COMPLETED');
+      assert.ok(final.completed_at);
+      assert.deepEqual((await notificationState(id)).sort(),['SENT','SUPPRESSED','SUPPRESSED'].sort());
+      assert.deepEqual(await history(id),[{
+        old_status:'ORDERED',new_status:'COMPLETED',changed_by:'employee:42'
+      }]);
+      const denied=await change(id,'READY_TO_ORDER','station');
+      assert.equal(denied.status,403);
+      assert.equal((await state(id)).status,'COMPLETED');
+    });
+
+    await t.test('forced notification failure rolls back status, history and timestamps atomically',async()=>{
+      const id=await newItem('ORDERED');
+      await addNotification(id,'PENDING');
+      const functionName='hc_fixture_reject_suppression';
+      await db.query(
+        "CREATE FUNCTION "+functionName+"() RETURNS trigger LANGUAGE plpgsql "+
+        "AS $ BEGIN RAISE EXCEPTION 'fixture induced notification failure'; END; $"
+      );
+      await db.query(
+        "CREATE TRIGGER hc_fixture_block_suppression BEFORE UPDATE OF status ON notifications "+
+        "FOR EACH ROW WHEN (NEW.status='SUPPRESSED') EXECUTE FUNCTION "+
+        functionName+"()"
+      );
+      try{
+        const failed=await change(id,'CANCELLED','passkey');
+        assert.equal(failed.status,400,JSON.stringify(failed.body));
+        const final=await state(id);
+        assert.equal(final.status,'ORDERED');
+        assert.equal(final.cancelled_at,null);
+        assert.deepEqual(await history(id),[]);
+        assert.deepEqual(await notificationState(id),['PENDING']);
+      }finally{
+        await db.query('DROP TRIGGER IF EXISTS hc_fixture_block_suppression ON notifications');
+        await db.query('DROP FUNCTION IF EXISTS '+functionName+'()');
+      }
+      // Verify a failed transaction does not poison later updates.
+      const retried=await change(id,'CANCELLED','passkey');
+      assert.equal(retried.status,200,JSON.stringify(retried.body));
+      assert.equal((await state(id)).status,'CANCELLED');
+      assert.deepEqual(await notificationState(id),['SUPPRESSED']);
+      assert.equal((await history(id)).length,1);
+    });
+
     await t.test('row lock prevents stale routine privilege from reopening an item concurrently',async()=>{
       const id=await newItem('OOS');
       const locker=new pg.Client({connectionString:dbUrl,connectionTimeoutMillis:5000});
