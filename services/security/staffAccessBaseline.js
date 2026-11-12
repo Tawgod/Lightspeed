@@ -21,7 +21,9 @@ const ROUTINE_TOOL_OPERATIONS = new Set([
   // are candidates for routine verified-station access. Every operation
   // still needs its own independent employee grant; none is pre-granted.
   'special-orders.notes.write', 'special-orders.routing.write',
-  'ordering.draft.write',
+  // Only transitions between verified local OOS/ready/backorder states are
+  // routine. Origin must be verified under the database row lock.
+  'special-orders.status.progress', 'ordering.draft.write',
   'timeclock.self.read', 'timeclock.self.clock'
 ]);
 const legacyActions = {
