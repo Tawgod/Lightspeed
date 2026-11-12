@@ -39,7 +39,9 @@ test('legacy root URL still works and HobbyCorner root redirects within its pref
  assert.equal(new URL(prefixed.response.headers.get('location'),origin).pathname,
   prefix+'/store-operations');
  const old=await expectStatus('/special-orders',200);
- assert.match(old.body,/<base href="\/">/);
+ // When a base path is configured, even legacy direct URLs serve the
+ // same prefix-aware asset base; the original URLs remain reachable.
+ assert.match(old.body,/<base href="\/HobbyCorner\/">/);
 });
 test('prefixed dashboard, special orders, preorders and GW pages load anchored to same origin',async()=>{
  for(const route of ['store-operations','special-orders','preorders','gw-preorders','ordering']){
