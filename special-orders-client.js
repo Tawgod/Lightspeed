@@ -1,4 +1,4 @@
-const api='/api/special-orders';
+const api=new URL('api/special-orders',document.baseURI).pathname;
 let selectedCustomer=null, selectedOrderProduct=null, stagedItems=[];
 let allSuppliers=[], editingStagedIndex=null;
 let autoRefreshTimer=null;

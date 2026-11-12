@@ -35,7 +35,7 @@
     const clean=String(pin||'').trim();
     if(!/^\d{4}$/.test(clean))throw new Error('Enter your 4-digit Timeclock PIN.');
 
-    const response=await fetch('/api/staff-auth/session',{
+    const response=await fetch(new URL('api/staff-auth/session',document.baseURI).pathname,{
       method:'POST',
       cache:'no-store',
       headers:{'Content-Type':'application/json'},
@@ -65,7 +65,7 @@
   async function verify(){
     const session=readSession();
     if(!session)return null;
-    const response=await fetch('/api/staff-auth/session',{
+    const response=await fetch(new URL('api/staff-auth/session',document.baseURI).pathname,{
       cache:'no-store',
       headers:headers()
     });

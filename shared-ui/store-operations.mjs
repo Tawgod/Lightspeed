@@ -1,3 +1,4 @@
+import {publicOperationsPath} from './operations-nav.mjs';
 /* Store Operations Home: existing read-only Special Orders API only.
  * Do not infer system health, activity, or permissions from navigation. */
 export const kpiMap=Object.freeze({
@@ -70,8 +71,8 @@ export async function loadDashboard(){
  showError('');
  setText('dashboardUpdated','Refreshing…');
  const queries=await Promise.allSettled([
-  getProtectedJson('/api/special-orders/stats',session),
-  getProtectedJson('/api/special-orders/priority-review',session)
+  getProtectedJson(publicOperationsPath('/api/special-orders/stats'),session),
+  getProtectedJson(publicOperationsPath('/api/special-orders/priority-review'),session)
  ]);
  if(current!==requestGeneration||!signedIn)return;
  if(queries.some(q=>q.status==='rejected'&&q.reason?.code==='AUTH')){

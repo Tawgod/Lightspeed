@@ -22,17 +22,35 @@ import { initializeScannerTestCreation } from './services/scannerTestCreationRou
 import { createScannerIsolatedTestWriter } from './services/scannerIsolatedTestWriter.js';
 import { createStaffAuthGateway } from './services/staffAuthGateway.js';
 import { createAdminNavigationAccessRouter, createAdminNavigationGrantReader, verifyAdminNavigationReadOnlyDatabase } from './services/security/adminNavigationAccess.js';
+import {createPublicBasePathMiddleware,normalizePublicBasePath,normalizePublicLandingPath,publicUrl} from './services/publicBasePath.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
+const PUBLIC_BASE_PATH=normalizePublicBasePath(process.env.HC_PUBLIC_BASE_PATH||'');
+const PUBLIC_LANDING_PATH=normalizePublicLandingPath(process.env.HC_PUBLIC_LANDING_PATH||'');
+// Preserve old root URLs while also handling the gateway-forwarded full prefix.
+app.use(createPublicBasePathMiddleware(PUBLIC_BASE_PATH));
 
 app.use(cors());
 app.use(express.json());
 
+async function sendPublicHtml(req,res,fileName){
+ try{
+  const html=await fs.readFile(path.join(__dirname,fileName),'utf8');
+  const baseHref=publicUrl(req.hcPublicBasePath||'','/');
+  const rendered=html.replace(/<head([^>]*)>/i,'<head$1>\n  <base href="'+baseHref+'">');
+  res.set('Cache-Control','no-store').type('html').send(rendered);
+ }catch(error){
+  console.error('[shared-web] public HTML render failed:',fileName,error);
+  res.status(500).send('Unable to load this Hobby Corner page.');
+ }
+}
+
+
 // Serve the Label Maker UI from the root directory
 app.get('/index.html', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+  sendPublicHtml(req, res, 'index.html');
 });
 
 const LIGHTSPEED_DOMAIN = process.env.LIGHTSPEED_DOMAIN;
@@ -172,7 +190,7 @@ app.use('/api/work-orders', createWorkOrderCombineRouter({
 
 app.get('/store-operations', (req, res) => {
   res.set('Cache-Control','no-store');
-  res.sendFile(path.join(__dirname, 'store-operations.html'));
+  sendPublicHtml(req, res, 'store-operations.html');
 });
 app.get('/shared-ui/store-operations.css', (req, res) => {
   res.set('Cache-Control','no-store');
@@ -184,7 +202,7 @@ app.get('/shared-ui/store-operations.mjs', (req, res) => {
 });
 
 app.get('/special-orders', (req, res) => {
-  res.sendFile(path.join(__dirname, 'special-orders.html'));
+  sendPublicHtml(req, res, 'special-orders.html');
 });
 
 app.get('/special-orders.css', (req, res) => {
@@ -224,7 +242,7 @@ app.get('/special-orders-client.js', (req, res) => {
 });
 
 app.get('/preorders', (req, res) => {
-  res.sendFile(path.join(__dirname, 'preorders.html'));
+  sendPublicHtml(req, res, 'preorders.html');
 });
 
 app.get('/preorders-client.js', (req, res) => {
@@ -233,7 +251,7 @@ app.get('/preorders-client.js', (req, res) => {
 });
 
 app.get('/ordering', (req, res) => {
-  res.sendFile(path.join(__dirname, 'ordering.html'));
+  sendPublicHtml(req, res, 'ordering.html');
 });
 
 app.get('/ordering-client.js', (req, res) => {
@@ -242,7 +260,7 @@ app.get('/ordering-client.js', (req, res) => {
 });
 
 app.get('/gw-preorders', (req, res) => {
-  res.sendFile(path.join(__dirname, 'gw-preorders.html'));
+  sendPublicHtml(req, res, 'gw-preorders.html');
 });
 
 app.get('/gw-preorders-client.js', (req, res) => {
@@ -278,8 +296,8 @@ app.get('/extension', (req, res) => {
   <h1>Hobby Corner Lightspeed Toolkit</h1>
   <p>Download the current Chrome extension package, then install it as an unpacked extension.</p>
   <p style="display:flex;gap:10px;flex-wrap:wrap">
-    <a href="/extension/download" style="display:inline-block;padding:12px 18px;background:#222;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;">Download Extension ZIP</a>
-    <a href="https://special-orders-test-production.up.railway.app/special-orders" target="_blank" rel="noopener"
+    <a href="${publicUrl(PUBLIC_BASE_PATH, '/extension/download')}" style="display:inline-block;padding:12px 18px;background:#222;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;">Download Extension ZIP</a>
+    <a href="${publicUrl(PUBLIC_BASE_PATH, '/special-orders')}" target="_blank" rel="noopener"
        style="display:inline-block;padding:12px 18px;background:#0f766e;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;">Open Special Orders</a>
   </p>
   <ol>
@@ -312,6 +330,8 @@ app.get('/extension/download', async (req, res) => {
 
 // Health-check route
 app.get('/', (req, res) => {
+  if(req.hcPublicPathMatched && PUBLIC_BASE_PATH && PUBLIC_LANDING_PATH)
+    return res.redirect(302,publicUrl(PUBLIC_BASE_PATH,PUBLIC_LANDING_PATH));
   res.send('Lightspeed Avery Label API is running.');
 });
 
