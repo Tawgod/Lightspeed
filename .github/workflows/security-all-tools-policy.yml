@@ -21,6 +21,8 @@ on:
       - 'tests/core-operations-route-seam.test.mjs'
       - 'services/security/coreOperationsBrowserCallerInventory.js'
       - 'tests/core-operations-browser-callers.test.mjs'
+      - 'services/gwFormFetchPolicy.js'
+      - 'tests/gw-form-fetch-policy.test.mjs'
       - 'special-orders-client.js'
       - 'preorders-client.js'
       - 'gw-preorders-client.js'
@@ -54,6 +56,8 @@ on:
       - 'tests/core-operations-route-seam.test.mjs'
       - 'services/security/coreOperationsBrowserCallerInventory.js'
       - 'tests/core-operations-browser-callers.test.mjs'
+      - 'services/gwFormFetchPolicy.js'
+      - 'tests/gw-form-fetch-policy.test.mjs'
       - 'special-orders-client.js'
       - 'preorders-client.js'
       - 'gw-preorders-client.js'
@@ -104,6 +108,11 @@ jobs:
           node --check services/security/coreOperationsRouteInventory.js
           node --check tests/core-operations-route-inventory.test.mjs
           node --test --test-concurrency=1 tests/core-operations-route-inventory.test.mjs
+      - name: Test GW form fetch redirect and response boundaries
+        run: |
+          node --check services/gwFormFetchPolicy.js
+          node --check tests/gw-form-fetch-policy.test.mjs
+          node --test --test-concurrency=1 tests/gw-form-fetch-policy.test.mjs
       - name: Verify web client API references and common staff-login dependencies
         run: |
           node --check services/security/coreOperationsBrowserCallerInventory.js

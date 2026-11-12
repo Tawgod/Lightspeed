@@ -8,6 +8,7 @@ import { importLegacyWorkbook } from './special-orders-import.js';
 import { registerSpecialOrderProductRoutes } from './routes/specialOrderProducts.js';
 import { coreOperationsAuditActor } from './services/security/coreOperationsAuditActor.js';
 import { permitsLockedStatusTransition } from './services/security/coreOperationsStatusTransitions.js';
+import { fetchAllowedGwFormHtml } from './services/gwFormFetchPolicy.js';
 
 const { Pool } = pg;
 const __filename = fileURLToPath(import.meta.url);
@@ -1066,25 +1067,9 @@ export function createSpecialOrdersRouter({
   }
 
   async function fetchGwFormPreview(sourceUrl){
-    let input;
-    try{input=new URL(String(sourceUrl||'').trim())}
-    catch{throw Object.assign(new Error('Enter a valid GW Want Number Form URL.'),{status:400})}
-    const allowedHost=/^(?:info\.games-workshop\.com|docs\.google\.com)$/i.test(input.hostname);
-    if(input.protocol!=='https:'||!allowedHost){
-      throw Object.assign(new Error('GW scrape accepts only Games Workshop tracking links or Google Forms URLs.'),{status:400});
-    }
-    const response=await fetch(input.toString(),{
-      redirect:'follow',
-      headers:{
-        'User-Agent':'Mozilla/5.0 HobbyCorner-GW-Preorder-Scraper/1.0',
-        'Accept':'text/html,application/xhtml+xml'
-      }
-    });
-    if(!response.ok)throw Object.assign(new Error('GW form fetch failed: '+response.status+' '+response.statusText),{status:502});
-    const html=await response.text();
-    if(html.length>8*1024*1024)throw Object.assign(new Error('GW form response was unexpectedly large.'),{status:502});
-    const parsed=parseGwGoogleForm(html,response.url||input.toString());
-    return {...parsed,source_url:input.toString(),http_status:response.status,html_bytes:Buffer.byteLength(html)};
+    const fetched=await fetchAllowedGwFormHtml(sourceUrl);
+    const parsed=parseGwGoogleForm(fetched.html,fetched.finalUrl);
+    return {...parsed,source_url:fetched.sourceUrl,http_status:fetched.httpStatus,html_bytes:fetched.htmlBytes};
   }
 
 

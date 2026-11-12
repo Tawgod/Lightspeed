@@ -261,3 +261,10 @@ All routes in the original Core Operations inventory that still carry the legacy
 The new exact operation families are: `special-orders.import`, `special-orders.items.write`, `special-orders.product-link.write`, `special-orders.source-link.write`, `preorders.watch.write`, `preorders.gw.write`, `preorders.allocation.status`, `ordering.catalog.write`, `ordering.source-link.write`, and `ordering.draft.edit`. Shared operation names do not imply route access: the server must still explicitly approve each source + method + path, and the employee must independently hold that exact operation grant.
 
 The unlocked supplier-order draft edit/delete routes and unrestricted source-link routes remain strong by design. They may be reconsidered for routine station access only after their state checks become race-safe and source/state invariants have dedicated tests. The inventory keeps its original broad labels as historical audit input; the separate proposal layer is the candidate authorization mapping. Nothing is mounted or granted by this classification.
+
+
+## GW form server-side redirect boundary — 2026-11-12
+
+The GW form scraper previously validated only the initial `info.games-workshop.com` or `docs.google.com` URL and then delegated redirects to `fetch(..., {redirect:'follow'})`. That leaves the server unable to enforce the host allowlist on every redirect hop. The development branch now uses a dedicated fetch policy that performs redirects manually, requires HTTPS and the default port, rejects URL credentials, and revalidates every destination against the exact approved hosts before issuing the next request.
+
+The same helper enforces a maximum redirect count and reads the response through a byte-limited stream rather than reading an arbitrarily large body before checking size. Focused tests cover the intended Games Workshop-to-Google redirect, malicious redirect denial before a second request, relative approved redirects, redirect-loop limits, URL edge cases and response-size rejection. This is a source hardening change only on the review branch; it has not been deployed.
