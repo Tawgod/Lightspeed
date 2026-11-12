@@ -10,6 +10,8 @@ on:
       - 'tests/prepare-owner-locked-login-roles.test.mjs'
       - 'scripts/commission-owner-stage-db-credentials.mjs'
       - 'tests/commission-owner-stage-db-credentials.test.mjs'
+      - 'staging/owner-locked-preview.js'
+      - 'tests/owner-locked-preview.test.mjs'
 permissions:
   contents: read
 jobs:
@@ -30,3 +32,5 @@ jobs:
           node --test tests/prepare-owner-locked-login-roles.test.mjs
           node --check scripts/commission-owner-stage-db-credentials.mjs
           node --test tests/commission-owner-stage-db-credentials.test.mjs
+          node --check staging/owner-locked-preview.js
+          node --test tests/owner-locked-preview.test.mjs
