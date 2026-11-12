@@ -21,7 +21,16 @@ test('the inventory names EVERY currently mounted Special Orders and product-sub
   assert.equal(routeMap.size, expected.length, 'duplicate route in inventory');
   assert.deepEqual(actual, expected, 'source route added/removed/renamed: review auth classification');
   // This is a source-derived checkpoint, not a permanent hard-coded count.
-  assert.equal(expected.length, 87);
+  assert.equal(expected.length, 88);
+});
+
+test('new Priority Review endpoint is a pending, staff-granted read rather than an implicit allowlist',()=>{
+ const route=routeMap.get(keyOf('GET','/priority-review'));
+ assert.ok(route);
+ assert.equal(route.kind,'read');
+ assert.equal(route.caller,'staff-candidate');
+ assert.equal(route.operation,'special-orders.read');
+ assert.equal(route.review,'pending');
 });
 
 test('all proposed operation names exist, but NONE of the inventory can be used as an automatic permission grant', () => {

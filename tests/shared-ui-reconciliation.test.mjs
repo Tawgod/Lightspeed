@@ -11,8 +11,9 @@ test('shared web CSS retains scoped design foundation',()=>{
 test('core operations still link shared CSS without replacing business handlers',()=>{
  for(const p of ['special-orders.html','ordering.html','preorders.html','gw-preorders.html']){
   const html=read(p);
-  assert.ok(html.includes('/shared-ui/hc.css'),p);
-  assert.ok(html.includes('/shared-ui/core-ops-compat.css'),p);
+  assert.match(html, /href="shared-ui\/hc\.css"/,p);
+  assert.match(html, /href="shared-ui\/core-ops-compat\.css"/,p);
+  assert.doesNotMatch(html, /(?:href|src)=["']\/(?!\/)/,p);
  }
 });
 test('extension has deliberately scoped per-surface styles',()=>{

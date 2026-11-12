@@ -21,17 +21,37 @@ import { initializeScannerProductReviewQueue } from './services/scannerProductRe
 import { initializeScannerTestCreation } from './services/scannerTestCreationRouter.js';
 import { createScannerIsolatedTestWriter } from './services/scannerIsolatedTestWriter.js';
 import { createStaffAuthGateway } from './services/staffAuthGateway.js';
+import { createAdminNavigationAccessRouter, createAdminNavigationGrantReader, verifyAdminNavigationReadOnlyDatabase } from './services/security/adminNavigationAccess.js';
+import {createPublicBasePathMiddleware,normalizePublicBasePath,normalizePublicLandingPath,publicUrl} from './services/publicBasePath.js';
+import {createIsolatedStagingCoreAdmission} from './services/security/coreOperationsStagingActivation.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
+const PUBLIC_BASE_PATH=normalizePublicBasePath(process.env.HC_PUBLIC_BASE_PATH||'');
+const PUBLIC_LANDING_PATH=normalizePublicLandingPath(process.env.HC_PUBLIC_LANDING_PATH||'');
+// Preserve old root URLs while also handling the gateway-forwarded full prefix.
+app.use(createPublicBasePathMiddleware(PUBLIC_BASE_PATH));
 
 app.use(cors());
 app.use(express.json());
 
+async function sendPublicHtml(req,res,fileName){
+ try{
+  const html=await fs.readFile(path.join(__dirname,fileName),'utf8');
+  const baseHref=publicUrl(req.hcPublicBasePath||'','/');
+  const rendered=html.replace(/<head([^>]*)>/i,'<head$1>\n  <base href="'+baseHref+'">');
+  res.set('Cache-Control','no-store').type('html').send(rendered);
+ }catch(error){
+  console.error('[shared-web] public HTML render failed:',fileName,error);
+  res.status(500).send('Unable to load this Hobby Corner page.');
+ }
+}
+
+
 // Serve the Label Maker UI from the root directory
 app.get('/index.html', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+  sendPublicHtml(req, res, 'index.html');
 });
 
 const LIGHTSPEED_DOMAIN = process.env.LIGHTSPEED_DOMAIN;
@@ -169,8 +189,21 @@ app.use('/api/work-orders', createWorkOrderCombineRouter({
   token: LIGHTSPEED_TOKEN
 }));
 
+app.get('/store-operations', (req, res) => {
+  res.set('Cache-Control','no-store');
+  sendPublicHtml(req, res, 'store-operations.html');
+});
+app.get('/shared-ui/store-operations.css', (req, res) => {
+  res.set('Cache-Control','no-store');
+  res.type('text/css').sendFile(path.join(__dirname, 'shared-ui', 'store-operations.css'));
+});
+app.get('/shared-ui/store-operations.mjs', (req, res) => {
+  res.set('Cache-Control','no-store');
+  res.type('application/javascript').sendFile(path.join(__dirname, 'shared-ui', 'store-operations.mjs'));
+});
+
 app.get('/special-orders', (req, res) => {
-  res.sendFile(path.join(__dirname, 'special-orders.html'));
+  sendPublicHtml(req, res, 'special-orders.html');
 });
 
 app.get('/special-orders.css', (req, res) => {
@@ -193,6 +226,11 @@ app.get('/shared-ui/core-ops-compat.css', (req, res) => {
   res.type('text/css').sendFile(path.join(__dirname, 'shared-ui', 'core-ops-compat.css'));
 });
 
+app.get('/shared-ui/operations-nav.mjs', (req, res) => {
+  res.set('Cache-Control','no-store');
+  res.type('application/javascript').sendFile(path.join(__dirname, 'shared-ui', 'operations-nav.mjs'));
+});
+
 app.get('/shared-ui/staff-auth.js', (req, res) => {
   res.set('Cache-Control','no-store');
   res.type('application/javascript').sendFile(path.join(__dirname, 'shared-ui', 'staff-auth.js'));
@@ -205,7 +243,7 @@ app.get('/special-orders-client.js', (req, res) => {
 });
 
 app.get('/preorders', (req, res) => {
-  res.sendFile(path.join(__dirname, 'preorders.html'));
+  sendPublicHtml(req, res, 'preorders.html');
 });
 
 app.get('/preorders-client.js', (req, res) => {
@@ -214,7 +252,7 @@ app.get('/preorders-client.js', (req, res) => {
 });
 
 app.get('/ordering', (req, res) => {
-  res.sendFile(path.join(__dirname, 'ordering.html'));
+  sendPublicHtml(req, res, 'ordering.html');
 });
 
 app.get('/ordering-client.js', (req, res) => {
@@ -223,7 +261,7 @@ app.get('/ordering-client.js', (req, res) => {
 });
 
 app.get('/gw-preorders', (req, res) => {
-  res.sendFile(path.join(__dirname, 'gw-preorders.html'));
+  sendPublicHtml(req, res, 'gw-preorders.html');
 });
 
 app.get('/gw-preorders-client.js', (req, res) => {
@@ -231,8 +269,12 @@ app.get('/gw-preorders-client.js', (req, res) => {
   res.type('application/javascript').sendFile(path.join(__dirname, 'gw-preorders-client.js'));
 });
 
+// Only the isolated Railway staging app may opt into this zero-grant guard.
+// Synthetic fixture identities are NEVER created in this public process.
+const STAGING_CORE_ADMISSION = createIsolatedStagingCoreAdmission({env:process.env});
 app.use('/api/special-orders', createSpecialOrdersRouter({
   verifyEmployee: req => verifyStaffEmployee(req),
+  coreOperationsAdmission: STAGING_CORE_ADMISSION,
   lightspeedDomain: LIGHTSPEED_DOMAIN,
   lightspeedToken: LIGHTSPEED_TOKEN,
   adminKey: process.env.SPECIAL_ORDERS_ADMIN_KEY,
@@ -259,8 +301,8 @@ app.get('/extension', (req, res) => {
   <h1>Hobby Corner Lightspeed Toolkit</h1>
   <p>Download the current Chrome extension package, then install it as an unpacked extension.</p>
   <p style="display:flex;gap:10px;flex-wrap:wrap">
-    <a href="/extension/download" style="display:inline-block;padding:12px 18px;background:#222;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;">Download Extension ZIP</a>
-    <a href="https://special-orders-test-production.up.railway.app/special-orders" target="_blank" rel="noopener"
+    <a href="${publicUrl(PUBLIC_BASE_PATH, '/extension/download')}" style="display:inline-block;padding:12px 18px;background:#222;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;">Download Extension ZIP</a>
+    <a href="${publicUrl(PUBLIC_BASE_PATH, '/special-orders')}" target="_blank" rel="noopener"
        style="display:inline-block;padding:12px 18px;background:#0f766e;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;">Open Special Orders</a>
   </p>
   <ol>
@@ -293,6 +335,8 @@ app.get('/extension/download', async (req, res) => {
 
 // Health-check route
 app.get('/', (req, res) => {
+  if(req.hcPublicPathMatched && PUBLIC_BASE_PATH && PUBLIC_LANDING_PATH)
+    return res.redirect(302,publicUrl(PUBLIC_BASE_PATH,PUBLIC_LANDING_PATH));
   res.send('Lightspeed Avery Label API is running.');
 });
 
@@ -909,6 +953,33 @@ async function startServer() {
     verifyStaffEmployee=staffAuth.verifyEmployee;
     app.use('/api/staff-auth', staffAuth.router);
     console.log('[staff-auth] Timeclock PIN employee authentication enabled');
+
+    // Read-only Admin navigation hint, isolated from Admin's stronger login.
+    // Disabled by default: requires a separately provisioned admin grants DB.
+    // Missing tables or revoked grants must leave the nav link hidden.
+    if(process.env.HC_ADMIN_NAV_ENABLED==='true'){
+      const grantsUrl=process.env.HC_ADMIN_GRANTS_DATABASE_URL;
+      if(typeof grantsUrl!=='string'||grantsUrl.length<16){
+        console.warn('[admin-nav] disabled: dedicated admin grants database not configured');
+      }else{
+        const adminGrantsPool=new pg.Pool({
+          connectionString:grantsUrl,
+          ssl:process.env.HC_ADMIN_GRANTS_PGSSL==='true'?{rejectUnauthorized:false}:undefined,
+          max:3,connectionTimeoutMillis:3000,
+          statement_timeout:3000
+        });
+        if(await verifyAdminNavigationReadOnlyDatabase({pool:adminGrantsPool})){
+          app.use('/api/admin',createAdminNavigationAccessRouter({
+            verifyEmployee:staffAuth.verifyEmployee,
+            hasAdminRead:createAdminNavigationGrantReader({pool:adminGrantsPool})
+          }));
+          console.log('[admin-nav] read-only server-verified admin navigation hint enabled');
+        }else{
+          console.warn('[admin-nav] disabled: dedicated grants database must have a SELECT-only role and deployed schema');
+          await adminGrantsPool.end();
+        }
+      }
+    }
 
     const lookup=createSpecialOrdersMatchLookup({
       baseUrl:'http://127.0.0.1:'+PORT,

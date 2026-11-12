@@ -33,6 +33,7 @@ export const CORE_OPERATIONS_ROUTE_INVENTORY = Object.freeze([
   Object.freeze({"source":"special-orders.js","method":"GET","path":"/preorders/products/:id/requests","kind":"read","caller":"staff-candidate","operation":"special-orders.read","review":"pending"}),
   Object.freeze({"source":"special-orders.js","method":"POST","path":"/preorders/products/:id/allocate","kind":"local-write","caller":"staff-candidate","operation":"special-orders.manage","review":"pending"}),
   Object.freeze({"source":"special-orders.js","method":"PATCH","path":"/preorders/allocations/:id","kind":"local-write","caller":"staff-candidate","operation":"special-orders.manage","review":"pending"}),
+  Object.freeze({"source":"special-orders.js","method":"GET","path":"/priority-review","kind":"read","caller":"staff-candidate","operation":"special-orders.read","review":"pending"}),
   Object.freeze({"source":"special-orders.js","method":"GET","path":"/stats","kind":"read","caller":"staff-candidate","operation":"special-orders.read","review":"pending"}),
   Object.freeze({"source":"special-orders.js","method":"GET","path":"/orders","kind":"read","caller":"staff-candidate","operation":"special-orders.read","review":"pending"}),
   Object.freeze({"source":"special-orders.js","method":"POST","path":"/orders","kind":"local-write","caller":"staff-candidate","operation":"special-orders.manage","review":"pending"}),

@@ -1,0 +1,59 @@
+name: Combined shared foundation integration smoke
+on:
+  pull_request:
+    paths:
+      - 'server.js'
+      - 'special-orders.js'
+      - 'services/publicBasePath.js'
+      - 'services/security/coreOperationsRouteInventory.js'
+      - 'services/security/coreOperationsBrowserCallerInventory.js'
+      - 'services/security/adminNavigationAccess.js'
+      - 'services/security/coreOperationsStagingActivation.js'
+      - 'shared-ui/**'
+      - '*-client.js'
+      - '*.html'
+      - 'tests/shared-foundation-composition-contract.test.mjs'
+      - 'tests/core-operations-staging-activation.test.mjs'
+      - 'tests/public-base-path.test.mjs'
+      - 'tests/*navigation*.test.mjs'
+      - 'tests/store-operations-dashboard.test.mjs'
+      - 'tests/core-ops-auth-session.test.mjs'
+      - '.github/workflows/shared-foundation-security-web.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax of combined app and authorization paths
+        run: |
+          node --check server.js
+          node --check services/security/coreOperationsStagingActivation.js
+          node --check tests/core-operations-staging-activation.test.mjs
+          node --check special-orders.js
+          node --check services/publicBasePath.js
+          node --check shared-ui/operations-nav.mjs
+          node --check shared-ui/staff-auth.js
+          node --check shared-ui/store-operations.mjs
+      - name: Install existing test dependencies only
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Combined contract, old URL compatibility, frontend and read-only Admin
+        run: |
+          node --test --test-concurrency=1 \
+            tests/shared-foundation-composition-contract.test.mjs \
+            tests/core-operations-staging-activation.test.mjs \
+            tests/public-base-path.test.mjs \
+            tests/hierarchical-navigation.test.mjs \
+            tests/hierarchical-navigation-admin.test.mjs \
+            tests/store-operations-dashboard.test.mjs \
+            tests/core-ops-navigation.test.mjs \
+            tests/core-ops-auth-session.test.mjs \
+            tests/admin-navigation-access.test.mjs \
+            tests/admin-nav-isolated-bridge.test.mjs \
+            tests/admin-nav-db-isolated-smoke.test.mjs \
+            tests/shared-ui-reconciliation.test.mjs

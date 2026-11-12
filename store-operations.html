@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hobby Corner — Store Operations Dashboard</title>
+<link rel="stylesheet" href="shared-ui/hc.css">
+<link rel="stylesheet" href="shared-ui/core-ops-compat.css">
+<link rel="stylesheet" href="shared-ui/store-operations.css">
+<script type="module" src="shared-ui/operations-nav.mjs"></script>
+</head>
+<body class="hc-ui">
+<div class="wrap hc-page hc-dashboard-page">
+  <nav class="hc-operations-nav hc-core-header" aria-label="Hobby Corner tools">
+    <a class="hc-operations-brand" href="store-operations" aria-label="Hobby Corner Store Operations home">
+      <img src="shared-ui/assets/hc-wordmark.webp" alt="Hobby Corner" width="174" height="48">
+      <span class="hc-brand-subtitle">Store Operations</span>
+    </a>
+    <div class="hc-operations-links" data-current-tool="home" aria-label="All Hobby Corner tools"></div>
+    <div class="hc-operations-auth" aria-label="Employee session">
+      <label class="hc-header-login-label" for="employeePin">Employee PIN</label>
+      <input id="employeePin" class="hc-header-pin" type="password" inputmode="numeric" maxlength="4" pattern="[0-9]*" autocomplete="off" placeholder="4-digit PIN">
+      <button id="unlockButton" type="button">Sign in</button>
+      <span id="authStatus" class="pill" role="status">Signed out</span>
+      <span id="authEmployee" class="hc-header-employee"></span>
+      <button id="signOutButton" type="button" class="secondary-button" hidden>Sign out</button>
+    </div>
+  </nav>
+  <main id="dashboard">
+    <div class="hc-dash-heading">
+      <div>
+        <p class="hc-dash-eyebrow">WELCOME TO HOBBY CORNER</p>
+        <h1>Store Operations Dashboard</h1>
+        <p class="hc-dash-muted">Special Orders, preorders, purchasing, and store tools in one workspace.</p>
+      </div>
+      <div class="hc-dash-refresh">
+        <button type="button" id="refreshDashboard" disabled>Refresh dashboard</button>
+        <span id="dashboardUpdated" role="status" aria-live="polite">Sign in to view current data.</span>
+      </div>
+    </div>
+    <div id="dashboardError" class="hc-dash-error" role="alert" hidden></div>
+    <section class="hc-dash-kpis" aria-label="Special Orders overview">
+      <a class="hc-dash-kpi hc-dash-blue" href="special-orders"><span>Open Special Order Items</span><strong id="dashOpen">—</strong><small>Open or in-progress items</small></a>
+      <a class="hc-dash-kpi hc-dash-amber" href="ordering"><span>Needs Ordering</span><strong id="dashOrdering">—</strong><small>Requires purchasing review</small></a>
+      <a class="hc-dash-kpi hc-dash-purple" href="special-orders#orders"><span>Ordered Over 7 Days</span><strong id="dashInTransit">—</strong><small>Supplier follow-up candidates</small></a>
+      <a class="hc-dash-kpi hc-dash-teal" href="preorders"><span>Preorder Items</span><strong id="dashPreorders">—</strong><small>Items currently marked preorder</small></a>
+      <a class="hc-dash-kpi hc-dash-green" href="special-orders#orders"><span>Received / Held</span><strong id="dashHeld">—</strong><small>Items awaiting the next step</small></a>
+    </section>
+    <div class="hc-dash-grid">
+      <section class="hc-dash-panel" aria-labelledby="quickHeading">
+        <h2 id="quickHeading">Quick Actions</h2>
+        <div class="hc-dash-actions">
+          <a href="special-orders">Open Special Orders</a>
+          <a href="ordering">Open Purchasing</a>
+          <a href="preorders">Manage Preorders</a>
+          <a href="gw-preorders">GW Preorders</a>
+          <a href="https://lightspeed-api-production-c087.up.railway.app/extension" target="_blank" rel="noopener noreferrer">Lightspeed Toolkit (new tab)</a>
+        </div>
+        <p class="hc-dash-muted hc-dash-note">Actions open their existing authorized workflows. No changes are made from this dashboard.</p>
+      </section>
+      <section class="hc-dash-panel hc-dash-priority" aria-labelledby="priorityHeading">
+        <div class="hc-dash-priority-heading"><h2 id="priorityHeading">Priority Review</h2><span id="prioritySummary" aria-live="polite">Awaiting data</span></div>
+        <ul class="hc-dash-review-list">
+          <li><div><strong>Old open items (30+ days)</strong><small>Follow up on unclosed Special Order items</small></div><span id="reviewOld">—</span></li>
+          <li><div><strong>Ordered over 7 days</strong><small>Check supplier progress</small></div><span id="reviewOrdered">—</span></li>
+          <li><div><strong>Supplier sync failures</strong><small>Review Lightspeed synchronization errors</small></div><span id="reviewSync">—</span></li>
+          <li><div><strong>Customer notification failures</strong><small>Investigate failed ready notifications</small></div><span id="reviewDelivery">—</span></li>
+          <li><div><strong>Other bugs / service errors</strong><small>Central incident feed not connected yet</small></div><span class="hc-dash-not-connected">Not connected</span></li>
+        </ul>
+        <a class="hc-dash-review-link" href="special-orders#hc-priority-title">Open Special Orders Priority Review</a>
+      </section>
+      <section class="hc-dash-panel" aria-labelledby="toolHeading">
+        <h2 id="toolHeading">Special Orders at a Glance</h2>
+        <p class="hc-dash-muted">Counts come from the existing Special Orders database. Other business systems are not yet included.</p>
+        <div class="hc-dash-mini-row"><span>Needs ordering</span><strong id="summaryOrdering">—</strong></div>
+        <div class="hc-dash-mini-row"><span>Backordered</span><strong id="summaryBackordered">—</strong></div>
+        <div class="hc-dash-mini-row"><span>Ordered over 7 days</span><strong id="summaryOrdered">—</strong></div>
+        <div class="hc-dash-mini-row"><span>Received / Held</span><strong id="summaryHeld">—</strong></div>
+      </section>
+      <section class="hc-dash-panel" aria-labelledby="coverageHeading">
+        <h2 id="coverageHeading">Dashboard Data Coverage</h2>
+        <p class="hc-dash-muted">The dashboard never guesses about unavailable systems or displays sample records as store activity.</p>
+        <div class="hc-dash-mini-row"><span>Special Orders aggregates</span><span id="statsCoverage">Sign-in required</span></div>
+        <div class="hc-dash-mini-row"><span>Priority Review aggregates</span><span id="priorityCoverage">Sign-in required</span></div>
+        <div class="hc-dash-mini-row"><span>Cross-tool recent activity</span><span>Not connected</span></div>
+        <div class="hc-dash-mini-row"><span>General incident monitoring</span><span>Not connected</span></div>
+      </section>
+    </div>
+  </main>
+</div>
+<script src="shared-ui/staff-auth.js"></script>
+<script type="module" src="shared-ui/store-operations.mjs"></script>
+</body>
+</html>

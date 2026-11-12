@@ -2363,6 +2363,45 @@ export function createSpecialOrdersRouter({
     } finally {client.release()}
   });
 
+  // Authenticated read-only operational summary. The router's existing
+  // Timeclock/legacy-key middleware applies; no customer details or raw
+  // vendor errors leave this endpoint. These are counts, not incidents.
+  router.get('/priority-review', requireDb, async (req, res) => {
+    try {
+      const { rows } = await pool.query(`
+        SELECT
+          (SELECT count(*)::int FROM special_order_items
+            WHERE status NOT IN ('COMPLETED','CANCELLED')
+              AND created_at <= now() - interval '30 days') AS old_open_items,
+          (SELECT count(*)::int FROM special_order_items
+            WHERE status='ORDERED'
+              AND ordered_at <= now() - interval '7 days') AS ordered_over_7_days,
+          (SELECT count(*)::int FROM supplier_orders
+            WHERE lightspeed_sync_status='ERROR') AS supplier_sync_failures,
+          (SELECT count(*)::int FROM notifications
+            WHERE status='ERROR' AND channel IN
+              ('DISCORD_READY','MESSENGER_READY','WHATSAPP_READY','EMAIL_READY','SMS_READY')
+          ) AS delivery_failures
+      `);
+      const counts = rows[0] || {};
+      const keys = ['old_open_items','ordered_over_7_days','supplier_sync_failures','delivery_failures'];
+      if (!keys.every(key => counts[key] !== null && counts[key] !== undefined && Number.isSafeInteger(Number(counts[key])) && Number(counts[key]) >= 0)) {
+        throw new Error('Priority review query returned invalid counts');
+      }
+      res.set('Cache-Control','no-store');
+      res.json({
+        source:'special-orders',
+        as_of:new Date().toISOString(),
+        counts:Object.fromEntries(keys.map(key=>[key,Number(counts[key])])),
+        coverage:{old_open_items:true,ordered_over_7_days:true,supplier_sync_failures:true,
+          delivery_failures:true,application_bugs:false}
+      });
+    } catch (error) {
+      console.error('[special-orders] priority review summary unavailable',error);
+      res.status(503).set('Cache-Control','no-store').json({error:'Priority Review is temporarily unavailable.'});
+    }
+  });
+
   router.get('/stats', requireDb, async (req, res) => {
     const { rows } = await pool.query(`
       SELECT

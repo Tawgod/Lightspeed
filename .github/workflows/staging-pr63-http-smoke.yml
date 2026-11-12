@@ -1,0 +1,26 @@
+name: HC PR63 isolated Railway HTTPS read-only smoke
+on:
+  pull_request:
+    paths:
+      - 'tests/staging-pr63-http-smoke.test.mjs'
+      - 'tests/staging-pr63-browser-smoke.mjs'
+      - '.github/workflows/staging-pr63-http-smoke.yml'
+permissions:
+  contents: read
+jobs:
+  read-only-http:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Read-only HTTP smoke against isolated Railway staging
+        run: node --test --test-concurrency=1 tests/staging-pr63-http-smoke.test.mjs
+      - name: Install isolated Chromium test dependency
+        run: |
+          npm install --no-save --ignore-scripts --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Read-only real browser check of Railway staging prefix and signed-out UI
+        run: node tests/staging-pr63-browser-smoke.mjs
