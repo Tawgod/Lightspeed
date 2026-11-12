@@ -12,15 +12,15 @@ This branch is based on `feature/unified-hierarchical-navigation-20261109` at `7
 - Preserve external Consignment and Toolkit links until their own approved gateway routes are verified. No untrusted proxy prefix header is used for routing.
 - Keep all existing production access behavior when `HC_PUBLIC_BASE_PATH` is unset.
 
-## Proposed Timcorp gateway contract — NOT APPLIED
-- Public: `https://timcorp-productions.com/hobby-corner/*`
-- Upstream: `special-orders-test-production.up.railway.app`
+## Timcorp gateway contract — hostname confirmed, route not activated (2026-11-12)
+- **Confirmed shared hostname:** `https://timcorp-projects.com` (owner clarification supersedes prior `timcorp-productions.com` proposal).
+- **Working gateway prefix:** `/HobbyCorner/`, consistent with `Tawgod/timcorp-projects-foundation:main`. This remains **planned/503** until central owner approval and acceptance.
+- **Proposed employee landing:** `https://timcorp-projects.com/HobbyCorner/store-operations` only after activation.
+- **Proposed upstream:** `special-orders-test-production.up.railway.app`, to be tested under an isolated proxy before activation.
 - Forward the matched path prefix unchanged, with original method/query/Authorization and HTTPS forwarded headers.
-- Proposed app variables after isolated verification:
-  `HC_PUBLIC_BASE_PATH=/hobby-corner`
-  `HC_PUBLIC_LANDING_PATH=/store-operations`
+- **Proposed application variables, not set:** `HC_PUBLIC_BASE_PATH=/HobbyCorner`, `HC_PUBLIC_LANDING_PATH=/store-operations`.
 - Keep existing Railway service domains active for independent deployment and rollback.
-- Store Map and Lightspeed Toolkit/labels remain separately deployed and require their own gateway routing/variable approval.
+- Store Map and Lightspeed Toolkit/labels remain separately deployed and require their own longest-prefix gateway routing/variable approval. No lowercase path alias or central DNS/gateway change is assumed.
 
 ## Security and verification
 This composition includes **only** the UI branch's existing Admin navigation visibility checks. It does not mount or grant the pending Core Operations admission policy from security PR #61. A visible Admin link remains a read-only hint, not authorization to change employees.
