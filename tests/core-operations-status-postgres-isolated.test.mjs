@@ -126,18 +126,23 @@ test('disposable PostgreSQL 18: guarded status change, locked state, audit and n
       },{
         source:'special-orders.js',method:'POST',path:'/preorders/gw/discord-reaction',
         audience:'service',operation:'service.preorders.gw.discord-reaction'
+      },{
+        source:'special-orders.js',method:'POST',path:'/preorders/gw/campaigns/:id/mark-submitted',
+        audience:'service',operation:'service.preorders.gw.mark-submitted'
       }],
       staffAccess:staff,
       verifyServiceRequest:async request=>{
         const id=request.get('x-fixture-service');
-        return ['discord-delivery','gw-discord-events'].includes(id)
+        return ['discord-delivery','gw-discord-events','gw-submit-worker'].includes(id)
           ? {type:'service',id,active:true}:null;
       },
       checkServiceGrant:async ({identity,operation})=>
         (identity.id==='discord-delivery' &&
           operation==='service.notifications.complete-discord') ||
         (identity.id==='gw-discord-events' &&
-          operation==='service.preorders.gw.discord-reaction')
+          operation==='service.preorders.gw.discord-reaction') ||
+        (identity.id==='gw-submit-worker' &&
+          operation==='service.preorders.gw.mark-submitted')
     });
     const app=express();
     app.use(express.json({limit:'32kb'}));
@@ -205,6 +210,24 @@ test('disposable PostgreSQL 18: guarded status change, locked state, audit and n
             discord_username:'fixture-user',
             action
           })
+        }
+      );
+      const body=await response.json();
+      return {status:response.status,body};
+    }
+
+    async function markGwSubmitted(campaignId){
+      const response=await fetch(
+        'http://127.0.0.1:'+server.address().port+
+          '/api/special-orders/preorders/gw/campaigns/'+campaignId+'/mark-submitted',
+        {
+          method:'POST',
+          headers:{
+            'content-type':'application/json',
+            'x-fixture-service':'gw-submit-worker',
+            'x-hobby-corner-key':'fixture-legacy-key-not-auth'
+          },
+          body:'{}'
         }
       );
       const body=await response.json();
@@ -461,6 +484,102 @@ test('disposable PostgreSQL 18: guarded status change, locked state, audit and n
       assert.equal(reactionCount.rows[0].count,1);
       assert.equal(request.rows[0]?.status,'REQUESTED');
       assert.equal(notification.rows[0]?.status,'PENDING');
+    });
+
+    await t.test('GW mark-submitted rolls product, campaign and notifications back together on failure',async()=>{
+      await db.query(
+        "UPDATE customers SET discord_user_id='fixture-gw-user' WHERE id=$1",
+        [customerId]
+      );
+      const {rows:campaignRows}=await db.query(
+        "INSERT INTO preorder_campaigns (name,campaign_type,status,external_submission_status) "+
+        "VALUES ('DISPOSABLE GW SUBMISSION','GW_WEEKLY','OPEN','NOT_SUBMITTED') RETURNING id"
+      );
+      const campaignId=campaignRows[0].id;
+      const {rows:productRows}=await db.query(
+        "INSERT INTO preorder_products "+
+        "(preorder_campaign_id,item_description,msrp,store_order_quantity,ordered_quantity) "+
+        "VALUES ($1,'DISPOSABLE SUBMISSION ITEM',12.50,1,0) RETURNING id",
+        [campaignId]
+      );
+      const productId=productRows[0].id;
+      await db.query(
+        "INSERT INTO preorder_requests "+
+        "(preorder_product_id,customer_id,requested_quantity,status,source_key) "+
+        "VALUES ($1,$2,1,'REQUESTED',$3)",
+        [productId,customerId,'fixture-submit-request-'+campaignId]
+      );
+
+      const functionName='hc_fixture_reject_gw_submission_notice';
+      await db.query(
+        "CREATE FUNCTION "+functionName+"() RETURNS trigger LANGUAGE plpgsql "+
+        "AS 'BEGIN IF NEW.channel = ''DISCORD_GW_STAFF_SUBMITTED'' THEN "+
+        "RAISE EXCEPTION ''fixture induced GW submission notification failure''; END IF; RETURN NEW; END;'"
+      );
+      await db.query(
+        "CREATE TRIGGER hc_fixture_block_gw_submission_notice BEFORE INSERT ON notifications "+
+        "FOR EACH ROW EXECUTE FUNCTION "+functionName+"()"
+      );
+      try{
+        const failed=await markGwSubmitted(campaignId);
+        assert.equal(failed.status,400,JSON.stringify(failed.body));
+        const campaign=await db.query(
+          'SELECT status,external_submission_status,submitted_at FROM preorder_campaigns WHERE id=$1',
+          [campaignId]
+        );
+        const product=await db.query(
+          'SELECT ordered_quantity,submitted_quantity,submitted_value FROM preorder_products WHERE id=$1',
+          [productId]
+        );
+        const notices=await db.query(
+          'SELECT count(*)::int AS count FROM notifications WHERE preorder_campaign_id=$1',
+          [campaignId]
+        );
+        assert.equal(campaign.rows[0].status,'OPEN');
+        assert.equal(campaign.rows[0].external_submission_status,'NOT_SUBMITTED');
+        assert.equal(campaign.rows[0].submitted_at,null);
+        assert.equal(product.rows[0].ordered_quantity,0);
+        assert.equal(product.rows[0].submitted_quantity,null);
+        assert.equal(product.rows[0].submitted_value,null);
+        assert.equal(notices.rows[0].count,0);
+      }finally{
+        await db.query('DROP TRIGGER IF EXISTS hc_fixture_block_gw_submission_notice ON notifications');
+        await db.query('DROP FUNCTION IF EXISTS '+functionName+'()');
+      }
+
+      const retried=await markGwSubmitted(campaignId);
+      assert.equal(retried.status,200,JSON.stringify(retried.body));
+      assert.equal(retried.body.total_units,2);
+      const campaign=await db.query(
+        'SELECT status,external_submission_status,submitted_at FROM preorder_campaigns WHERE id=$1',
+        [campaignId]
+      );
+      const product=await db.query(
+        'SELECT ordered_quantity,submitted_quantity,submitted_value FROM preorder_products WHERE id=$1',
+        [productId]
+      );
+      const notices=await db.query(
+        'SELECT channel,status FROM notifications WHERE preorder_campaign_id=$1 ORDER BY channel',
+        [campaignId]
+      );
+      assert.equal(campaign.rows[0].status,'ORDERED');
+      assert.equal(campaign.rows[0].external_submission_status,'SUBMITTED');
+      assert.ok(campaign.rows[0].submitted_at);
+      assert.equal(product.rows[0].ordered_quantity,2);
+      assert.equal(product.rows[0].submitted_quantity,2);
+      assert.equal(Number(product.rows[0].submitted_value),25);
+      assert.deepEqual(notices.rows.map(x=>[x.channel,x.status]),[
+        ['DISCORD_GW_ORDER_SUMMARY','PENDING'],
+        ['DISCORD_GW_STAFF_SUBMITTED','PENDING']
+      ]);
+
+      const duplicate=await markGwSubmitted(campaignId);
+      assert.equal(duplicate.status,409,JSON.stringify(duplicate.body));
+      const duplicateNotices=await db.query(
+        'SELECT count(*)::int AS count FROM notifications WHERE preorder_campaign_id=$1',
+        [campaignId]
+      );
+      assert.equal(duplicateNotices.rows[0].count,2);
     });
 
     await t.test('unrecognized target and static old key cannot mutate any row',async()=>{
