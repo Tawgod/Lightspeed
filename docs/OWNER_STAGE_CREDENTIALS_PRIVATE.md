@@ -1,0 +1,7 @@
+# Owner database credentials, Railway-generated and private
+
+**Scope:** One-time private-network credential installation in the already isolated `hc_owner_stage_test` PostgreSQL 18 database, no production effect. The `hc-owner-staging` service holds a generated runtime-only password and independent session/throttle/passkey/approval/MFA/TOTP keys. The `Postgres-x8Ui` service separately holds the operator-only password, which is **never attached to the web app**.
+
+Railway variable `secret()` generation was verified to return a 48-character value stable across redeployment; this runner requires distinct generated alphanumeric values and a valid 32-byte Base64 TOTP key. It checks both database login roles were locked, grants exactly one NOLOGIN group to each, then installs SCRAM-SHA-256 passwords. It authenticates as each restricted role, uses existing read-only Owner runtime preflight, verifies wrong-password rejection, and attempts to revert both passwords to NULL on verification failure. No password value appears in logs/GitHub/chat, and the ephemeral root-connected runner is deleted after success.
+
+This is **not** Owner activation or a production Timeclock change: real employee verification and existing PIN, matching dedicated Timeclock server secret and its separate rate-limit schema, HTTPS passkey+Authenticator and single-use activation require their own later gates. Owner web login stays default-disabled.
