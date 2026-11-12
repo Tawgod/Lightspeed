@@ -17,6 +17,29 @@ The connected central gateway `Tawgod/timcorp-projects-foundation:main` document
 
 **Proposed staging-only application configuration after approval:** `HC_PUBLIC_BASE_PATH=/HobbyCorner` and `HC_PUBLIC_LANDING_PATH=/store-operations`. The employee landing would be `https://timcorp-projects.com/HobbyCorner/store-operations` **only after** the gateway route is activated and verified. Existing Railway URLs must remain operational.
 
+## Isolated Railway deployment and live HTTPS/Chromium acceptance — PASS (2026-11-12)
+
+**Status:** **Testing — deployed to isolated nonproduction Railway staging; automated HTTPS read-only + browser checks PASS.** Not production, not public Timcorp gateway, not live-employee authenticated, and Core Operations security admission is still unmounted.
+
+**Isolated infrastructure created only after explicit owner staging approval:**
+- New Railway project **`HC PR63 Isolated Staging`** (`5b46096d-3178-47ec-ba88-d5037696346a`), separate **`staging`** environment (`46b93c76-3085-4e76-a37d-90dfdd250dd2`); no staged patch.
+- Fresh, independent managed PostgreSQL 18 `Postgres` service (`257803e5-7352-4113-a4be-f4f6edaddd22`), its own new volume, reported SUCCESS. No connection to an existing Hobby Corner database.
+- App `hc-foundation-pr63` (`10540df5-8fab-497b-bd2c-80d4f7f0c702`), GitHub source `Tawgod/Lightspeed:feature/shared-foundation-security-web-20261112` **pinned** to already-tested commit `90e91c9b4d6cd07df1dff3de79100073bb819a72`. Railway deployment `dcb96ace-fbeb-4eb0-928d-253659b16c64` **SUCCESS**. Startup logs: `[special-orders] database schema ready`, initialization result `true`, listening on port 8080.
+- Staging preview only: **`https://hc-foundation-pr63-staging.up.railway.app/HobbyCorner/store-operations`**; root direct Railway URLs remain routable. This is NOT a `timcorp-projects.com` live route.
+- App variables are a reference to **only this project's Postgres.DATABASE_URL**, `HC_PUBLIC_BASE_PATH=/HobbyCorner`, `HC_PUBLIC_LANDING_PATH=/store-operations`, `NODE_ENV=staging`; `SPECIAL_ORDERS_LIVE_MODE`, `SPECIAL_ORDERS_ALLOW_MIGRATION`, `SPECIAL_ORDERS_ALLOW_PRODUCT_WRITES`, `SCANNER_ENABLED`, `HC_ADMIN_NAV_ENABLED`, `SCANNER_TEST_CREATION_ENABLED` are all explicitly `false`. No live `LIGHTSPEED_DOMAIN`, `LIGHTSPEED_TOKEN`, `DISCORD_TOKEN`, service identity secret, admin key, Timeclock origin or production grants were copied or set.
+
+**Acceptance:** New focused source test `tests/staging-pr63-http-smoke.test.mjs` and real remote browser `tests/staging-pr63-browser-smoke.mjs`, GitHub [run 43280979877](https://github.com/Tawgod/Lightspeed/actions/runs/43280979877), **SUCCESS**:
+- HTTPS **5 test groups / 5 passed**, covering both old and `/HobbyCorner` Special Orders health endpoints (fresh database true; all live capabilities false), old root and prefixed root redirect (302), direct old `/special-orders`, all five prefixed staff pages (200), CSS/modules (200), unauthenticated stats/Priority Review (401), disabled Admin and staff-auth routes (404) and unknown path (404).
+- Live remote Chromium opened prefixed Store Operations and Special Orders, verified grouped navigation destinations, signed-out dashboard masking, hidden Admin link, disabled refresh, zero missing prefixed assets and zero JavaScript page errors. **Chromium read-only PASS.** No PIN was submitted and no customer records/business actions were used.
+- The source continues to pass all five other PR #63 workflows on the smoke-test head `8e3a6c30e6de532b5cca5492cb2079ce40541398`: policy, combined code, shared UI, scanner regression, Core Operations Chromium UI.
+- Railway `environment_status` verified both Postgres and app **online**, zero warnings/critical alerts, and no pending work; production `special-orders-test` still deployed from old consolidated commit `014a7a9...` and the central Timcorp gateway still on its existing branch/deployment.
+
+**Important limitation / gate:** The live browser test is of the public **Railway staging preview**, directly, not the future central reverse proxy. It proves prefixed app routing, browser module loads and anonymous denial—not actual Timeclock sign-in, Owner/passkey/TOTP, read-only Admin grant or default-deny service identities. Commissioning those test identities and mounting the security guard are deliberately separate approval steps. No Central Gateway/DNS, production Railway, customer database, real Lightspeed/Discord, Chrome extension release, or PR merge was changed.
+
+**Build provenance:** App runtime pinned to `90e91c9...`, while later PR source commits document acceptance and add nonproduction test scripts; the staging app will **not** auto-deploy those later commits.
+
+---
+
 ## Combined-source disposable PostgreSQL acceptance — PASS (2026-11-12)
 
 **Verified target:** `Tawgod/Lightspeed:feature/shared-foundation-security-web-20261112@90e91c9b4d6cd07df1dff3de79100073bb819a72`, owner-run isolated Codespace `/workspaces/Lightspeed-security`, PostgreSQL 18 localhost-only Docker harness `bash scripts/run-isolated-security-status-postgres.sh`.
