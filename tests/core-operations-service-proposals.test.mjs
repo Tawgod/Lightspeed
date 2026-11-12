@@ -7,6 +7,8 @@ import {coreOperationsRouteKey}
   from '../services/security/coreOperationsRouteInventory.js';
 import {createCoreOperationsRouteAdmission}
   from '../services/security/coreOperationsRouteAdmission.js';
+import {CORE_OPERATIONS_REMAINING_CALLER_REVIEW,validateRemainingCallerCoverage}
+  from '../services/security/coreOperationsRemainingCallerReview.js';
 
 const reject=error=>error?.status===403 && error?.code==='HC_CORE_OPERATIONS_FORBIDDEN';
 
@@ -52,6 +54,41 @@ test('caller evidence distinguishes historical Discord-bot routes from currently
   ]){
     assert.equal(byOperation.get(operation)?.callerEvidence,'no-current-caller-observed');
   }
+});
+
+
+test('the original fourteen mixed/service-review routes have one explicit, non-authorizing caller review each',()=>{
+  const summary=validateRemainingCallerCoverage();
+  assert.deepEqual(summary,{
+    candidateCount:14,proposalCount:7,remainderCount:7,
+    duplicateCount:0,missing:[],extra:[]
+  });
+  const routeKeys=CORE_OPERATIONS_REMAINING_CALLER_REVIEW.map(coreOperationsRouteKey);
+  assert.equal(new Set(routeKeys).size,7);
+  for(const route of CORE_OPERATIONS_REMAINING_CALLER_REVIEW){
+    assert.equal(route.review,'pending');
+    assert.ok(route.risk.length>30);
+    assert.ok(route.recommendation.length>50);
+    assert.ok(!('operation' in route));
+    assert.ok(!('audience' in route));
+  }
+  const byPath=new Map(CORE_OPERATIONS_REMAINING_CALLER_REVIEW.map(x=>[x.method+' '+x.path,x]));
+  assert.equal(byPath.get('GET /preorders/discord-watch').callerEvidence,'current-employee-browser');
+  assert.equal(byPath.get('GET /notifications/delivery-queue').callerEvidence,'current-employee-browser');
+  assert.equal(byPath.get('POST /reconcile/products').callerEvidence,'current-employee-browser-and-internal-scheduler');
+  assert.equal(byPath.get('POST /reconcile/products/:sku').callerEvidence,'no-http-caller-observed');
+});
+
+test('potentially expensive allocation GET uses the purchase metrics refresh helper internally, not the separate POST handler',()=>{
+  const source=readFileSync(new URL('../special-orders.js',import.meta.url),'utf8');
+  assert.match(source,/router\.get\('\/preorders\/products\/:id\/allocation-suggestions'/);
+  assert.match(source,/refresh_lightspeed/);
+  assert.match(source,/Promise\.allSettled\(stale\.rows\.map\(x\s*=>\s*refreshLightspeedPurchaseMetrics\(x\.customer_id\)\)\)/);
+  assert.match(source,/router\.post\('\/customers\/:id\/purchase-metrics\/lightspeed-refresh'/);
+  const reconcile=readFileSync(new URL('../routes/specialOrderProducts.js',import.meta.url),'utf8');
+  assert.match(reconcile,/reconcileLocalProducts\(\{limit:250,apply:true,source:'scheduled'\}\)/);
+  assert.match(reconcile,/router\.post\('\/reconcile\/products\/:sku'/);
+  assert.match(reconcile,/source:'manual-sku'/);
 });
 
 test('known employee/browser mixed routes are intentionally absent from service-only proposals',()=>{
