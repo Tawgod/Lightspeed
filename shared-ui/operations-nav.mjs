@@ -32,7 +32,7 @@ export async function canShowAdminNavigation(fetchImpl,staffAuth=typeof window!=
  try{
   const headers=staffAuth.headers({Accept:'application/json'});
   if(typeof headers?.Authorization!=='string'||!headers.Authorization.startsWith('Bearer '))return false;
-  const response=await fetchImpl('/api/admin/navigation-access',{
+  const response=await fetchImpl(publicOperationsPath('/api/admin/navigation-access'),{
    method:'GET',cache:'no-store',credentials:'omit',redirect:'error',
    headers
   });
@@ -43,9 +43,25 @@ export async function canShowAdminNavigation(fetchImpl,staffAuth=typeof window!=
  }catch{return false;}
 }
 
+// Keep registered, same-origin destinations under the Timcorp prefix.
+// External URLs are passed through unchanged; this is not an auth grant.
+export function publicOperationsPath(path,baseHref=typeof document!=='undefined' &&
+  typeof document.baseURI==='string' ? document.baseURI : 'https://example.invalid/'){
+ if(typeof path!=='string'||!path.startsWith('/')||path.startsWith('//'))return path;
+ // Playwright setContent, detached documents and server-side tests may
+ // report about:blank or no usable origin. They retain the legacy root URLs.
+ let safeBase='https://example.invalid/';
+ try{
+  const parsed=new URL(baseHref);
+  if(parsed.protocol==='http:'||parsed.protocol==='https:')safeBase=parsed.href;
+ }catch{}
+ const resolved=new URL(path.slice(1),safeBase);
+ return resolved.pathname+resolved.search+resolved.hash;
+}
+
 function makeLink(item,current) {
   const a=document.createElement('a');
-  a.href=item.href;
+  a.href=item.external?item.href:publicOperationsPath(item.href);
   a.textContent=item.label;
   a.dataset.toolId=item.id;
   if(item.id===current)a.setAttribute('aria-current','page');

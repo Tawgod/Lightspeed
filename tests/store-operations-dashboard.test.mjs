@@ -37,10 +37,12 @@ test('Home page preserves original logo, staff sign-in, navigation and review st
  assert.doesNotMatch(source,/localStorage/);
 });
 test('Home only shows approved verified destinations',()=>{
+ const source=read('store-operations.html');
+ assert.doesNotMatch(source,/(?:href|src)=["']\/(?!\/)/);
  const html=read('store-operations.html');
- assert.match(html,/href="\/special-orders"/);
- assert.match(html,/href="\/ordering"/);
- assert.match(html,/href="\/preorders"/);
- assert.match(html,/href="\/gw-preorders"/);
+ assert.match(html,/href="(?:\/)?special-orders"/);
+ assert.match(html,/href="(?:\/)?ordering"/);
+ assert.match(html,/href="(?:\/)?preorders"/);
+ assert.match(html,/href="(?:\/)?gw-preorders"/);
  assert.doesNotMatch(html,/href="\/employee-admin\//);
 });

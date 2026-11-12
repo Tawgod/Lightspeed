@@ -2,7 +2,13 @@ import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
-const script=read('shared-ui/store-operations.mjs').replace(/^export /gm,'');
+// Exercise both shared browser modules together, preserving the real import
+// dependency when using setContent/about:blank without an HTTP module loader.
+const navigationSource=read('shared-ui/operations-nav.mjs').replace(/^export /gm,'');
+const dashboardSource=read('shared-ui/store-operations.mjs')
+ .replace(/^import \{publicOperationsPath\} from '\.\/operations-nav\.mjs';\n/m,'')
+ .replace(/^export /gm,'');
+const script=navigationSource+'\n'+dashboardSource;
 let html=read('store-operations.html');
 const css=[read('shared-ui/hc.css'),read('shared-ui/core-ops-compat.css'),read('shared-ui/store-operations.css')].join('\n');
 html=html.replace(/<link[^>]+rel="stylesheet"[^>]*>/g,'')

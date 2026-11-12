@@ -19,7 +19,7 @@ test('unique verified destinations, nested dependent preorders',()=>{
 for(const [id,path] of pages){
  test('page '+id+' uses shared directory and preserves existing employee auth',()=>{
   const s=read(path);
-  assert.match(s,/src="\/shared-ui\/operations-nav\.mjs"/);
+  assert.match(s,/src="(?:\/)?shared-ui\/operations-nav\.mjs"/);
   assert.match(s,new RegExp('data-current-tool="'+id+'"'));
   assert.match(s,/id="employeePin"/);
   assert.match(s,/id="unlockButton"/);

@@ -1,0 +1,63 @@
+name: Timcorp and unified navigation integration smoke
+on:
+  pull_request:
+    paths:
+      - 'services/publicBasePath.js'
+      - 'server.js'
+      - 'shared-ui/**'
+      - '*-client.js'
+      - '*.html'
+      - 'routes/orderSplit.js'
+      - 'tests/public-base-path.test.mjs'
+      - 'tests/*navigation*.test.mjs'
+      - 'tests/store-operations-dashboard.test.mjs'
+      - 'tests/core-ops-auth-session.test.mjs'
+      - '.github/workflows/timcorp-unified-nav-compose.yml'
+  push:
+    branches: ['feature/timcorp-unified-nav-integration-20261112']
+    paths:
+      - 'server.js'
+      - 'services/publicBasePath.js'
+      - 'shared-ui/**'
+      - '*-client.js'
+      - '*.html'
+      - 'routes/orderSplit.js'
+      - 'tests/public-base-path.test.mjs'
+      - 'tests/*navigation*.test.mjs'
+      - 'tests/store-operations-dashboard.test.mjs'
+      - 'tests/core-ops-auth-session.test.mjs'
+      - '.github/workflows/timcorp-unified-nav-compose.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax check composed server and clients
+        run: |
+          node --check server.js
+          node --check routes/orderSplit.js
+          node --check services/publicBasePath.js
+          node --check shared-ui/staff-auth.js
+          node --check shared-ui/operations-nav.mjs
+          node --check shared-ui/store-operations.mjs
+          node --check special-orders-client.js
+          node --check preorders-client.js
+          node --check gw-preorders-client.js
+          node --check ordering-client.js
+      - name: Install existing backend test dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Prefix routing and existing navigation, dashboard and session contracts
+        run: |
+          node --test \
+            tests/public-base-path.test.mjs \
+            tests/hierarchical-navigation.test.mjs \
+            tests/hierarchical-navigation-admin.test.mjs \
+            tests/store-operations-dashboard.test.mjs \
+            tests/core-ops-navigation.test.mjs \
+            tests/core-ops-auth-session.test.mjs \
+            tests/admin-navigation-access.test.mjs
