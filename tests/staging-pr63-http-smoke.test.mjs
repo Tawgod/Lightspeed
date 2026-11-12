@@ -59,10 +59,27 @@ test('shared assets and browser router are same-origin and prefixed',async()=>{
  const js=await expectStatus(prefix+'/shared-ui/store-operations.mjs',200);
  assert.match(js.body,/publicOperationsPath/);
 });
-test('business reads deny anonymous callers; unavailable identity and Admin endpoints stay closed',async()=>{
+test('active zero-grant staging guard denies all anonymous reads; Admin and staff login remain disabled',async()=>{
  for(const path of [prefix+'/api/special-orders/stats',prefix+'/api/special-orders/priority-review'])
-  await expectStatus(path,401);
+  await expectStatus(path,403);
  await expectStatus(prefix+'/api/admin/navigation-access',404);
  await expectStatus(prefix+'/api/staff-auth/session',404);
  await expectStatus(prefix+'/nonexistent-staging-path',404);
+});
+
+test('forged employee, Owner and service headers cannot bypass the active staging guard',async()=>{
+ const path=prefix+'/api/special-orders/priority-review';
+ for(const headers of [
+  {'x-hc-role':'owner','x-hc-employee-id':'901'},
+  {authorization:'Bearer forged-employee-token'},
+  {'x-hobby-corner-key':'old-static-key'},
+  {'x-service-id':'pretend-bot','authorization':'Bearer pretend-worker'}
+ ]){
+  const r=await fetch(new URL(path,origin),{
+   method:'GET',redirect:'manual',cache:'no-store',headers,
+   signal:AbortSignal.timeout(15000)
+  });
+  assert.equal(r.status,403,'Forged credential bypass unexpectedly accepted');
+  assert.equal(r.headers.get('cache-control'),'no-store');
+ }
 });
