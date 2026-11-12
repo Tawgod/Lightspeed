@@ -1806,53 +1806,79 @@ export function createSpecialOrdersRouter({
     const discordUsername=String(body.discord_username||'').trim();
     const action=String(body.action||'').toUpperCase();
     if(!messageId||!discordUserId||!['ADD','REMOVE'].includes(action))return res.status(400).json({error:'message_id, discord_user_id, and ADD/REMOVE action are required.'});
-    const mapped=await pool.query(
-      "SELECT m.*,pp.item_description,pp.gw_single_item_name,pp.gw_case_pack_size FROM preorder_discord_messages m JOIN preorder_products pp ON pp.id=m.preorder_product_id WHERE m.message_id=$1",
-      [messageId]
-    );
-    const m=mapped.rows[0];
-    if(!m)return res.status(404).json({error:'Discord message is not mapped to a GW preorder item.'});
-    const customerResult=await pool.query("SELECT id,name,discord_user_id FROM customers WHERE discord_user_id=$1 LIMIT 1",[discordUserId]);
-    const customer=customerResult.rows[0]||null;
-    await pool.query(
-      "INSERT INTO preorder_discord_reactions (preorder_campaign_id,preorder_product_id,message_id,discord_user_id,discord_username,customer_id,action) VALUES ($1,$2,$3,$4,$5,$6,$7)",
-      [m.preorder_campaign_id,m.preorder_product_id,messageId,discordUserId,discordUsername||null,customer?.id||null,action]
-    );
-    if(!customer)return res.status(202).json({ok:true,matched_customer:false});
-    const sourceKey='discord-gw:'+messageId+':'+discordUserId;
-    if(action==='ADD'){
-      await pool.query(
-        "INSERT INTO preorder_requests (preorder_product_id,customer_id,requested_quantity,status,notes,source_key) VALUES ($1,$2,1,'REQUESTED',$3,$4) "+
-        "ON CONFLICT (source_key) DO UPDATE SET status='REQUESTED',requested_quantity=1,notes=EXCLUDED.notes",
-        [m.preorder_product_id,customer.id,'Discord reaction by '+(discordUsername||discordUserId),sourceKey]
+    const db=await pool.connect();
+    try{
+      await db.query('BEGIN');
+      const mapped=await db.query(
+        "SELECT m.*,pp.item_description,pp.gw_single_item_name,pp.gw_case_pack_size FROM preorder_discord_messages m JOIN preorder_products pp ON pp.id=m.preorder_product_id WHERE m.message_id=$1",
+        [messageId]
       );
-      await pool.query(
-        "INSERT INTO notifications (preorder_campaign_id,customer_id,channel,recipient,status,message,not_before) "+
-        "VALUES ($1,$2,'DISCORD_GW_ORDER_CONFIRMATION',$3,'PENDING','GW preorder confirmation',now()+interval '10 minutes') "+
-        "ON CONFLICT (preorder_campaign_id,customer_id,channel) WHERE preorder_campaign_id IS NOT NULL AND customer_id IS NOT NULL AND channel='DISCORD_GW_ORDER_CONFIRMATION' AND status IN ('PENDING','QUEUED') "+
-        "DO UPDATE SET status='PENDING',not_before=now()+interval '10 minutes',error=NULL",
-        [m.preorder_campaign_id,customer.id,discordUserId]
+      const m=mapped.rows[0];
+      if(!m){
+        await db.query('ROLLBACK');
+        return res.status(404).json({error:'Discord message is not mapped to a GW preorder item.'});
+      }
+      const customerResult=await db.query(
+        "SELECT id,name,discord_user_id FROM customers WHERE discord_user_id=$1 LIMIT 1",
+        [discordUserId]
       );
-    }else{
-      const priorConfirmation=await pool.query(
-        "SELECT id FROM notifications WHERE preorder_campaign_id=$1 AND customer_id=$2 AND channel='DISCORD_GW_ORDER_CONFIRMATION' AND status='SENT' LIMIT 1",
-        [m.preorder_campaign_id,customer.id]
+      const customer=customerResult.rows[0]||null;
+      await db.query(
+        "INSERT INTO preorder_discord_reactions (preorder_campaign_id,preorder_product_id,message_id,discord_user_id,discord_username,customer_id,action) VALUES ($1,$2,$3,$4,$5,$6,$7)",
+        [m.preorder_campaign_id,m.preorder_product_id,messageId,discordUserId,discordUsername||null,customer?.id||null,action]
       );
-      await pool.query("UPDATE preorder_requests SET status='CANCELLED',notes=COALESCE(notes,'')||' | Discord reaction removed' WHERE source_key=$1",[sourceKey]);
-      if(priorConfirmation.rows[0]){
-        const removed=(m.gw_case_pack_size>1?(m.gw_single_item_name||m.item_description):m.item_description);
-        await pool.query(
-          "INSERT INTO notifications (preorder_campaign_id,customer_id,channel,recipient,status,message,metadata,not_before) "+
-          "VALUES ($1,$2,'DISCORD_GW_ORDER_UPDATE',$3,'PENDING','GW preorder update',$4::jsonb,now()) "+
-          "ON CONFLICT (preorder_campaign_id,customer_id,channel) WHERE preorder_campaign_id IS NOT NULL AND customer_id IS NOT NULL AND channel='DISCORD_GW_ORDER_UPDATE' AND status IN ('PENDING','QUEUED') "+
-          "DO UPDATE SET status='PENDING',metadata=EXCLUDED.metadata,not_before=now(),error=NULL",
-          [m.preorder_campaign_id,customer.id,discordUserId,JSON.stringify({removed_item:removed})]
+      if(!customer){
+        await db.query('COMMIT');
+        return res.status(202).json({ok:true,matched_customer:false});
+      }
+      const sourceKey='discord-gw:'+messageId+':'+discordUserId;
+      if(action==='ADD'){
+        await db.query(
+          "INSERT INTO preorder_requests (preorder_product_id,customer_id,requested_quantity,status,notes,source_key) VALUES ($1,$2,1,'REQUESTED',$3,$4) "+
+          "ON CONFLICT (source_key) DO UPDATE SET status='REQUESTED',requested_quantity=1,notes=EXCLUDED.notes",
+          [m.preorder_product_id,customer.id,'Discord reaction by '+(discordUsername||discordUserId),sourceKey]
+        );
+        await db.query(
+          "INSERT INTO notifications (preorder_campaign_id,customer_id,channel,recipient,status,message,not_before) "+
+          "VALUES ($1,$2,'DISCORD_GW_ORDER_CONFIRMATION',$3,'PENDING','GW preorder confirmation',now()+interval '10 minutes') "+
+          "ON CONFLICT (preorder_campaign_id,customer_id,channel) WHERE preorder_campaign_id IS NOT NULL AND customer_id IS NOT NULL AND channel='DISCORD_GW_ORDER_CONFIRMATION' AND status IN ('PENDING','QUEUED') "+
+          "DO UPDATE SET status='PENDING',not_before=now()+interval '10 minutes',error=NULL",
+          [m.preorder_campaign_id,customer.id,discordUserId]
         );
       }else{
-        await pool.query("UPDATE notifications SET status='SUPPRESSED',suppression_reason='No current items after pre-confirmation removal',suppressed_at=now() WHERE preorder_campaign_id=$1 AND customer_id=$2 AND channel='DISCORD_GW_ORDER_CONFIRMATION' AND status IN ('PENDING','QUEUED') AND NOT EXISTS (SELECT 1 FROM preorder_requests pr JOIN preorder_products pp ON pp.id=pr.preorder_product_id WHERE pp.preorder_campaign_id=$1 AND pr.customer_id=$2 AND pr.status='REQUESTED')",[m.preorder_campaign_id,customer.id]);
+        const priorConfirmation=await db.query(
+          "SELECT id FROM notifications WHERE preorder_campaign_id=$1 AND customer_id=$2 AND channel='DISCORD_GW_ORDER_CONFIRMATION' AND status='SENT' LIMIT 1",
+          [m.preorder_campaign_id,customer.id]
+        );
+        await db.query(
+          "UPDATE preorder_requests SET status='CANCELLED',notes=COALESCE(notes,'')||' | Discord reaction removed' WHERE source_key=$1",
+          [sourceKey]
+        );
+        if(priorConfirmation.rows[0]){
+          const removed=(m.gw_case_pack_size>1?(m.gw_single_item_name||m.item_description):m.item_description);
+          await db.query(
+            "INSERT INTO notifications (preorder_campaign_id,customer_id,channel,recipient,status,message,metadata,not_before) "+
+            "VALUES ($1,$2,'DISCORD_GW_ORDER_UPDATE',$3,'PENDING','GW preorder update',$4::jsonb,now()) "+
+            "ON CONFLICT (preorder_campaign_id,customer_id,channel) WHERE preorder_campaign_id IS NOT NULL AND customer_id IS NOT NULL AND channel='DISCORD_GW_ORDER_UPDATE' AND status IN ('PENDING','QUEUED') "+
+            "DO UPDATE SET status='PENDING',metadata=EXCLUDED.metadata,not_before=now(),error=NULL",
+            [m.preorder_campaign_id,customer.id,discordUserId,JSON.stringify({removed_item:removed})]
+          );
+        }else{
+          await db.query(
+            "UPDATE notifications SET status='SUPPRESSED',suppression_reason='No current items after pre-confirmation removal',suppressed_at=now() WHERE preorder_campaign_id=$1 AND customer_id=$2 AND channel='DISCORD_GW_ORDER_CONFIRMATION' AND status IN ('PENDING','QUEUED') AND NOT EXISTS (SELECT 1 FROM preorder_requests pr JOIN preorder_products pp ON pp.id=pr.preorder_product_id WHERE pp.preorder_campaign_id=$1 AND pr.customer_id=$2 AND pr.status='REQUESTED')",
+            [m.preorder_campaign_id,customer.id]
+          );
+        }
       }
+      await db.query('COMMIT');
+      res.json({ok:true,matched_customer:true,customer_id:customer.id,action});
+    }catch(error){
+      await db.query('ROLLBACK').catch(()=>{});
+      console.error('[special-orders] GW Discord reaction processing failed:',error);
+      res.status(500).json({error:'GW Discord reaction processing failed.'});
+    }finally{
+      db.release();
     }
-    res.json({ok:true,matched_customer:true,customer_id:customer.id,action});
   });
   router.get('/preorders/gw/campaigns/:id/discord-preview', requireDb, async (req,res)=>{
     try{
