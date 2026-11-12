@@ -15,7 +15,7 @@ const routine = new Set([
   'inventory.read', 'sales.read', 'store-credit.read',
   'special-orders.read', 'ordering.read', 'consignment.read',
   'special-orders.notes.write', 'special-orders.routing.write',
-  'ordering.draft.write',
+  'special-orders.status.progress', 'ordering.draft.write',
   'timeclock.self.read', 'timeclock.self.clock'
 ]);
 const denied = error => error?.code === 'HC_STAFF_ACCESS_DENIED' && error.status === 403;
