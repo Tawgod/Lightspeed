@@ -23,6 +23,7 @@ import { createScannerIsolatedTestWriter } from './services/scannerIsolatedTestW
 import { createStaffAuthGateway } from './services/staffAuthGateway.js';
 import { createAdminNavigationAccessRouter, createAdminNavigationGrantReader, verifyAdminNavigationReadOnlyDatabase } from './services/security/adminNavigationAccess.js';
 import {createPublicBasePathMiddleware,normalizePublicBasePath,normalizePublicLandingPath,publicUrl} from './services/publicBasePath.js';
+import {createIsolatedStagingCoreAdmission} from './services/security/coreOperationsStagingActivation.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -268,8 +269,12 @@ app.get('/gw-preorders-client.js', (req, res) => {
   res.type('application/javascript').sendFile(path.join(__dirname, 'gw-preorders-client.js'));
 });
 
+// Only the isolated Railway staging app may opt into this zero-grant guard.
+// Synthetic fixture identities are NEVER created in this public process.
+const STAGING_CORE_ADMISSION = createIsolatedStagingCoreAdmission({env:process.env});
 app.use('/api/special-orders', createSpecialOrdersRouter({
   verifyEmployee: req => verifyStaffEmployee(req),
+  coreOperationsAdmission: STAGING_CORE_ADMISSION,
   lightspeedDomain: LIGHTSPEED_DOMAIN,
   lightspeedToken: LIGHTSPEED_TOKEN,
   adminKey: process.env.SPECIAL_ORDERS_ADMIN_KEY,

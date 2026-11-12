@@ -19,8 +19,10 @@ test('combined foundation retains security transaction and default-unmounted gua
  assert.match(server,/createPublicBasePathMiddleware\(PUBLIC_BASE_PATH\)/);
  assert.match(server,/createAdminNavigationAccessRouter/);
  assert.match(server,/createSpecialOrdersRouter\(/);
- assert.doesNotMatch(server,/coreOperationsAdmission\s*:/,
-   'Combined integration must never silently mount the unapproved security gate');
+ assert.match(server,/createIsolatedStagingCoreAdmission\(\{env:process\.env\}\)/,
+   'Stage-only guard must be created by trusted server configuration');
+ assert.match(server,/coreOperationsAdmission:\s*STAGING_CORE_ADMISSION/,
+   'Guard must be passed before the Special Orders router registers its routes');
 });
 
 test('Priority Review is present in backend, page and pending inventory with no automatic grant',()=>{
