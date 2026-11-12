@@ -9,12 +9,14 @@ on:
       - 'services/security/coreOperationsBrowserCallerInventory.js'
       - 'services/security/adminNavigationAccess.js'
       - 'services/security/coreOperationsStagingActivation.js'
+      - 'services/security/coreOperationsEmployeeDraftAudit.js'
       - 'shared-ui/**'
       - '*-client.js'
       - '*.html'
       - 'tests/shared-foundation-composition-contract.test.mjs'
       - 'tests/core-operations-staging-activation.test.mjs'
       - 'tests/core-operations-employee-acceptance.test.mjs'
+      - 'tests/core-operations-employee-draft-audit.test.mjs'
       - 'tests/public-base-path.test.mjs'
       - 'tests/*navigation*.test.mjs'
       - 'tests/store-operations-dashboard.test.mjs'
@@ -35,6 +37,7 @@ jobs:
         run: |
           node --check server.js
           node --check services/security/coreOperationsStagingActivation.js
+          node --check services/security/coreOperationsEmployeeDraftAudit.js
           node --check tests/core-operations-staging-activation.test.mjs
           node --check special-orders.js
           node --check services/publicBasePath.js
@@ -49,6 +52,7 @@ jobs:
             tests/shared-foundation-composition-contract.test.mjs \
             tests/core-operations-staging-activation.test.mjs \
             tests/core-operations-employee-acceptance.test.mjs \
+            tests/core-operations-employee-draft-audit.test.mjs \
             tests/public-base-path.test.mjs \
             tests/hierarchical-navigation.test.mjs \
             tests/hierarchical-navigation-admin.test.mjs \
