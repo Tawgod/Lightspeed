@@ -1,5 +1,9 @@
 import { TOOL_OPERATIONS } from './adminPermissionCatalog.js';
 import { CORE_OPERATIONS_ROUTE_INVENTORY } from './coreOperationsRouteInventory.js';
+import {
+  classifyRequestedStatus, STATUS_PROGRESS_OPERATION,
+  STATUS_SENSITIVE_OPERATION, STATUS_POLICY_VERSION
+} from './coreOperationsStatusTransitions.js';
 
 // Development-only, unmounted authorization boundary for the Core Operations
 // router. No existing route is permitted unless trusted server configuration
@@ -35,9 +39,24 @@ function compiledApproval(route) {
   // employee-security operations, even if they exist in the Admin catalog.
   if (route.audience === 'employee' ? !TOOL_OPERATIONS.includes(route.operation)
     : !SERVICE_OPERATION.test(route.operation)) throw new TypeError('Unrecognized tool operation.');
+
+  const statusRoute = route.source === 'special-orders.js' &&
+    route.method === 'PATCH' && route.path === '/items/:id/status' &&
+    route.audience === 'employee';
+  if (route.statusPolicy !== undefined && (
+      route.statusPolicy !== STATUS_POLICY_VERSION || !statusRoute ||
+      route.operation !== STATUS_SENSITIVE_OPERATION
+  )) throw new TypeError('A status policy can only apply to the exact employee status route.');
+  // This routine operation is intentionally prohibited as a static route
+  // approval: request-body classification and locked DB-origin validation
+  // MUST both run to prevent privilege downgrades.
+  if (route.operation === STATUS_PROGRESS_OPERATION) {
+    throw new TypeError('Routine status updates require the transition classifier.');
+  }
   return Object.freeze({
     source: route.source, method: route.method, path: route.path,
     audience: route.audience, operation: route.operation,
+    statusPolicy: route.statusPolicy || null,
     pattern: routePattern(route.path)
   });
 }
@@ -88,14 +107,22 @@ export function createCoreOperationsRouteAdmission({
 
     if (route.audience === 'employee') {
       if (typeof staffAccess?.authorize !== 'function') throw DENIED();
+      // Exact owner-configured split on this one endpoint only. The
+      // request controls the proposed target, NOT the backend permission:
+      // staffAccess still checks the separately granted operation + factor.
+      const transition = route.statusPolicy === STATUS_POLICY_VERSION
+        ? classifyRequestedStatus(request.body) : null;
+      if (route.statusPolicy && !transition) throw DENIED();
+      const operation = transition?.operation || route.operation;
       let admitted;
-      try { admitted = await staffAccess.authorize({request, action: route.operation}); }
+      try { admitted = await staffAccess.authorize({request, action: operation}); }
       catch { throw DENIED(); }
-      if (admitted?.operation !== route.operation ||
+      if (admitted?.operation !== operation ||
           !/^[0-9]{1,18}$/.test(String(admitted?.employeeId || ''))) throw DENIED();
       return Object.freeze({
         principal: 'employee', identityId: String(admitted.employeeId),
-        operation: route.operation, assurance: admitted.assurance
+        operation, assurance: admitted.assurance,
+        ...(transition ? { statusTarget: transition.status } : {})
       });
     }
 
