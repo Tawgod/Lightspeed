@@ -16,6 +16,9 @@ const METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
 const SOURCE = new Set(['special-orders.js', 'routes/specialOrderProducts.js']);
 const SERVICE_OPERATION = /^service\.[a-z][a-z0-9.-]{2,95}$/;
 const SERVICE_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
+const ALLOCATION_REFRESH_POLICY_VERSION = 'allocation-refresh-v1';
+const ALLOCATION_REFRESH_OPERATION = 'special-orders.purchase-metrics.refresh';
+const ALLOCATION_REFRESH_ROUTE = '/preorders/products/:id/allocation-suggestions';
 
 function routePattern(template) {
   if (typeof template !== 'string' || !template.startsWith('/')) throw new TypeError('Invalid route.');
@@ -47,6 +50,18 @@ function compiledApproval(route) {
       route.statusPolicy !== STATUS_POLICY_VERSION || !statusRoute ||
       route.operation !== STATUS_SENSITIVE_OPERATION
   )) throw new TypeError('A status policy can only apply to the exact employee status route.');
+  const allocationRoute = route.source === 'special-orders.js' &&
+    route.method === 'GET' && route.path === ALLOCATION_REFRESH_ROUTE &&
+    route.audience === 'employee' && route.operation === 'special-orders.read';
+  if (route.queryPolicy !== undefined &&
+      (route.queryPolicy !== ALLOCATION_REFRESH_POLICY_VERSION || !allocationRoute)) {
+    throw new TypeError('Allocation refresh query policy applies only to the exact staff read.');
+  }
+  // A broad read approval on this route must never permit the side-effecting
+  // refresh_lightspeed=1 option without a separate stronger operation.
+  if (allocationRoute && route.queryPolicy !== ALLOCATION_REFRESH_POLICY_VERSION) {
+    throw new TypeError('Allocation read requires explicit side-effect query policy.');
+  }
   // This routine operation is intentionally prohibited as a static route
   // approval: request-body classification and locked DB-origin validation
   // MUST both run to prevent privilege downgrades.
@@ -57,6 +72,7 @@ function compiledApproval(route) {
     source: route.source, method: route.method, path: route.path,
     audience: route.audience, operation: route.operation,
     statusPolicy: route.statusPolicy || null,
+    queryPolicy: route.queryPolicy || null,
     pattern: routePattern(route.path)
   });
 }
@@ -113,7 +129,17 @@ export function createCoreOperationsRouteAdmission({
       const transition = route.statusPolicy === STATUS_POLICY_VERSION
         ? classifyRequestedStatus(request.body) : null;
       if (route.statusPolicy && !transition) throw DENIED();
-      const operation = transition?.operation || route.operation;
+      let isAllocationRefresh=false;
+      if (route.queryPolicy === ALLOCATION_REFRESH_POLICY_VERSION) {
+        const query=request.query;
+        const value=query?.refresh_lightspeed;
+        // Express may parse duplicate or nested query parameters as arrays/
+        // objects. Do not let an ambiguous representation select a read grant.
+        if (value !== undefined && typeof value !== 'string') throw DENIED();
+        isAllocationRefresh=value==='1';
+      }
+      const operation = transition?.operation ||
+        (isAllocationRefresh ? ALLOCATION_REFRESH_OPERATION : route.operation);
       let admitted;
       try { admitted = await staffAccess.authorize({request, action: operation}); }
       catch { throw DENIED(); }
