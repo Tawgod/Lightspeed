@@ -23,6 +23,7 @@ import { createScannerIsolatedTestWriter } from './services/scannerIsolatedTestW
 import { createStaffAuthGateway } from './services/staffAuthGateway.js';
 import { createAdminNavigationAccessRouter, createAdminNavigationGrantReader, verifyAdminNavigationReadOnlyDatabase } from './services/security/adminNavigationAccess.js';
 import {createPublicBasePathMiddleware,normalizePublicBasePath,normalizePublicLandingPath,publicUrl} from './services/publicBasePath.js';
+import {createIsolatedStagingZeroGrantGuard} from './services/security/stagingCoreOperationsGuard.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -268,11 +269,13 @@ app.get('/gw-preorders-client.js', (req, res) => {
   res.type('application/javascript').sendFile(path.join(__dirname, 'gw-preorders-client.js'));
 });
 
+const isolatedCoreOperationsAdmission=createIsolatedStagingZeroGrantGuard(process.env);
 app.use('/api/special-orders', createSpecialOrdersRouter({
   verifyEmployee: req => verifyStaffEmployee(req),
   lightspeedDomain: LIGHTSPEED_DOMAIN,
   lightspeedToken: LIGHTSPEED_TOKEN,
   adminKey: process.env.SPECIAL_ORDERS_ADMIN_KEY,
+  coreOperationsAdmission:isolatedCoreOperationsAdmission,
   liveMode: process.env.SPECIAL_ORDERS_LIVE_MODE === 'true',
   allowMigration: process.env.SPECIAL_ORDERS_ALLOW_MIGRATION === 'true',
   allowProductWrites: process.env.SPECIAL_ORDERS_ALLOW_PRODUCT_WRITES === 'true',

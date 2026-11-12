@@ -1,0 +1,25 @@
+name: HC isolated staging default-deny guard
+on:
+  push:
+    branches: ['feature/pr63-staging-zero-grant-guard-20261112']
+    paths:
+      - 'server.js'
+      - 'services/security/stagingCoreOperationsGuard.js'
+      - 'tests/staging-core-operations-zero-grant.test.mjs'
+      - '.github/workflows/staging-zero-grant.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Syntax and zero-grant real router security boundary
+        run: |
+          node --check server.js
+          node --test --test-concurrency=1 tests/staging-core-operations-zero-grant.test.mjs tests/core-operations-route-admission.test.mjs tests/core-operations-route-seam.test.mjs
