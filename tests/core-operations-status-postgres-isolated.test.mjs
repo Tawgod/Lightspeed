@@ -64,6 +64,21 @@ test('disposable PostgreSQL 18: guarded status change, locked state, audit and n
         [id,customerId,'DISPOSABLE_TEST','local-only@example.invalid',status,'Fixture only']
       );
     }
+    async function addDiscordNotification(id,status='SENDING'){
+      const {rows}=await db.query(
+        'INSERT INTO notifications (special_order_item_id,customer_id,channel,recipient,status,message) '+
+        'VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
+        [id,customerId,'DISCORD_READY','fixture-discord-user',status,'Fixture Discord ready message']
+      );
+      return rows[0].id;
+    }
+    async function notificationById(id){
+      const {rows}=await db.query(
+        'SELECT status,external_message_id,sent_at,error FROM notifications WHERE id=$1',[id]
+      );
+      assert.equal(rows.length,1);
+      return rows[0];
+    }
     async function state(id){
       const {rows}=await db.query(
         'SELECT status,ordered_at,received_at,completed_at,cancelled_at FROM special_order_items WHERE id=$1',
@@ -105,8 +120,16 @@ test('disposable PostgreSQL 18: guarded status change, locked state, audit and n
         source:'special-orders.js',method:'PATCH',path:'/items/:id/status',
         audience:'employee',operation:STATUS_SENSITIVE_OPERATION,
         statusPolicy:STATUS_POLICY_VERSION
+      },{
+        source:'special-orders.js',method:'POST',path:'/notifications/:id/complete-discord',
+        audience:'service',operation:'service.notifications.complete-discord'
       }],
-      staffAccess:staff
+      staffAccess:staff,
+      verifyServiceRequest:async request=>request.get('x-fixture-service')==='discord-delivery'
+        ? {type:'service',id:'discord-delivery',active:true}:null,
+      checkServiceGrant:async ({identity,operation})=>
+        identity.id==='discord-delivery' &&
+        operation==='service.notifications.complete-discord'
     });
     const app=express();
     app.use(express.json({limit:'32kb'}));
@@ -137,6 +160,25 @@ test('disposable PostgreSQL 18: guarded status change, locked state, audit and n
       );
       const data=await response.json();
       return {status:response.status,body:data};
+    }
+    async function completeDiscord(notificationId,{success=true,externalId='fixture-message-1'}={}){
+      const response=await fetch(
+        'http://127.0.0.1:'+server.address().port+
+          '/api/special-orders/notifications/'+notificationId+'/complete-discord',
+        {
+          method:'POST',
+          headers:{
+            'content-type':'application/json',
+            'x-fixture-service':'discord-delivery',
+            'x-hobby-corner-key':'fixture-legacy-key-not-auth'
+          },
+          body:JSON.stringify(success
+            ? {success:true,external_message_id:externalId}
+            : {success:false,error:'fixture send failure'})
+        }
+      );
+      const body=await response.json();
+      return {status:response.status,body};
     }
 
     await t.test('routine progress writes one DB history row with verified employee, no notification side effect',async()=>{
@@ -265,6 +307,58 @@ test('disposable PostgreSQL 18: guarded status change, locked state, audit and n
         await locker.query('ROLLBACK').catch(()=>{});
         await locker.end();
       }
+    });
+
+    await t.test('scoped Discord service completion atomically marks notification sent and records verified service actor',async()=>{
+      const id=await newItem('RECEIVED');
+      const notificationId=await addDiscordNotification(id,'SENDING');
+      const outcome=await completeDiscord(notificationId,{externalId:'fixture-discord-message'});
+      assert.equal(outcome.status,200,JSON.stringify(outcome.body));
+      const notification=await notificationById(notificationId);
+      assert.equal(notification.status,'SENT');
+      assert.equal(notification.external_message_id,'fixture-discord-message');
+      assert.ok(notification.sent_at);
+      assert.equal((await state(id)).status,'CUSTOMER_NOTIFIED');
+      assert.deepEqual(await history(id),[{
+        old_status:'RECEIVED',new_status:'CUSTOMER_NOTIFIED',
+        changed_by:'service:discord-delivery'
+      }]);
+    });
+
+    await t.test('Discord completion history failure rolls notification and item status back atomically',async()=>{
+      const id=await newItem('RECEIVED');
+      const notificationId=await addDiscordNotification(id,'SENDING');
+      const functionName='hc_fixture_reject_discord_history';
+      await db.query(
+        "CREATE FUNCTION "+functionName+"() RETURNS trigger LANGUAGE plpgsql "+
+        "AS 'BEGIN IF NEW.note = ''Discord ready notification sent'' THEN "+
+        "RAISE EXCEPTION ''fixture induced Discord history failure''; END IF; RETURN NEW; END;'"
+      );
+      await db.query(
+        "CREATE TRIGGER hc_fixture_block_discord_history BEFORE INSERT ON order_status_history "+
+        "FOR EACH ROW EXECUTE FUNCTION "+functionName+"()"
+      );
+      try{
+        const failed=await completeDiscord(notificationId,{externalId:'should-rollback'});
+        assert.equal(failed.status,500,JSON.stringify(failed.body));
+        const notification=await notificationById(notificationId);
+        assert.equal(notification.status,'SENDING');
+        assert.equal(notification.external_message_id,null);
+        assert.equal(notification.sent_at,null);
+        assert.equal((await state(id)).status,'RECEIVED');
+        assert.deepEqual(await history(id),[]);
+      }finally{
+        await db.query('DROP TRIGGER IF EXISTS hc_fixture_block_discord_history ON order_status_history');
+        await db.query('DROP FUNCTION IF EXISTS '+functionName+'()');
+      }
+      const retried=await completeDiscord(notificationId,{externalId:'fixture-retry-message'});
+      assert.equal(retried.status,200,JSON.stringify(retried.body));
+      assert.equal((await notificationById(notificationId)).status,'SENT');
+      assert.equal((await state(id)).status,'CUSTOMER_NOTIFIED');
+      assert.deepEqual(await history(id),[{
+        old_status:'RECEIVED',new_status:'CUSTOMER_NOTIFIED',
+        changed_by:'service:discord-delivery'
+      }]);
     });
 
     await t.test('unrecognized target and static old key cannot mutate any row',async()=>{
