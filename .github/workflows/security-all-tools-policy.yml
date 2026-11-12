@@ -12,6 +12,8 @@ on:
       - 'tests/core-operations-route-admission.test.mjs'
       - 'services/security/coreOperationsProvisionalScopes.js'
       - 'tests/core-operations-provisional-scopes.test.mjs'
+      - 'services/security/coreOperationsStatusTransitions.js'
+      - 'tests/core-operations-status-transitions.test.mjs'
       - 'services/security/coreOperationsAuditActor.js'
       - 'tests/core-operations-audit-actor.test.mjs'
       - 'tests/core-operations-route-seam.test.mjs'
@@ -41,6 +43,8 @@ on:
       - 'tests/core-operations-route-admission.test.mjs'
       - 'services/security/coreOperationsProvisionalScopes.js'
       - 'tests/core-operations-provisional-scopes.test.mjs'
+      - 'services/security/coreOperationsStatusTransitions.js'
+      - 'tests/core-operations-status-transitions.test.mjs'
       - 'services/security/coreOperationsAuditActor.js'
       - 'tests/core-operations-audit-actor.test.mjs'
       - 'tests/core-operations-route-seam.test.mjs'
@@ -108,12 +112,15 @@ jobs:
           node --check tests/core-operations-route-admission.test.mjs
           node --check tests/core-operations-route-seam.test.mjs
           node --check tests/core-operations-provisional-scopes.test.mjs
+          node --check services/security/coreOperationsStatusTransitions.js
+          node --check tests/core-operations-status-transitions.test.mjs
           node --check services/security/coreOperationsAuditActor.js
           node --check tests/core-operations-audit-actor.test.mjs
           node --test --test-concurrency=1 \
             tests/core-operations-route-admission.test.mjs \
             tests/core-operations-route-seam.test.mjs \
             tests/core-operations-provisional-scopes.test.mjs \
+            tests/core-operations-status-transitions.test.mjs \
             tests/core-operations-audit-actor.test.mjs
       - name: Verify Special Orders health metadata and legacy auth compatibility
         run: node --test --test-concurrency=1 tests/special-orders-auth-metadata.test.mjs
