@@ -4006,8 +4006,8 @@ export function createSpecialOrdersRouter({
       if(oldStatus && oldStatus!=='COMPLETED'){
         await pool.query("UPDATE special_order_items SET status='CUSTOMER_NOTIFIED',updated_at=now() WHERE id=$1",[rows[0].special_order_item_id]);
         await pool.query(
-          "INSERT INTO order_status_history (special_order_item_id,old_status,new_status,note,changed_by) VALUES ($1,$2,'CUSTOMER_NOTIFIED','Discord ready notification sent','discord-bot')",
-          [rows[0].special_order_item_id,oldStatus]
+          "INSERT INTO order_status_history (special_order_item_id,old_status,new_status,note,changed_by) VALUES ($1,$2,'CUSTOMER_NOTIFIED','Discord ready notification sent',$3)",
+          [rows[0].special_order_item_id,oldStatus,auditActor(req,'discord-bot')]
         );
       }
     }
