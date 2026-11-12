@@ -36,6 +36,9 @@ on:
       - '.github/workflows/security-all-tools-policy.yml'
   pull_request:
     paths:
+      - 'server.js'
+      - 'services/security/stagingCoreOperationsGuard.js'
+      - 'tests/staging-core-operations-zero-grant.test.mjs'
       - 'services/security/staffAccessBaseline.js'
       - 'services/security/adminPermissionCatalog.js'
       - 'tests/security-all-tools-operations.test.mjs'
@@ -129,5 +132,10 @@ jobs:
             tests/core-operations-service-proposals.test.mjs \
             tests/core-operations-status-transitions.test.mjs \
             tests/core-operations-audit-actor.test.mjs
+      - name: Verify explicitly isolated staging guard denies all ungranted business routes
+        run: |
+          node --check server.js
+          node --check services/security/stagingCoreOperationsGuard.js
+          node --test --test-concurrency=1 tests/staging-core-operations-zero-grant.test.mjs
       - name: Verify Special Orders health metadata and legacy auth compatibility
         run: node --test --test-concurrency=1 tests/special-orders-auth-metadata.test.mjs
