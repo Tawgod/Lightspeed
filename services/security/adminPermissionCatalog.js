@@ -35,7 +35,7 @@ export const TOOL_OPERATIONS=Object.freeze([
  'special-orders.notes.write','special-orders.routing.write',
  'special-orders.status.progress','special-orders.status.write',
  'special-orders.create','special-orders.delete',
- 'special-orders.notifications.send',
+ 'special-orders.notifications.stage','special-orders.notifications.send',
  'preorders.allocate','preorders.publish',
  'ordering.read','ordering.manage',
  'ordering.draft.write','ordering.receive','ordering.vendor.push',

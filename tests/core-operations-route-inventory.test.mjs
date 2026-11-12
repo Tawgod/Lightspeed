@@ -129,3 +129,26 @@ test('supplier add-items inventory reflects its locked DRAFT-only write boundary
   assert.match(handler,/FOR UPDATE/);
   assert.match(handler,/DRAFT/);
 });
+
+
+test('ready notification route stages PENDING work and delivery worker excludes PENDING',()=>{
+  const route=routeMap.get(keyOf('POST','/items/:id/notifications/ready'));
+  assert.ok(route);
+  assert.equal(route.kind,'notification-stage-pending');
+  assert.equal(route.operation,'special-orders.notifications.stage');
+  const source=readFileSync(new URL('../special-orders.js', import.meta.url),'utf8');
+  const stageStart=source.indexOf("router.post('/items/:id/notifications/ready'");
+  const stageEnd=source.indexOf("router.patch('/items/:id'",stageStart);
+  assert.ok(stageStart>=0&&stageEnd>stageStart);
+  const stage=source.slice(stageStart,stageEnd);
+  assert.match(stage,/channel,recipient,status,message/);
+  assert.match(stage,/DISCORD_READY[^\n]*PENDING/);
+
+  const workerStart=source.indexOf("router.get('/notifications/discord-delivery'");
+  const workerEnd=source.indexOf("router.post('/notifications/:id/claim-discord'",workerStart);
+  assert.ok(workerStart>=0&&workerEnd>workerStart);
+  const worker=source.slice(workerStart,workerEnd);
+  assert.match(worker,/n\.status='QUEUED'/);
+  assert.match(worker,/n\.status='SENDING'/);
+  assert.doesNotMatch(worker,/n\.status='PENDING'/);
+});

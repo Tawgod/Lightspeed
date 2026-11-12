@@ -245,3 +245,10 @@ The review-only admission candidate requires `bodyPolicy: 'customer-profile-sync
 The supplier-order editing routes are not equivalent merely because they currently share `ordering.manage`. `POST /supplier-orders/:id/items` opens a database transaction, locks the parent supplier order with `SELECT ... FOR UPDATE`, and rechecks that its status is `DRAFT` before inserting lines. It is therefore a review-pending candidate for the existing exact routine `ordering.draft.write` operation.
 
 By contrast, `PATCH /supplier-orders/:id`, `PATCH /supplier-order-items/:id`, and `DELETE /supplier-order-items/:id` read the DRAFT state before a later mutation without locking the parent row in the same transaction. They stay outside the routine draft proposal until their state check is made race-safe or they remain under stronger authorization. `PATCH /supplier-order-items/:id/source-link` has no DRAFT-state restriction at all and also remains conservative. This policy review changes no handler behavior and grants no route.
+
+
+## Ready-notification staging vs delivery approval — 2026-11-12
+
+`POST /items/:id/notifications/ready` does not itself queue a message for the Discord delivery worker. Under a row lock it validates the item state and customer destination, deduplicates existing work, and inserts a `DISCORD_READY` notification in `PENDING` status. The Discord delivery endpoint only returns `QUEUED` work or expired `SENDING` leases. A separate `PATCH /notifications/:id/review` acknowledgement is what creates/updates `QUEUED` delivery.
+
+The candidate policy therefore separates these effects. Ready-notification creation is review-pending `special-orders.notifications.stage` with routine verified-station assurance plus its own exact grant. Employee review/queueing remains `special-orders.notifications.send` with strong step-up and its independent exact grant. Either grant alone cannot authorize the other route. Source-drift tests pin the PENDING-vs-QUEUED boundary. No message was sent and no production notification behavior changed.

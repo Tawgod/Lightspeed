@@ -37,7 +37,7 @@ export const CORE_OPERATIONS_ROUTE_INVENTORY = Object.freeze([
   Object.freeze({"source":"special-orders.js","method":"GET","path":"/orders","kind":"read","caller":"staff-candidate","operation":"special-orders.read","review":"pending"}),
   Object.freeze({"source":"special-orders.js","method":"POST","path":"/orders","kind":"local-write","caller":"staff-candidate","operation":"special-orders.manage","review":"pending"}),
   Object.freeze({"source":"special-orders.js","method":"POST","path":"/orders/:id/items","kind":"local-write","caller":"staff-candidate","operation":"special-orders.manage","review":"pending"}),
-  Object.freeze({"source":"special-orders.js","method":"POST","path":"/items/:id/notifications/ready","kind":"external-side-effect","caller":"staff-or-service-unknown","operation":"special-orders.manage","review":"pending"}),
+  Object.freeze({"source":"special-orders.js","method":"POST","path":"/items/:id/notifications/ready","kind":"notification-stage-pending","caller":"staff-candidate","operation":"special-orders.notifications.stage","review":"pending"}),
   Object.freeze({"source":"special-orders.js","method":"PATCH","path":"/items/:id","kind":"local-write","caller":"staff-candidate","operation":"special-orders.manage","review":"pending"}),
   Object.freeze({"source":"special-orders.js","method":"DELETE","path":"/items/:id","kind":"local-write","caller":"staff-candidate","operation":"special-orders.manage","review":"pending"}),
   Object.freeze({"source":"special-orders.js","method":"PATCH","path":"/items/:id/notes","kind":"local-write","caller":"staff-candidate","operation":"special-orders.manage","review":"pending"}),

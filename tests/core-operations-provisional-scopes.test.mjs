@@ -12,7 +12,8 @@ import {createCoreOperationsRouteAdmission}
   from '../services/security/coreOperationsRouteAdmission.js';
 
 const routine=['special-orders.notes.write','special-orders.routing.write','ordering.draft.write',
-  'ordering.draft.write','ordering.suppliers.sync','ordering.suppliers.sync',
+  'ordering.draft.write','special-orders.notifications.stage',
+  'ordering.suppliers.sync','ordering.suppliers.sync',
   'ordering.context.refresh','customers.profile.write'];
 const now=Date.parse('2026-11-11T21:45:00Z');
 const reject=error=>error?.status===403 && error?.code==='HC_CORE_OPERATIONS_FORBIDDEN';
@@ -42,8 +43,8 @@ const inventory=new Map(CORE_OPERATIONS_ROUTE_INVENTORY.map(x=>[coreOperationsRo
 
 test('every proposed split scope is known, uses an exact existing route, stays PENDING and has no duplicate method/path',()=>{
   assert.ok(Object.isFrozen(CORE_OPERATIONS_PROVISIONAL_SCOPES));
-  assert.equal(CORE_OPERATIONS_PROVISIONAL_SCOPES.length,19);
-  assert.equal(new Set(CORE_OPERATIONS_PROVISIONAL_SCOPES.map(coreOperationsRouteKey)).size,19);
+  assert.equal(CORE_OPERATIONS_PROVISIONAL_SCOPES.length,20);
+  assert.equal(new Set(CORE_OPERATIONS_PROVISIONAL_SCOPES.map(coreOperationsRouteKey)).size,20);
   const reviews=reviewProvisionalScopes();
   for(const route of reviews){
     assert.ok(Object.isFrozen(route));
@@ -160,4 +161,30 @@ test('only the row-locked supplier-order add-items route joins routine draft edi
     const candidate=CORE_OPERATIONS_PROVISIONAL_SCOPES.find(x=>x.path===path);
     assert.equal(candidate,undefined,path+' remains conservative pending locked-state review');
   }
+});
+
+
+test('notification staging is routine and cannot authorize the separate delivery-queue approval',async()=>{
+  const stage=CORE_OPERATIONS_PROVISIONAL_SCOPES.find(x=>x.path==='/items/:id/notifications/ready');
+  const send=CORE_OPERATIONS_PROVISIONAL_SCOPES.find(x=>x.path==='/notifications/:id/review');
+  assert.ok(stage&&send);
+  assert.equal(stage.operation,'special-orders.notifications.stage');
+  assert.equal(stage.assurance,'staff-device');
+  assert.equal(send.operation,'special-orders.notifications.send');
+  assert.equal(send.assurance,'step-up');
+
+  const onlyStage=createCoreOperationsRouteAdmission({
+    approvedRoutes:[stage,send].map(approval),
+    staffAccess:staff(new Set([stage.operation]))
+  });
+  const staged=await onlyStage.authorize({request:request('POST','/items/44/notifications/ready','station')});
+  assert.equal(staged.operation,stage.operation);
+  await assert.rejects(onlyStage.authorize({request:request('PATCH','/notifications/9/review','passkey')}),reject);
+
+  const onlySend=createCoreOperationsRouteAdmission({
+    approvedRoutes:[stage,send].map(approval),
+    staffAccess:staff(new Set([send.operation]))
+  });
+  await assert.rejects(onlySend.authorize({request:request('POST','/items/44/notifications/ready','passkey')}),reject);
+  assert.equal((await onlySend.authorize({request:request('PATCH','/notifications/9/review','passkey')})).operation,send.operation);
 });
