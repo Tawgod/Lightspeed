@@ -32,7 +32,8 @@ export const TOOL_OPERATIONS=Object.freeze([
  // for staging tests, but NO staff grants, UI options or route allowlist are
  // activated by their mere presence. Owner review remains required.
  'special-orders.notes.write','special-orders.routing.write',
- 'special-orders.status.write','special-orders.create','special-orders.delete',
+ 'special-orders.status.progress','special-orders.status.write',
+ 'special-orders.create','special-orders.delete',
  'special-orders.notifications.send',
  'preorders.allocate','preorders.publish',
  'ordering.read','ordering.manage',
