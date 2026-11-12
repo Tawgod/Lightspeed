@@ -90,6 +90,53 @@ test('protected staff write requires fresh, bound passkey and exact write grant,
   })}),denied);
 });
 
+test('allocation suggestions refresh query demands exact strong grant but ordinary viewing remains routine',async()=>{
+  const allocation={
+    source:'special-orders.js',method:'GET',
+    path:'/preorders/products/:id/allocation-suggestions',
+    audience:'employee',operation:'special-orders.read',
+    queryPolicy:'allocation-refresh-v1'
+  };
+  assert.throws(()=>createCoreOperationsRouteAdmission({
+    approvedRoutes:[{...allocation,queryPolicy:undefined}]
+  }),TypeError);
+  assert.throws(()=>createCoreOperationsRouteAdmission({
+    approvedRoutes:[{...readApproval,queryPolicy:'allocation-refresh-v1'}]
+  }),TypeError);
+  const gate=createCoreOperationsRouteAdmission({
+    approvedRoutes:[allocation],
+    staffAccess:staffAccess({grants:new Set([
+      'special-orders.read','special-orders.purchase-metrics.refresh'
+    ])})
+  });
+  const headers={authorization:'Bearer signed-staff','x-fixture-proof':'station'};
+  const normal=req('GET','/preorders/products/19/allocation-suggestions',headers);
+  normal.query={};
+  assert.equal((await gate.authorize({request:normal})).operation,'special-orders.read');
+
+  const refresh=req('GET','/preorders/products/19/allocation-suggestions',headers);
+  refresh.query={refresh_lightspeed:'1'};
+  await assert.rejects(gate.authorize({request:refresh}),denied);
+  refresh.headers['x-fixture-proof']='totp';
+  await assert.rejects(gate.authorize({request:refresh}),denied);
+  refresh.headers['x-fixture-proof']='passkey';
+  const admitted=await gate.authorize({request:refresh});
+  assert.equal(admitted.operation,'special-orders.purchase-metrics.refresh');
+  assert.equal(admitted.assurance,'step-up');
+
+  const noRefreshGrant=createCoreOperationsRouteAdmission({
+    approvedRoutes:[allocation],staffAccess:staffAccess({
+      grants:new Set(['special-orders.read'])
+    })
+  });
+  await assert.rejects(noRefreshGrant.authorize({request:refresh}),denied);
+  for(const value of [['1'],{value:'1'}]){
+    const ambiguous=req('GET','/preorders/products/19/allocation-suggestions',refresh.headers);
+    ambiguous.query={refresh_lightspeed:value};
+    await assert.rejects(gate.authorize({request:ambiguous}),denied);
+  }
+});
+
 test('service action requires a separate validated machine credential plus exact backend service operation grant',async()=>{
   const seen=[];
   const gate=createCoreOperationsRouteAdmission({
