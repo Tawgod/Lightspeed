@@ -2115,8 +2115,8 @@ export function createSpecialOrdersRouter({
         const submitted=Math.max(0,Number(p.requested_total||0)+Number(p.store_order_quantity||0));
         await client.query(`
           UPDATE preorder_products
-          SET submitted_quantity=$1,ordered_quantity=$1,
-              submitted_value=CASE WHEN msrp IS NULL THEN NULL ELSE $1*msrp END
+          SET submitted_quantity=$1::integer,ordered_quantity=$1::integer,
+              submitted_value=CASE WHEN msrp IS NULL THEN NULL ELSE $1::integer*msrp END
           WHERE id=$2
         `,[submitted,p.id]);
       }
