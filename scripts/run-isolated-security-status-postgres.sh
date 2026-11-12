@@ -65,7 +65,9 @@ fi
 # Unset inherited database/provider credentials. Only a validated localhost
 # fixture URL is available to the subprocess, and no vendor network calls run.
 echo "Running status transition tests against localhost PostgreSQL ONLY."
-env -u DATABASE_URL -u PGSSL -u LIGHTSPEED_TOKEN -u LIGHTSPEED_DOMAIN \
+env -u DATABASE_URL -u PGSSL -u PGSSLMODE -u PGHOST -u PGPORT \
+  -u PGUSER -u PGPASSWORD -u PGDATABASE -u PGSERVICE \
+  -u LIGHTSPEED_TOKEN -u LIGHTSPEED_DOMAIN \
   -u DISCORD_TOKEN -u DISCORD_BOT_TOKEN -u TIME_CLOCK_ADMIN_SECRET \
   -u TIMECLOCK_ADMIN_SECRET \
   HC_SECURITY_DISPOSABLE_DB_URL="postgresql://hc_security_test:fixture-only-local-test@127.0.0.1:$port/hc_security_test" \
