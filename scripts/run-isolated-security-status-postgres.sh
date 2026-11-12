@@ -28,9 +28,25 @@ fi
 
 CONTAINER_ID=""
 cleanup() {
+  local result=$?
   if [[ -n "$CONTAINER_ID" && "$CONTAINER_ID" =~ ^[0-9a-f]{12,64}$ ]]; then
-    docker rm -f "$CONTAINER_ID" >/dev/null 2>&1 || true
+    if ! docker info >/dev/null 2>&1; then
+      echo "WARNING: Docker is unavailable; could not verify disposable container cleanup." >&2
+      return 1
+    fi
+    if docker inspect "$CONTAINER_ID" >/dev/null 2>&1; then
+      if ! docker rm -f "$CONTAINER_ID" >/dev/null 2>&1; then
+        echo "WARNING: Could not remove the disposable PostgreSQL test container." >&2
+        return 1
+      fi
+    fi
+    if docker inspect "$CONTAINER_ID" >/dev/null 2>&1; then
+      echo "WARNING: Disposable PostgreSQL container still exists after cleanup." >&2
+      return 1
+    fi
+    echo "Verified disposable PostgreSQL container removal."
   fi
+  return "$result"
 }
 trap cleanup EXIT
 trap 'exit 130' INT
