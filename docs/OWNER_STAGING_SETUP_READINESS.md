@@ -6,7 +6,7 @@ This is the current handoff for safely connecting the existing Timeclock employe
 
 ## Prepared in source
 
-- `services/security/ownerTimeclockStagingBundle.js`: refuses invalid startup configuration; uses existing **server-side** Timeclock Scanner identity contract (`verify-pin` and `authorize`) and signed Staff Auth sessions. Login and later authorization are limited to the exact operator-selected employee ID, with canonical active Timeclock provenance.
+- `services/security/ownerTimeclockStagingBundle.js`: refuses invalid startup configuration; uses the existing server-side Timeclock identity adapter in explicit **Owner staging scoped mode** (`verify-pin` and `authorize` under `/integrations/owner-staging`) and signed Staff Auth sessions. Login and later authorization are limited to the exact operator-selected employee ID, with canonical active Timeclock provenance.
 - `services/security/ownerSecurityStagingMount.js`: shared HTTPS-origin Owner setup, passkey authentication and existing encrypted TOTP/QR employee security settings. Requires approved separate keys, persistent rate limits, and no synthetic stage user.
 - `services/security/ownerStagingDatabasePreflight.js`: checks required tables exist and the public runtime DB role cannot INSERT/DELETE/rewrite first Owner activation approval facts; the runtime has only the limited consumption column updates.
 - `staging/owner-security-server.js`: standalone, fail-closed staging startup, requiring a dedicated database called `hc_owner_stage_test` through `HC_OWNER_STAGING_DATABASE_URL`. It **never** applies migrations and does not read default `DATABASE_URL`. The existing Railway `staff-security-staging` service is untouched.
@@ -15,7 +15,7 @@ This is the current handoff for safely connecting the existing Timeclock employe
 
 ## Before first authorized staging launch
 
-1. **Authorized Timeclock access.** Verify the real active employee ID through a trusted back-office lookup. Identify the current approved backend-only Timeclock integration endpoint and arrange a dedicated server-to-server credential. Do not paste either the PIN or the integration secret into chat or GitHub.
+1. **Authorized Timeclock access.** Verify the real active employee ID through a trusted back-office lookup. Review PR #59's new dedicated, default-disabled Timeclock owner-staging endpoints, then arrange and approve independent server-to-server credentials with no Scanner secret reuse. Do not paste either the PIN or the integration secret into chat or GitHub.
 2. **Isolated HTTPS hostname.** Choose a new staging host and WebAuthn RP ID (the RP ID must equal the hostname in the current candidate). Do not reuse the old synthetic login hostname. Validate Railway reverse-proxy forwarding rules, secure Origin / Fetch Metadata, TLS and rate limiting with a physical browser.
 3. **Dedicated DB and two roles.** Prepare a new PostgreSQL database named `hc_owner_stage_test` with separately reviewed migration/operator and public runtime roles. Apply only the approved required test schemas out of band. The public app role must not be able to insert, delete, or alter the approval target, digest or expiry; permit limited consumption columns. Verify this with the read-only startup privilege check. Back up before any real migration.
 4. **Distinct staging secrets.** Supply secrets through protected Railway configuration, never files/PR/chat. Set: `HC_OWNER_TIMECLOCK_SERVICE_SECRET`, `HC_OWNER_SESSION_SECRET`, `HC_OWNER_THROTTLE_SECRET`, `HC_OWNER_PASSKEY_SIGNING_SECRET`, `HC_OWNER_APPROVAL_HMAC_SECRET`, `HC_OWNER_MFA_SESSION_SECRET`, and an independently generated 32-byte Base64 `HC_OWNER_TOTP_ENCRYPTION_KEY`. Never share values or reuse production secrets.
@@ -34,3 +34,10 @@ This is the current handoff for safely connecting the existing Timeclock employe
 ## Future end-user sign-in
 
 Everyday: existing Timeclock PIN. Protected Owner actions: registered passkey; Google Authenticator is a second factor in the same account. Additional Owners are appointed from the strongly authenticated Admin menu; the initial activation utility is permanently single-use.
+
+## Scoped Timeclock and tested staging database checkpoint — 2026-11-10
+
+- Draft [PR #59](https://github.com/Tawgod/Lightspeed/pull/59) implements dedicated Timeclock staging identity endpoints with a separate credential and PostgreSQL anti-guess limiter. No production migration, credential or deployment was done.
+- Draft [PR #60](https://github.com/Tawgod/Lightspeed/pull/60) sets the existing identity adapter to `mode:'owner-staging'` and updates the private activation issuer. Default Scanner mode is unchanged. The full inherited Owner/Admin/Timeclock suite and Scanner regressions passed, including isolated role tests against PostgreSQL 16 and 18.
+- `db/hc_owner_staging_privilege_groups.sql` is a reviewed **candidate only** for NOLOGIN runtime/operator groups in the dedicated `hc_owner_stage_test` database; it is not a user account, password, or executed migration. Separate login roles and privilege checks must precede staging startup.
+- Definitive gated rollout and rollback sequence: `docs/OWNER_LOGIN_STAGING_RELEASE_PLAN.md`. The Railway application remains staged, not deployed, and a real Owner activation is not yet available.
