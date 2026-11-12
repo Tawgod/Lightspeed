@@ -1,0 +1,18 @@
+name: Owner locked staging HTTPS smoke
+on:
+  pull_request:
+    paths:
+      - 'tests/owner-locked-live-staging-smoke.test.mjs'
+      - '.github/workflows/owner-locked-live-staging.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test --test-concurrency=1 tests/owner-locked-live-staging-smoke.test.mjs
