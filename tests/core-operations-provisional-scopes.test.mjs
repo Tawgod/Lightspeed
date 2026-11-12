@@ -122,7 +122,7 @@ test('deployed service and Owner-only admin permissions cannot be snuck into a s
 
 
 test('cache-refreshing GET routes require exact sync grants instead of generic read grants',async()=>{
-  const selected=CORE_OPERATIONS_PROVISIONAL_SCOPES.filter(x=>[
+  const selected=CORE_OPERATIONS_PROVISIONAL_SCOPES.filter(x=>x.method==='GET'&&[
     '/suppliers','/products/:id/recommended-suppliers','/ordering/lightspeed-context'
   ].includes(x.path));
   assert.equal(selected.length,3);
@@ -157,9 +157,11 @@ test('only the row-locked supplier-order add-items route joins routine draft edi
   const handler=source.slice(start,end);
   assert.match(handler,/SELECT \* FROM supplier_orders WHERE id=\$1 FOR UPDATE/);
   assert.match(handler,/status\)\.toUpperCase\(\)!=='DRAFT'/);
-  for(const path of ['/supplier-orders/:id','/supplier-order-items/:id']){
-    const candidate=CORE_OPERATIONS_PROVISIONAL_SCOPES.find(x=>x.path===path);
-    assert.equal(candidate,undefined,path+' remains conservative pending locked-state review');
+  for(const [method,path] of [['PATCH','/supplier-orders/:id'],['PATCH','/supplier-order-items/:id'],['DELETE','/supplier-order-items/:id']]){
+    const candidate=CORE_OPERATIONS_PROVISIONAL_SCOPES.find(x=>x.method===method&&x.path===path);
+    assert.ok(candidate,path+' has an exact conservative proposal');
+    assert.equal(candidate.operation,'ordering.draft.edit',path);
+    assert.equal(candidate.assurance,'step-up',path);
   }
 });
 
