@@ -123,13 +123,21 @@ test('disposable PostgreSQL 18: guarded status change, locked state, audit and n
       },{
         source:'special-orders.js',method:'POST',path:'/notifications/:id/complete-discord',
         audience:'service',operation:'service.notifications.complete-discord'
+      },{
+        source:'special-orders.js',method:'POST',path:'/preorders/gw/discord-reaction',
+        audience:'service',operation:'service.preorders.gw.discord-reaction'
       }],
       staffAccess:staff,
-      verifyServiceRequest:async request=>request.get('x-fixture-service')==='discord-delivery'
-        ? {type:'service',id:'discord-delivery',active:true}:null,
+      verifyServiceRequest:async request=>{
+        const id=request.get('x-fixture-service');
+        return ['discord-delivery','gw-discord-events'].includes(id)
+          ? {type:'service',id,active:true}:null;
+      },
       checkServiceGrant:async ({identity,operation})=>
-        identity.id==='discord-delivery' &&
-        operation==='service.notifications.complete-discord'
+        (identity.id==='discord-delivery' &&
+          operation==='service.notifications.complete-discord') ||
+        (identity.id==='gw-discord-events' &&
+          operation==='service.preorders.gw.discord-reaction')
     });
     const app=express();
     app.use(express.json({limit:'32kb'}));
@@ -175,6 +183,28 @@ test('disposable PostgreSQL 18: guarded status change, locked state, audit and n
           body:JSON.stringify(success
             ? {success:true,external_message_id:externalId}
             : {success:false,error:'fixture send failure'})
+        }
+      );
+      const body=await response.json();
+      return {status:response.status,body};
+    }
+    async function gwDiscordReaction(messageId,action='ADD'){
+      const response=await fetch(
+        'http://127.0.0.1:'+server.address().port+
+          '/api/special-orders/preorders/gw/discord-reaction',
+        {
+          method:'POST',
+          headers:{
+            'content-type':'application/json',
+            'x-fixture-service':'gw-discord-events',
+            'x-hobby-corner-key':'fixture-legacy-key-not-auth'
+          },
+          body:JSON.stringify({
+            message_id:messageId,
+            discord_user_id:'fixture-gw-user',
+            discord_username:'fixture-user',
+            action
+          })
         }
       );
       const body=await response.json();
@@ -359,6 +389,78 @@ test('disposable PostgreSQL 18: guarded status change, locked state, audit and n
         old_status:'RECEIVED',new_status:'CUSTOMER_NOTIFIED',
         changed_by:'service:discord-delivery'
       }]);
+    });
+
+    await t.test('GW Discord reaction callback rolls reaction, request and notification back together on failure',async()=>{
+      await db.query(
+        "UPDATE customers SET discord_user_id='fixture-gw-user' WHERE id=$1",
+        [customerId]
+      );
+      const {rows:campaignRows}=await db.query(
+        "INSERT INTO preorder_campaigns (name,campaign_type) VALUES ('DISPOSABLE GW TEST','GW_WEEKLY') RETURNING id"
+      );
+      const campaignId=campaignRows[0].id;
+      const {rows:productRows}=await db.query(
+        "INSERT INTO preorder_products (preorder_campaign_id,item_description) VALUES ($1,'DISPOSABLE GW ITEM') RETURNING id",
+        [campaignId]
+      );
+      const productId=productRows[0].id;
+      const messageId='fixture-gw-message-'+campaignId;
+      await db.query(
+        "INSERT INTO preorder_discord_messages (preorder_campaign_id,preorder_product_id,channel_id,message_id) VALUES ($1,$2,'fixture-channel',$3)",
+        [campaignId,productId,messageId]
+      );
+
+      const functionName='hc_fixture_reject_gw_confirmation';
+      await db.query(
+        "CREATE FUNCTION "+functionName+"() RETURNS trigger LANGUAGE plpgsql "+
+        "AS 'BEGIN IF NEW.channel = ''DISCORD_GW_ORDER_CONFIRMATION'' THEN "+
+        "RAISE EXCEPTION ''fixture induced GW confirmation failure''; END IF; RETURN NEW; END;'"
+      );
+      await db.query(
+        "CREATE TRIGGER hc_fixture_block_gw_confirmation BEFORE INSERT ON notifications "+
+        "FOR EACH ROW EXECUTE FUNCTION "+functionName+"()"
+      );
+      try{
+        const failed=await gwDiscordReaction(messageId,'ADD');
+        assert.equal(failed.status,500,JSON.stringify(failed.body));
+        const reactionCount=await db.query(
+          'SELECT count(*)::int AS count FROM preorder_discord_reactions WHERE message_id=$1',
+          [messageId]
+        );
+        const requestCount=await db.query(
+          'SELECT count(*)::int AS count FROM preorder_requests WHERE source_key=$1',
+          ['discord-gw:'+messageId+':fixture-gw-user']
+        );
+        const notificationCount=await db.query(
+          "SELECT count(*)::int AS count FROM notifications WHERE preorder_campaign_id=$1 AND channel='DISCORD_GW_ORDER_CONFIRMATION'",
+          [campaignId]
+        );
+        assert.equal(reactionCount.rows[0].count,0);
+        assert.equal(requestCount.rows[0].count,0);
+        assert.equal(notificationCount.rows[0].count,0);
+      }finally{
+        await db.query('DROP TRIGGER IF EXISTS hc_fixture_block_gw_confirmation ON notifications');
+        await db.query('DROP FUNCTION IF EXISTS '+functionName+'()');
+      }
+
+      const retried=await gwDiscordReaction(messageId,'ADD');
+      assert.equal(retried.status,200,JSON.stringify(retried.body));
+      const reactionCount=await db.query(
+        'SELECT count(*)::int AS count FROM preorder_discord_reactions WHERE message_id=$1',
+        [messageId]
+      );
+      const request=await db.query(
+        'SELECT status FROM preorder_requests WHERE source_key=$1',
+        ['discord-gw:'+messageId+':fixture-gw-user']
+      );
+      const notification=await db.query(
+        "SELECT status FROM notifications WHERE preorder_campaign_id=$1 AND channel='DISCORD_GW_ORDER_CONFIRMATION'",
+        [campaignId]
+      );
+      assert.equal(reactionCount.rows[0].count,1);
+      assert.equal(request.rows[0]?.status,'REQUESTED');
+      assert.equal(notification.rows[0]?.status,'PENDING');
     });
 
     await t.test('unrecognized target and static old key cannot mutate any row',async()=>{
