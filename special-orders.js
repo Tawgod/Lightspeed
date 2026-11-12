@@ -3999,8 +3999,10 @@ export function createSpecialOrdersRouter({
     const {rows}=await pool.query(
       "SELECT n.id,n.special_order_item_id,n.customer_id,n.recipient,n.message,n.created_at,c.name AS customer_name,i.requested_name "+
       "FROM notifications n LEFT JOIN customers c ON c.id=n.customer_id LEFT JOIN special_order_items i ON i.id=n.special_order_item_id "+
-      "WHERE n.channel='DISCORD_READY' AND n.status='QUEUED' AND (n.not_before IS NULL OR n.not_before<=now()) "+
-      "ORDER BY n.created_at LIMIT $1",
+      "WHERE n.channel='DISCORD_READY' AND ("+
+      "(n.status='QUEUED' AND (n.not_before IS NULL OR n.not_before<=now())) OR "+
+      "(n.status='SENDING' AND n.not_before IS NOT NULL AND n.not_before<=now())"+
+      ") ORDER BY n.created_at LIMIT $1",
       [limit]
     );
     res.json(rows);
@@ -4008,7 +4010,11 @@ export function createSpecialOrdersRouter({
 
   router.post('/notifications/:id/claim-discord', requireDb, async (req,res)=>{
     const {rows}=await pool.query(
-      "UPDATE notifications SET status='SENDING',error=NULL WHERE id=$1 AND channel='DISCORD_READY' AND status='QUEUED' RETURNING *",
+      "UPDATE notifications SET status='SENDING',error=NULL,not_before=now()+interval '5 minutes' "+
+      "WHERE id=$1 AND channel='DISCORD_READY' AND ("+
+      "(status='QUEUED' AND (not_before IS NULL OR not_before<=now())) OR "+
+      "(status='SENDING' AND not_before IS NOT NULL AND not_before<=now())"+
+      ") RETURNING *",
       [req.params.id]
     );
     if(!rows[0])return res.status(409).json({error:'Discord notification is no longer available to claim.'});
@@ -4024,8 +4030,8 @@ export function createSpecialOrdersRouter({
       await db.query('BEGIN');
       const {rows}=await db.query(
         success
-          ? "UPDATE notifications SET status='SENT',external_message_id=$2,sent_at=now(),error=NULL WHERE id=$1 AND channel='DISCORD_READY' AND status='SENDING' RETURNING *"
-          : "UPDATE notifications SET status='ERROR',error=$2 WHERE id=$1 AND channel='DISCORD_READY' AND status='SENDING' RETURNING *",
+          ? "UPDATE notifications SET status='SENT',external_message_id=$2,sent_at=now(),error=NULL,not_before=NULL WHERE id=$1 AND channel='DISCORD_READY' AND status='SENDING' RETURNING *"
+          : "UPDATE notifications SET status='ERROR',error=$2,not_before=NULL WHERE id=$1 AND channel='DISCORD_READY' AND status='SENDING' RETURNING *",
         [req.params.id,success?externalId:error]
       );
       if(!rows[0]){
