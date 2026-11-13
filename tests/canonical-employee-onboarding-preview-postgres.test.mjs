@@ -117,13 +117,14 @@ test('canonical signed live-like Timeclock identity flow admits only self inspec
     assert.equal((await req('/health')).body.realEmployeeGrants,false);
     assert.equal((await postLogin({pin:PIN})).status,401,
       'Selected ID is required before PIN verification');
-    assert.equal((await postLogin({pin:PIN,employeeId:'901'})).status,401,
-      'reserved synthetic ID is not eligible');
+    assert.deepEqual(seen,[],'missing selector does not contact Timeclock');
     assert.equal((await postLogin({pin:PIN,employeeId:'42'},
       {origin:'https://attacker.example'})).status,403);
     assert.equal((await postLogin({pin:PIN,employeeId:'42'},
       {origin:PUBLIC,'sec-fetch-site':'cross-site'})).status,403);
-    assert.deepEqual(seen,[],'invalid and cross-site requests do not contact Timeclock');
+    assert.deepEqual(seen,[],'cross-origin requests do not contact Timeclock');
+    assert.equal((await postLogin({pin:PIN,employeeId:'901'})).status,401,
+      'reserved synthetic ID is not eligible');
     idForPin='43';
     assert.equal((await postLogin({pin:PIN,employeeId:'42'})).status,401,
       'PIN for a different employee cannot establish a signed session');
