@@ -81,8 +81,8 @@ SET search_path = pg_catalog, pg_temp
 AS $recover$
 DECLARE
   previous public.hc_first_owner_activations%ROWTYPE;
-  approved_at timestamptz;
-  expires_at timestamptz;
+  new_approved_at timestamptz;
+  new_expires_at timestamptz;
   changed integer;
 BEGIN
   IF current_database() <> 'hc_owner_stage_test' OR
@@ -110,17 +110,17 @@ BEGIN
     FROM public.hc_first_owner_activations
     WHERE employee_id = p_employee_id
     FOR UPDATE;
-  approved_at := clock_timestamp();
+  new_approved_at := clock_timestamp();
   IF NOT FOUND OR
      previous.consumed_at IS NOT NULL OR
      previous.credential_id IS NOT NULL OR
-     previous.expires_at >= approved_at OR
-     previous.approved_at > approved_at OR
+     previous.expires_at >= new_approved_at OR
+     previous.approved_at > new_approved_at OR
      previous.activation_digest = p_replacement_digest THEN
     RAISE EXCEPTION 'First Owner activation recovery denied';
   END IF;
 
-  expires_at := approved_at + interval '10 minutes';
+  new_expires_at := new_approved_at + interval '10 minutes';
   INSERT INTO public.hc_first_owner_activation_reissues
     (employee_id, previous_activation_digest,
      previous_approved_at, previous_expires_at, previous_issued_by,
@@ -129,21 +129,21 @@ BEGIN
   VALUES
     (p_employee_id, previous.activation_digest,
      previous.approved_at, previous.expires_at, previous.issued_by,
-     p_replacement_digest, approved_at, expires_at, p_operator_ref);
+     p_replacement_digest, new_approved_at, new_expires_at, p_operator_ref);
 
   UPDATE public.hc_first_owner_activations
      SET activation_digest = p_replacement_digest,
-         approved_at = approved_at,
-         expires_at = expires_at,
+         approved_at = new_approved_at,
+         expires_at = new_expires_at,
          issued_by = p_operator_ref
    WHERE employee_id = p_employee_id
      AND consumed_at IS NULL AND credential_id IS NULL
-     AND expires_at < approved_at;
+     AND expires_at < new_approved_at;
   GET DIAGNOSTICS changed = ROW_COUNT;
   IF changed <> 1 THEN
     RAISE EXCEPTION 'First Owner activation recovery denied';
   END IF;
-  RETURN expires_at;
+  RETURN new_expires_at;
 END
 $recover$;
 
