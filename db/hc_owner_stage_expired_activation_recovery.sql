@@ -22,6 +22,39 @@ BEGIN
 END
 $guard$;
 
+-- SECURITY DEFINER MUST NEVER RUN AS postgres/superuser.
+-- No LOGIN, no inheritance, no ability to create roles/databases, and no
+-- membership grants to the public runtime or operator.
+DO $role$
+DECLARE r record;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_catalog.pg_roles
+    WHERE rolname = 'hc_owner_stage_recovery_definer'
+  ) THEN
+    CREATE ROLE hc_owner_stage_recovery_definer NOLOGIN NOINHERIT;
+  END IF;
+  SELECT rolcanlogin, rolsuper, rolcreatedb, rolcreaterole,
+         rolreplication, rolbypassrls, rolinherit
+  INTO r
+  FROM pg_catalog.pg_roles
+  WHERE rolname = 'hc_owner_stage_recovery_definer';
+  IF r.rolcanlogin OR r.rolsuper OR r.rolcreatedb OR r.rolcreaterole OR
+     r.rolreplication OR r.rolbypassrls OR r.rolinherit OR
+     EXISTS (
+       SELECT 1 FROM pg_catalog.pg_auth_members m
+       JOIN pg_catalog.pg_roles p ON p.oid = m.member
+       WHERE p.rolname='hc_owner_stage_recovery_definer'
+     ) OR EXISTS (
+       SELECT 1 FROM pg_catalog.pg_auth_members m
+       JOIN pg_catalog.pg_roles p ON p.oid = m.roleid
+       WHERE p.rolname='hc_owner_stage_recovery_definer'
+     ) THEN
+    RAISE EXCEPTION 'Recovery definer must be an isolated NOLOGIN NOINHERIT role';
+  END IF;
+END
+$role$;
+
 CREATE TABLE IF NOT EXISTS public.hc_first_owner_activation_reissues (
   reissue_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   employee_id bigint NOT NULL CHECK (employee_id > 0),
@@ -146,6 +179,27 @@ BEGIN
   RETURN new_expires_at;
 END
 $recover$;
+
+-- Give the no-login function owner only the privileges required for
+-- recovery, not any Authenticator/TOTP, connection, DDL or role privileges.
+GRANT USAGE ON SCHEMA public TO hc_owner_stage_recovery_definer;
+GRANT SELECT ON TABLE public.hc_first_owner_activations,
+ public.hc_first_owner_activation_events,
+ public.hc_admin_principals,
+ public.hc_staff_passkeys,
+ public.hc_first_owner_activation_reissues
+ TO hc_owner_stage_recovery_definer;
+GRANT UPDATE (activation_digest,approved_at,expires_at,issued_by)
+ ON TABLE public.hc_first_owner_activations TO hc_owner_stage_recovery_definer;
+GRANT INSERT ON TABLE public.hc_first_owner_activation_reissues
+ TO hc_owner_stage_recovery_definer;
+
+-- PostgreSQL ownership transfer requires CREATE on the function's schema;
+-- grant only within THIS migration transaction, then revoke before commit.
+GRANT CREATE ON SCHEMA public TO hc_owner_stage_recovery_definer;
+ALTER FUNCTION public.hc_reissue_expired_first_owner_activation(bigint,text,text)
+ OWNER TO hc_owner_stage_recovery_definer;
+REVOKE CREATE ON SCHEMA public FROM hc_owner_stage_recovery_definer;
 
 REVOKE ALL ON TABLE public.hc_first_owner_activation_reissues
  FROM PUBLIC, hc_owner_stage_runtime_privs, hc_owner_stage_operator_privs;
