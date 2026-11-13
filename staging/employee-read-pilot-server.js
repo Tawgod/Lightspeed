@@ -159,8 +159,11 @@ export async function createIsolatedEmployeePilotApp({
     identity:'synthetic-only',liveBusinessData:false
   }));
   app.get('/',(_req,res)=>res.redirect(302,'/HobbyCorner/'));
-  app.get('/HobbyCorner/',(_req,res)=>res.type('html').sendFile(
-    fileURLToPath(new URL('./employee-read-pilot.html',import.meta.url))));
+  app.get('/HobbyCorner/',(_req,res)=>{
+    res.set('Content-Security-Policy',"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; form-action 'none'; frame-ancestors 'none'; base-uri 'none'");
+    return res.type('html').sendFile(
+      fileURLToPath(new URL('./employee-read-pilot.html',import.meta.url)));
+  });
   for(const [path,filename,type] of [
     ['/HobbyCorner/pilot.js','employee-read-pilot.js','application/javascript'],
     ['/HobbyCorner/pilot.css','employee-read-pilot.css','text/css']
