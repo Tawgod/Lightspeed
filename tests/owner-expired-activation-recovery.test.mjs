@@ -13,6 +13,9 @@ test('expired Owner recovery remains private, reviewed and non-destructive',asyn
  const [migration,cli]=await Promise.all([readFile(sql,'utf8'),readFile(script,'utf8')]);
  assert.match(migration,/current_database\(\) <> 'hc_owner_stage_test'/);
  assert.match(migration,/SECURITY DEFINER/);
+ assert.ok(migration.includes('CREATE ROLE hc_owner_stage_recovery_definer NOLOGIN NOINHERIT'));
+ assert.ok(migration.includes('OWNER TO hc_owner_stage_recovery_definer'));
+ assert.ok(migration.includes('REVOKE CREATE ON SCHEMA public FROM hc_owner_stage_recovery_definer'));
  assert.match(migration,/pg_advisory_xact_lock\(78619136, 801\)/);
  assert.match(migration,/hc_first_owner_activation_reissues/);
  assert.match(migration,/FOR EACH STATEMENT EXECUTE FUNCTION/);
@@ -51,6 +54,7 @@ test('one expired unused activation can be reissued with immutable audit, never 
  let testFailure=null;
  const op='hc_owner_recovery_op_'+process.pid;
  const rt='hc_owner_recovery_runtime_'+process.pid;
+ const recoveryRole='hc_owner_stage_recovery_definer';
  const groupNames=['hc_owner_stage_operator_privs','hc_owner_stage_runtime_privs'];
  const password=randomBytes(24).toString('hex');
  try{
@@ -58,7 +62,7 @@ test('one expired unused activation can be reissued with immutable audit, never 
    `SELECT current_database() AS db,
            EXISTS(SELECT 1 FROM pg_database WHERE datname='hc_owner_stage_test') AS has_stage,
            (SELECT count(*)::integer FROM pg_roles WHERE rolname=ANY($1::text[])) AS roles`,
-   [[...groupNames,op,rt]]
+   [[...groupNames,op,rt,recoveryRole]]
   );
   assert.equal(guard.rows[0].db,'hc_test');
   assert.equal(guard.rows[0].has_stage,false,'must not reuse or delete any existing staging DB');
@@ -95,16 +99,41 @@ test('one expired unused activation can be reissued with immutable audit, never 
   runtime=new pg.Pool({connectionString:rtURL.toString(),max:1});
 
   phase='checking runtime and operator privilege separation';
+  const ownership=await stage.query(
+   `SELECT pg_get_userbyid(p.proowner) AS function_owner,
+           role.rolsuper,role.rolcanlogin,role.rolinherit,
+           role.rolcreatedb,role.rolcreaterole,
+           has_schema_privilege(role.rolname,'public','CREATE') AS can_create,
+           has_table_privilege(role.rolname,'hc_first_owner_activations','SELECT') AS can_read_activation,
+           has_column_privilege(role.rolname,'hc_first_owner_activations',
+             'activation_digest','UPDATE') AS can_update_digest,
+           has_table_privilege(role.rolname,'hc_first_owner_activation_reissues','INSERT') AS can_audit
+    FROM pg_proc p
+    JOIN pg_roles role ON role.oid=p.proowner
+    WHERE p.oid='public.hc_reissue_expired_first_owner_activation(bigint,text,text)'::regprocedure`
+  );
+  assert.equal(ownership.rowCount,1);
+  assert.deepEqual(ownership.rows[0],{
+   function_owner:recoveryRole,rolsuper:false,rolcanlogin:false,rolinherit:false,
+   rolcreatedb:false,rolcreaterole:false,can_create:false,
+   can_read_activation:true,can_update_digest:true,can_audit:true
+  },'SECURITY DEFINER may only use non-login least-privilege role');
   const privilege=await stage.query(
    `SELECT has_function_privilege($1,
        'public.hc_reissue_expired_first_owner_activation(bigint,text,text)','EXECUTE')
        AS runtime_can_reissue,
+       has_table_privilege($1,
+         'public.hc_first_owner_activation_reissues','INSERT') AS runtime_can_audit,
        has_function_privilege($2,
        'public.hc_reissue_expired_first_owner_activation(bigint,text,text)','EXECUTE')
-       AS operator_can_reissue`,[rt,op]
+       AS operator_can_reissue,
+       has_column_privilege($2,'public.hc_first_owner_activations',
+         'activation_digest','UPDATE') AS operator_can_update_digest`,[rt,op]
   );
   assert.equal(privilege.rows[0].runtime_can_reissue,false);
+  assert.equal(privilege.rows[0].runtime_can_audit,false);
   assert.equal(privilege.rows[0].operator_can_reissue,true);
+  assert.equal(privilege.rows[0].operator_can_update_digest,false);
   await assert.rejects(runtime.query(
    'SELECT public.hc_reissue_expired_first_owner_activation(1,$1,$2)',
    [digest(),'verified-operator']),/permission denied/i);
@@ -219,7 +248,7 @@ test('one expired unused activation can be reissued with immutable audit, never 
    // show a useful cleanup error rather than killing a test connection.
    try{await admin.query('DROP DATABASE hc_owner_stage_test');}
    catch(error){cleanupErrors.push('drop disposable db: '+error.message);}
-   for(const role of [op,rt,...groupNames]){
+   for(const role of [op,rt,...groupNames,recoveryRole]){
     try{await admin.query('DROP ROLE IF EXISTS '+role);}
     catch(error){cleanupErrors.push('drop throwaway role: '+error.message);}
    }
