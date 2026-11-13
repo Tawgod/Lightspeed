@@ -1,6 +1,6 @@
 # Staging First Owner — Expired Activation Recovery (draft, 2026-11-13)
 
-**Status: Testing (3/4 tests initially passed). Recovery PostgreSQL integration NOT YET VERIFIED; NO staging migration or deploy.**
+**Status: Testing. First full disposable PostgreSQL run PASS (4/4) on commit 0d7b995; tightened least-privilege migration still requires rerun. NO staging migration or deploy.**
 **Owner account: canonical Timeclock employee 1 only (operator-selected).**
 
 ## Evidence and reason
@@ -23,8 +23,10 @@ truncate, overwrite, clone or change role grants to bypass that limit.
 
 - `db/hc_owner_stage_expired_activation_recovery.sql`: isolated-database-only,
   additive audit table, immutable audit trigger and one narrow
-  `SECURITY DEFINER` function. Existing operator group gets only EXECUTE
-  on the function and SELECT on its SHA-256 audit; **runtime gets nothing**.
+  `SECURITY DEFINER` function owned by dedicated `hc_owner_stage_recovery_definer`
+  **NOLOGIN NOINHERIT / non-superuser** role with only the table/column privileges
+  needed by that function. Existing operator group gets only EXECUTE on the
+  function and SELECT on its SHA-256 audit; **runtime gets nothing**.
   The function serializes with the existing Owner bootstrap/registration
   advisory lock and verifies exactly one old activation, expired and unused,
   no existing admin principal, no activation event, no staff passkey for the
@@ -57,7 +59,7 @@ remote Codespace using a disposable `postgres:18` Docker container.
 Tests **3 passed / 1 failed** (0 skipped). Non-TTY operator refusal and
 source-level recovery invariants passed. The actual PostgreSQL recovery
 test failed with `terminating connection due to administrator command`.
-This does **not** validate the migration or recovery policy.
+This did **not** validate the migration or recovery policy.
 
 Possible causes include the Docker image's temporary initialization database
 server being mistaken for its final PostgreSQL TCP listener, or forceful
@@ -66,6 +68,22 @@ readiness twice (including after settling) instead of trusting in-container
 `pg_isready`, and removes `DROP DATABASE ... WITH (FORCE)` in the disposable
 test. The test also reports its failing phase and keeps the first SQL error.
 These are **code changes only**, not evidence that the test is fixed.
+
+**Operator's successful retest:** after fast-forward to `0d7b995`, the
+same disposable PostgreSQL 18 runner completed **4 tests passed, 0 failed,
+0 skipped**, including real SQL recovery, failure rollback, privilege and
+append-only checks. The container was reported removed. This resolves the
+previous connection-termination blocker for the tested code.
+
+**Post-test security hardening:** on the same *draft* branch, the migration
+now creates a dedicated NOLOGIN, NOINHERIT, non-superuser definer role; the
+recovery function does not run as the PostgreSQL administrator even when
+installed by that administrator. Only narrowly scoped SELECT/INSERT/
+UPDATE-column grants are assigned. The revised regression checks assert
+function ownership, restricted schema CREATE access, operator/runtime
+separation, and no privilege escalation. **These new changes are not yet
+covered by the operator's 4/4 result.** Rerun the same disposable test
+on the updated branch before requesting any staging migration approval.
 
 Re-run the same disposable Codespaces test command on the latest branch
 before reviewing the migration for deployment. Do not point the runner or
@@ -122,8 +140,10 @@ its URL at Railway or another non-disposable DB.
   receive a new, separately designed/reviewed recovery decision. Do **not**
   bypass it with raw UPDATE, DELETE, role grants or database reset.
 - A `SECURITY DEFINER` function increases sensitivity of the staging
-  database: review function ownership, PostgreSQL search path, GRANT/REVOKE,
-  role grants, and audit append-only guarantees before any real execution.
+  database. Never install it owned by `postgres`. Review the new
+  `hc_owner_stage_recovery_definer` NOLOGIN role, its narrowly scoped
+  grants and ownership, the safe search path, operator-only function EXECUTE,
+  PUBLIC revocation and immutable audit guarantees before any real execution.
 
 ## Manager handoff
 
