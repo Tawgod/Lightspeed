@@ -1,6 +1,6 @@
 # Staging First Owner — Expired Activation Recovery (draft, 2026-11-13)
 
-**Status: In Development. NOT MIGRATED, NOT TESTED AGAINST POSTGRESQL, NOT DEPLOYED.**
+**Status: Testing (3/4 tests initially passed). Recovery PostgreSQL integration NOT YET VERIFIED; NO staging migration or deploy.**
 **Owner account: canonical Timeclock employee 1 only (operator-selected).**
 
 ## Evidence and reason
@@ -49,6 +49,27 @@ truncate, overwrite, clone or change role grants to bypass that limit.
 
 This is intended to be proposed as a **draft PR** based on the existing
 Owner staging branch, not merged into live or production sources.
+
+## Disposable Codespaces test evidence — 2026-11-13
+
+The operator ran `bash scripts/test-owner-recovery-disposable.sh` in the
+remote Codespace using a disposable `postgres:18` Docker container.
+Tests **3 passed / 1 failed** (0 skipped). Non-TTY operator refusal and
+source-level recovery invariants passed. The actual PostgreSQL recovery
+test failed with `terminating connection due to administrator command`.
+This does **not** validate the migration or recovery policy.
+
+Possible causes include the Docker image's temporary initialization database
+server being mistaken for its final PostgreSQL TCP listener, or forceful
+test teardown masking the original failure. The branch now probes TCP
+readiness twice (including after settling) instead of trusting in-container
+`pg_isready`, and removes `DROP DATABASE ... WITH (FORCE)` in the disposable
+test. The test also reports its failing phase and keeps the first SQL error.
+These are **code changes only**, not evidence that the test is fixed.
+
+Re-run the same disposable Codespaces test command on the latest branch
+before reviewing the migration for deployment. Do not point the runner or
+its URL at Railway or another non-disposable DB.
 
 ## Required gates before live staging database migration
 
