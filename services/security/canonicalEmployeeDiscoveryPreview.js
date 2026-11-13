@@ -81,8 +81,9 @@ export async function verifyCanonicalDiscoveryRuntimeRole(pool){
   try{
     const r=await pool.query(`SELECT
       has_schema_privilege(current_user,'public','CREATE') AS can_create,
-      has_table_privilege(current_user,'public.hc_staff_auth_throttle',
-        'SELECT,INSERT,UPDATE') AS can_throttle,
+      (has_table_privilege(current_user,'public.hc_staff_auth_throttle','SELECT')
+        AND has_table_privilege(current_user,'public.hc_staff_auth_throttle','INSERT')
+        AND has_table_privilege(current_user,'public.hc_staff_auth_throttle','UPDATE')) AS can_throttle,
       has_table_privilege(current_user,'public.hc_staff_auth_throttle',
         'DELETE,TRUNCATE') AS can_delete_throttle,
       CASE WHEN to_regclass('public.hc_admin_principals') IS NULL THEN false
