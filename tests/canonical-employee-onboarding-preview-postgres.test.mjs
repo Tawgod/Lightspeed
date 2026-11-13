@@ -19,6 +19,7 @@ function env(){return {
   HC_PRIMARY_TIMECLOCK_SERVICE_SECRET:SEC(),
   HC_PRIMARY_SESSION_SECRET:SEC(),HC_PRIMARY_THROTTLE_SECRET:SEC(),
   HC_STAGING_TEST_LOGIN_ENABLED:'false',
+  HC_STAGING_PIN_SETUP_ENABLED:'false',HC_PILOT_BOOTSTRAP_ENABLED:'false',
   HC_CORE_EMPLOYEE_PILOT_ENABLED:'false',
   HC_OWNER_STAGING_ENABLED:'false',
   SPECIAL_ORDERS_LIVE_MODE:'false',SCANNER_ENABLED:'false',
@@ -31,6 +32,8 @@ test('primary discovery readiness rejects live, synthetic, cross-origin, reused-
     {NODE_ENV:'production'},{HC_SECURITY_ENV:'production'},
     {HC_STAGING_TEST_LOGIN_ENABLED:'true'},
     {HC_CORE_EMPLOYEE_PILOT_ENABLED:'true'},
+    {HC_STAGING_PIN_SETUP_ENABLED:'true'},
+    {HC_PILOT_BOOTSTRAP_ENABLED:'true'},
     {HC_OWNER_STAGING_ENABLED:'true'},
     {SPECIAL_ORDERS_LIVE_MODE:'true'},
     {LIGHTSPEED_TOKEN:'vendor'},
@@ -134,6 +137,7 @@ test('canonical signed live-like Timeclock identity flow admits only self inspec
     assert.equal(logged.body.employee.id,'42');
     assert.ok(typeof logged.body.token==='string');
     assert.equal(logged.body.employee.permissionSource,'timeclock_employee');
+    assert.equal(logged.body.employee.role,null,'Scanner role is never an Owner appointment');
     const self=await req(base+'/primary/self',{
       headers:{authorization:'Bearer '+logged.body.token}
     });
