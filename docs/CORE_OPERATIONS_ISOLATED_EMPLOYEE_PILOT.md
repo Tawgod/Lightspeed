@@ -1,6 +1,6 @@
 # Isolated Employee Read Pilot — staging readiness boundary
 
-**Status:** In Development / Testing; source-only draft PR #71 stacked on draft PR #70. Not mounted, deployed, commissioned, or authorized for real employees. Reviewed 2026-11-12.
+**Status:** Testing PASS; source-only draft PR #71 stacked on draft PR #70. Not mounted, deployed, commissioned, or authorized for real employees. Reviewed 2026-11-12. Test evidence: [GitHub Actions 43345338052](https://github.com/Tawgod/Lightspeed/actions/runs/43345338052), source commit `c642c8b967b8ddca1c48b9e6c2fe8c4cefefa7dc`: existing combined regressions 66/66 PASS plus disposable PostgreSQL pilot 2/2 PASS (68 total), 0 failures.
 
 ## What the pilot proves
 
@@ -41,4 +41,4 @@ Never point this test command at a production, live Railway or populated store d
 5. Genuine origin-/RP-bound WebAuthn passkey or verified IdP MFA, using the existing `staffPasskeysPostgres.js` candidate only after enrollment approval and origin assurance, before any protected write. This read pilot deliberately does **not** grant or expose strong operations.
 6. End-to-end browser cookies/tokens, login/logout, session expiration/revocation, same-origin/CORS, gateway prefix, admin-nav isolation, business-handler data access and denial tests on the separately authorized staging URL. No Timcorp gateway/DNS changes until independently approved.
 
-**Acceptance level:** Source prepared and disposable CI tested once the current workflow passes. **Not staging deployment ready** for real identities, and not production eligible. PR #71 must remain draft until its security owner reviews these boundaries.
+**Acceptance level:** Source prepared and disposable PostgreSQL CI **PASS** (68 total tests, no failures). **Not staging deployment ready** for real identities, and not production eligible. PR #71 must remain draft until its security owner reviews these boundaries.
