@@ -28,23 +28,61 @@ docker run --detach --rm --name "$name" \
   --env POSTGRES_PASSWORD="$secret" --env POSTGRES_DB=hc_test \
   --publish 127.0.0.1::5432 postgres:18 >/dev/null
 
-for n in $(seq 1 45); do
-  if docker exec "$name" pg_isready -U postgres -d hc_test >/dev/null 2>&1; then
-    break
-  fi
-  if [[ "$n" -eq 45 ]]; then
-    echo "Disposable PostgreSQL did not become ready." >&2
+# The postgres Docker image briefly starts an INITIALIZATION server and
+# shuts it down before the final TCP server starts. An in-container pg_isready
+# can report the temporary server as ready, causing intermittent connection
+# termination while the DB test begins. Wait on the published TCP endpoint.
+ready=0
+for n in $(seq 1 60); do
+  hostport="$(docker port "$name" 5432/tcp 2>/dev/null || true)"
+  if [[ ! "$hostport" =~ ^127[.]0[.]0[.]1:[0-9]+$ ]]; then
+    echo "Unsafe or unavailable Docker bind address, refusing test." >&2
     exit 1
+  fi
+  port="${hostport##*:}"
+  testurl="postgresql://postgres:${secret}@127.0.0.1:${port}/hc_test"
+  if HC_TEST_DATABASE_URL="$testurl" node --input-type=module -e '
+      import pg from "pg";
+      const client = new pg.Client({
+        connectionString: process.env.HC_TEST_DATABASE_URL,
+        connectionTimeoutMillis: 1200
+      });
+      try {
+        await client.connect();
+        const r = await client.query("SELECT current_database() AS db");
+        if (r.rows[0]?.db !== "hc_test") process.exitCode = 1;
+      } catch { process.exitCode = 1; }
+      finally { await client.end().catch(() => {}); }
+    ' >/dev/null 2>&1; then
+    ready=1
+    break
   fi
   sleep 1
 done
-
-hostport="$(docker port "$name" 5432/tcp)"
-if [[ ! "$hostport" =~ ^127[.]0[.]0[.]1:[0-9]+$ ]]; then
-  echo "Unsafe Docker bind address, refusing test." >&2
+if [[ "$ready" -ne 1 ]]; then
+  echo "Disposable PostgreSQL never accepted localhost TCP queries." >&2
   exit 1
 fi
-port="${hostport##*:}"
+
+# A second connection, after initialization settles, catches an unexpected
+# restart before destructive test-only setup begins.
+sleep 2
+if ! HC_TEST_DATABASE_URL="$testurl" node --input-type=module -e '
+    import pg from "pg";
+    const c = new pg.Client({
+      connectionString: process.env.HC_TEST_DATABASE_URL,
+      connectionTimeoutMillis: 1500
+    });
+    try {
+      await c.connect();
+      const r = await c.query("SELECT current_database() AS db");
+      if (r.rows[0]?.db !== "hc_test") process.exitCode = 1;
+    } catch { process.exitCode = 1; }
+    finally { await c.end().catch(() => {}); }
+  ' >/dev/null 2>&1; then
+  echo "Disposable PostgreSQL TCP connection did not remain stable." >&2
+  exit 1
+fi
 
 # The test itself enforces localhost /hc_test, refuses an existing staging DB,
 # creates a throwaway hc_owner_stage_test inside this disposable PG container,
