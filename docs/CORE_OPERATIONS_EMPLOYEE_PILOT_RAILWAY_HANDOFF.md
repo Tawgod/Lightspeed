@@ -1,6 +1,27 @@
 # Hobby Corner — isolated employee read pilot Railway handoff
 
-**Status:** **Deployed (isolated TEST only), Testing PASS for signed-out HTTPS/Chromium and disposable positive-access HTTP/PostgreSQL.** Not approved for live employee/Owner authentication, production, real customer data, or Timcorp gateway. Verified 2026-11-12 (America/Chicago).
+**Status:** **Deployed (isolated TEST only), complete synthetic pilot acceptance — verified by browser tester and corroborated by Railway HTTP logs.** Not approved for real employee/Owner authentication, production, customer data or Timcorp gateway. Verified November 12, 2026 (America/Chicago).
+
+## Physical-browser acceptance completed — November 12, 2026
+
+**Evidence classification:** The test operator explicitly reported **"tested and verified"** after following the one-time physical-Chrome acceptance checklist. Railway HTTP request logs independently confirm the successful server-side steps. They cannot verify the local browser's memory-clearing/sign-out action, so that part is **user-reported**, not server-proven.
+
+All of the following occurred on the live pinned deployment `577c4250-dbe3-4746-9841-f92397f1fa39` at `https://hc-employee-pilot-test.up.railway.app/HobbyCorner/` on **2026-11-12, Central Standard Time (UTC-06)**:
+
+| CST | Live endpoint | Status |
+| --- | --- | --- |
+| 8:37:19 PM | POST `/HobbyCorner/api/staff-auth/session` (synthetic test login) | 200 |
+| 8:38:32 PM | POST `/HobbyCorner/api/pilot/register-station` (one-time device registration) | 200 |
+| 8:38:39 PM | POST `/HobbyCorner/staff-station/challenge` (station challenge issued) | 200 |
+| 8:38:39 PM | POST `/HobbyCorner/staff-station/verify` (signed station proof accepted) | 200 |
+| 8:38:44 PM | GET `/HobbyCorner/api/special-orders/orders` (synthetic fixture) | 200 |
+| 8:38:46 PM | GET `/HobbyCorner/api/special-orders/stats` (synthetic fixture) | 200 |
+
+**Acceptance disposition:** The earlier **physical browser registration and positive fixture read blocker is CLOSED** for the synthetic test pilot. The browser sign-out/denial test is marked **user verified**. The prior no-credential 403/401/404 HTTPS assertions, disposable DB positive and negative tests, and Chromium cryptographic-key test remain passing. Current Railway environment readback: app + Postgres online, no warnings/criticals or pending changes. GitHub draft PR #72 remains unmerged; deployment remains pinned to `f023bad90f269d8c40b50cb9451c881080433182`.
+
+**Not acceptance of real employee security:** Test identity `901`, one-use operator key and non-production test grant do not establish real Timeclock binding, Owner approval, WebAuthn strong authentication, or the full 38-route operation matrix. The test grant expires 23 hours after bootstrap; no lasting or real staff entitlement is created. Real staff integration, actual business record reads, production and Timcorp gateway are **not commissioned or approved**.
+
+---
 
 ## Exact deployed inventory
 
@@ -36,9 +57,9 @@
 2. **Actual deployed Railway staging**: [GitHub run 43349242115](https://github.com/Tawgod/Lightspeed/actions/runs/43349242115) **SUCCESS**. All 70 local regressions PASS, plus four live HTTPS read-only smoke groups PASS, plus real Chromium signed-out test PASS. Chromium verified the prefixed page, assets, no JS page errors, mobile layout and a non-exportable WebCrypto Ed25519 private key. This later test-only commit does not alter the pinned running app source.
 3. **Railway runtime readback**: deployment `577c4250...` SUCCESS, healthcheck `/health` PASS, logs show exact 200/401/403/404 outcomes on live endpoints. Both services online, no pending changes when last verified. The existing four-service PR #63 isolated staging remains untouched at `50fda74b`; Owner locked preview and production remain untouched.
 
-**What is NOT yet verified on deployed Railway:** A real user entering the synthetic PIN, registering their physical browser with the one-time operator key, completing signed station challenge, accessing the fixture GET and then proving real browser logout/expiry. The full positive path passed in disposable CI with the same source, but the live one-time operator key is deliberately never sent to GitHub CI or opened for testing by automation. Owner/device action remains.
+**Live acceptance update:** The physical-browser synthetic PIN, one-time station registration, signed challenge and positive fixture GET paths were completed and verified in Railway HTTP logs on November 12, 2026; the tester also confirmed sign-out. See the timestamped acceptance table above. **Not yet verified:** a genuine real Timeclock identity, independently approved real Owner/manager WebAuthn ceremony, real employee or business-data access, and production/gateway integration.
 
-## Owner's browser acceptance (test-only)
+## Completed owner's browser acceptance checklist (retained as a runbook)
 
 1. Open `https://hc-employee-pilot-test.up.railway.app/HobbyCorner/` in up-to-date **Chrome on the intended test workstation**; no Hobby Corner Chrome extension install or production data required.
 2. Enter the **synthetic 4-digit test PIN**, delivered separately from GitHub and not a real store PIN. The login page should say synthetic employee 901; no ordinary application data becomes visible yet.
@@ -55,4 +76,4 @@
 - Test signed-in browser session expiry and actual device replacement, actual business-handler denied paths, and proxy/cookie/origin behavior through a separately approved nonproduction Timcorp route.
 - Require separate explicit approvals for real employee activation, production merges/deployments, Chrome extension packaging and DNS/gateway cutover.
 
-**Do not claim whole-store authentication is deployed. This is a completed isolated synthetic read-only pilot setup with a manual browser acceptance step pending.**
+**Do not claim whole-store authentication is deployed. The isolated synthetic read-only pilot is now deployed and has passed operator-reported physical-browser acceptance corroborated by server HTTP logs. Real employee rollout remains blocked pending independent approval and implementation.**
