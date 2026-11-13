@@ -10,6 +10,9 @@ on:
       - 'services/security/adminNavigationAccess.js'
       - 'services/security/coreOperationsStagingActivation.js'
       - 'services/security/coreOperationsEmployeeDraftAudit.js'
+      - 'services/security/coreEmployeePilotGrantReader.js'
+      - 'services/security/coreOperationsIsolatedReadPilot.js'
+      - 'db/hc_core_employee_pilot_grants.sql'
       - 'shared-ui/**'
       - '*-client.js'
       - '*.html'
@@ -17,6 +20,7 @@ on:
       - 'tests/core-operations-staging-activation.test.mjs'
       - 'tests/core-operations-employee-acceptance.test.mjs'
       - 'tests/core-operations-employee-draft-audit.test.mjs'
+      - 'tests/core-operations-isolated-read-pilot-postgres.test.mjs'
       - 'tests/public-base-path.test.mjs'
       - 'tests/*navigation*.test.mjs'
       - 'tests/store-operations-dashboard.test.mjs'
@@ -27,7 +31,23 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: hc_test
+          POSTGRES_PASSWORD: hc_test
+          POSTGRES_DB: hc_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hc_test -d hc_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      HC_TEST_DATABASE_URL: postgres://hc_test:hc_test@127.0.0.1:5432/hc_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -38,6 +58,9 @@ jobs:
           node --check server.js
           node --check services/security/coreOperationsStagingActivation.js
           node --check services/security/coreOperationsEmployeeDraftAudit.js
+          node --check services/security/coreEmployeePilotGrantReader.js
+          node --check services/security/coreOperationsIsolatedReadPilot.js
+          node --check tests/core-operations-isolated-read-pilot-postgres.test.mjs
           node --check tests/core-operations-staging-activation.test.mjs
           node --check special-orders.js
           node --check services/publicBasePath.js
@@ -63,3 +86,5 @@ jobs:
             tests/admin-nav-isolated-bridge.test.mjs \
             tests/admin-nav-db-isolated-smoke.test.mjs \
             tests/shared-ui-reconciliation.test.mjs
+      - name: Disposable PostgreSQL + real Ed25519 station + SELECT-only employee grant pilot
+        run: node --test --test-concurrency=1 tests/core-operations-isolated-read-pilot-postgres.test.mjs
