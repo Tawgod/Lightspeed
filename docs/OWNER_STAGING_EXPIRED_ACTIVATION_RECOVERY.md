@@ -59,7 +59,7 @@ Owner staging branch, not merged into live or production sources.
    project `5b46096d-3178-47ec-ba88-d5037696346a`, staging environment
    `46b93c76-3085-4e76-a37d-90dfdd250dd2`, database
    `hc_owner_stage_test` and restricted operator/runtime login roles.
-3. In the owner Codespace, with dependencies installed, run **\`bash scripts/test-owner-recovery-disposable.sh\`** from the repository root. The helper starts a throwaway Docker PostgreSQL 18 on loopback in the remote Codespace, runs static and actual database tests, and removes the container on exit. It does not use Railway or the Windows workstation database. It requires Docker to be available in Codespaces. Use only a disposable local PostgreSQL 18 instance and explicit
+3. In the owner Codespace, with dependencies installed, run **`bash scripts/test-owner-recovery-disposable.sh`** from the repository root. The helper starts a throwaway Docker PostgreSQL 18 on loopback in the remote Codespace, runs static and actual database tests, and removes the container on exit. It does not use Railway or the Windows workstation database. It requires Docker to be available in Codespaces. Use only a disposable local PostgreSQL 18 instance and explicit
    `HC_OWNER_RECOVERY_DB_TEST=1` to run the integration test. Its
    `HC_TEST_DATABASE_URL` MUST target `hc_test` on loopback; the test creates
    and drops a **new**, initially nonexistent `hc_owner_stage_test`
