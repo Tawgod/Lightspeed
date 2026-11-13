@@ -25,6 +25,8 @@ on:
       - 'tests/core-operations-employee-draft-audit.test.mjs'
       - 'tests/core-operations-isolated-read-pilot-postgres.test.mjs'
       - 'tests/isolated-employee-pilot-runtime-postgres.test.mjs'
+      - 'tests/staging-employee-pilot-http-smoke.test.mjs'
+      - 'tests/staging-employee-pilot-browser-smoke.mjs'
       - 'tests/public-base-path.test.mjs'
       - 'tests/*navigation*.test.mjs'
       - 'tests/store-operations-dashboard.test.mjs'
@@ -70,6 +72,8 @@ jobs:
           node --check staging/isolated-employee-pilot-operator.js
           node --check staging/employee-read-pilot.js
           node --check tests/isolated-employee-pilot-runtime-postgres.test.mjs
+          node --check tests/staging-employee-pilot-http-smoke.test.mjs
+          node --check tests/staging-employee-pilot-browser-smoke.mjs
           node --check tests/core-operations-staging-activation.test.mjs
           node --check special-orders.js
           node --check services/publicBasePath.js
@@ -99,3 +103,14 @@ jobs:
         run: node --test --test-concurrency=1 tests/core-operations-isolated-read-pilot-postgres.test.mjs
       - name: Test deployable isolated employee pilot runtime, operator registration, and browser assets
         run: node --test --test-concurrency=1 tests/isolated-employee-pilot-runtime-postgres.test.mjs
+      - name: Read-only HTTPS acceptance of separately deployed pilot
+        if: github.event.pull_request.head.ref == 'feature/isolated-employee-pilot-runtime-20261112'
+        run: node --test --test-concurrency=1 tests/staging-employee-pilot-http-smoke.test.mjs
+      - name: Install isolated Chromium for one-time pilot browser acceptance
+        if: github.event.pull_request.head.ref == 'feature/isolated-employee-pilot-runtime-20261112'
+        run: |
+          npm install --no-save --ignore-scripts --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Validate signed-out pilot UI and non-exportable browser Ed25519 with Chromium
+        if: github.event.pull_request.head.ref == 'feature/isolated-employee-pilot-runtime-20261112'
+        run: node tests/staging-employee-pilot-browser-smoke.mjs
