@@ -10,13 +10,16 @@ import {createPrimaryTimeclockVerificationWiring} from './primaryTimeclockVerifi
 const ID=/^[1-9][0-9]{0,17}$/;
 const OFF=[
  'HC_STAGING_TEST_LOGIN_ENABLED','HC_CORE_EMPLOYEE_PILOT_ENABLED',
- 'HC_OWNER_STAGING_ENABLED','SPECIAL_ORDERS_LIVE_MODE',
+ 'HC_OWNER_STAGING_ENABLED','HC_STAGING_PIN_SETUP_ENABLED',
+ 'HC_PILOT_BOOTSTRAP_ENABLED','SPECIAL_ORDERS_LIVE_MODE',
  'SCANNER_ENABLED','SPECIAL_ORDERS_ALLOW_MIGRATION',
  'SPECIAL_ORDERS_ALLOW_PRODUCT_WRITES','HC_ADMIN_NAV_ENABLED'
 ];
 const ABSENT=[
  'DATABASE_URL','LIGHTSPEED_TOKEN','DISCORD_TOKEN',
- 'HC_PILOT_OPERATOR_KEY','HC_STAGING_TEST_PIN_HASH',
+ 'HC_PILOT_OPERATOR_KEY','HC_PILOT_AUTH_PASSWORD',
+ 'HC_PILOT_READ_PASSWORD','HC_PILOT_STATION_SIGNING_SECRET',
+ 'HC_STAGING_TEST_PIN_HASH','LIGHTSPEED_DOMAIN','SPECIAL_ORDERS_ADMIN_KEY',
  'HC_OWNER_STAGING_DATABASE_URL','HC_OWNER_TIMECLOCK_SERVICE_SECRET'
 ];
 const SECRETS=[
@@ -62,7 +65,11 @@ function strictCanonicalIdentity(timeclock){
     if(!ID.test(id)||id==='901'||
        person.permissionSource!=='timeclock_employee'||person.canLookup!==true)
       throw denied();
-    return person;
+    // A Scanner role or canApprove flag is not an independently appointed
+    // Hobby Corner Owner. Never reflect it as Admin authority to the browser.
+    return Object.freeze({id:String(person.id),name:person.name,
+      role:null,canLookup:true,canApprove:false,
+      permissionSource:'timeclock_employee'});
   };
   return Object.freeze({
     verifyPin:async pin=>check(await timeclock.verifyPin(pin)),
