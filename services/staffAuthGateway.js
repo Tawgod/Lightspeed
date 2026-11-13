@@ -9,8 +9,12 @@ export function createStaffAuthGateway({
   sessionSecret,
   loginLimiter,
   clock = () => Date.now(),
-  ttlSeconds = 900
+  ttlSeconds = 900,
+  requireEmployeeSelector = false
 } = {}) {
+  if (typeof requireEmployeeSelector !== 'boolean') {
+    throw new TypeError('Invalid staff account selection policy.');
+  }
   if (!identity?.verifyPin || !identity?.authorize) {
     throw new Error('Timeclock staff identity is not configured.');
   }
@@ -67,17 +71,28 @@ export function createStaffAuthGateway({
 
   router.post('/session', express.json({ limit: '1kb' }), async (req, res) => {
     const pin = req.body?.pin;
-    if (typeof pin !== 'string' || !/^\d{4}$/.test(pin)) {
+    const selector = req.body?.employeeId;
+    // The selected employee ID is a PUBLIC throttle selector, not an identity
+    // assertion. Preserve existing scanner callers when no selector is sent.
+    // Strict compositions must opt in and then compare the canonical PIN
+    // result to the selector BEFORE issuing any signed session.
+    if (typeof pin !== 'string' || !/^\d{4}$/.test(pin) ||
+        (selector === undefined ? requireEmployeeSelector :
+         typeof selector !== 'string' || !/^[1-9][0-9]{0,17}$/.test(selector))) {
       return res.status(401).json({ error: 'Invalid employee credentials.' });
     }
 
     try {
-      const allowed = await loginLimiter({ pin, ip: req.ip });
+      const allowed = await loginLimiter({ pin, ip: req.ip,
+        ...(selector !== undefined ? { employeeId: selector } : {}) });
       if (!allowed) {
         return res.status(429).json({ error: 'Too many sign-in attempts. Try again later.' });
       }
 
       const employee = await identity.verifyPin(pin);
+      if (selector !== undefined && String(employee?.id ?? '') !== selector) {
+        throw Object.assign(new Error('Employee selector mismatch.'), { status: 401 });
+      }
       const token = sessions.issue(employee);
 
       return res.json({
