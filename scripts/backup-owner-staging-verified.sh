@@ -6,8 +6,9 @@ set -Eeuo pipefail
 umask 077
 
 PROJECT='5b46096d-3178-47ec-ba88-d5037696346a'
-ENVIRONMENT='staging'
+ENVIRONMENT='46b93c76-3085-4e76-a37d-90dfdd250dd2'
 SERVICE='Postgres-x8Ui'
+SERVICE_ID='5c4498e4-cffb-4224-916a-af57391d1cd9'
 DATABASE='hc_owner_stage_test'
 
 for program in railway docker age sha256sum; do
@@ -35,7 +36,10 @@ NAME="hc-owner-stage-${STAMP}-$$"
 REMOTE="/tmp/${NAME}.dump"
 RAW="${DEST}/${NAME}.dump"
 ENCRYPTED="${DEST}/${NAME}.dump.age"
-CONTAINER="hc-owner-restore-check-$$"
+CONTAINER="hc-owner-restore-check-$"
+# This isolated directory owns only a temporary Railway CLI link. It must
+# not modify the repository's own Railway context or deploy configuration.
+LINK_DIR="$(mktemp -d)"
 REMOTE_CREATED=0
 DOCKER_STARTED=0
 
@@ -54,6 +58,8 @@ cleanup() {
   if [[ "$REMOTE_CREATED" -eq 1 ]]; then
     railway_command sh -lc "rm -f -- '$REMOTE'" >/dev/null 2>&1 || true
   fi
+  # Removes the scratch Railway link; no change to repository .railway.
+  rm -rf -- "$LINK_DIR"
 }
 trap cleanup EXIT
 
@@ -78,8 +84,15 @@ railway_command sh -lc "
 "
 
 printf '%s\n' '2/5: Downloading backup directly from the authorized Railway service.'
-railway service files download "$REMOTE" "$RAW" \
-  --project "$PROJECT" --environment "$ENVIRONMENT" --service "$SERVICE"
+# The installed Railway CLI rejects --project/--environment/--service when
+# appended to "railway service files download". Link the *scratch directory*
+# to the exact, separately verified service first; no source/deploy edits.
+(
+  cd "$LINK_DIR"
+  railway link --project "$PROJECT" --environment "$ENVIRONMENT" \
+    --service "$SERVICE_ID" --json >/dev/null
+  railway service files download "$REMOTE" "$RAW"
+)
 [[ -s "$RAW" ]] || { echo 'Backup download empty or missing.' >&2; exit 1; }
 chmod 600 "$RAW"
 
