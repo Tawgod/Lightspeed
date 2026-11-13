@@ -204,9 +204,9 @@ test('real signed test PIN + real Ed25519 station + PostgreSQL SELECT-only exact
 
       // Test operator provisions exactly one expiring, individually approved
       // test-only read grant. The running reader has NO write capability.
-      await operator.query(\`INSERT INTO public.hc_core_employee_pilot_grants
+      await operator.query(`INSERT INTO public.hc_core_employee_pilot_grants
         (employee_id,operation,approved_by,expires_at)
-        VALUES(901,'special-orders.read',900,now()+interval '1 hour')\`);
+        VALUES(901,'special-orders.read',900,now()+interval '1 hour')`);
       assert.equal((await get('/api/special-orders/orders',signedHeaders)).status,200);
       assert.equal((await get('/api/special-orders/stats',signedHeaders)).status,200);
       assert.equal((await post('/api/special-orders/orders',{},signedHeaders)).status,403,
@@ -222,8 +222,8 @@ test('real signed test PIN + real Ed25519 station + PostgreSQL SELECT-only exact
         authorization:'Bearer '+anotherToken,'x-hc-station-proof':stationToken
       })).status,403,'Station proof cannot cross signed session rotation');
 
-      await operator.query(\`UPDATE public.hc_core_employee_pilot_grants
-        SET revoked_at=now() WHERE employee_id=901 AND operation='special-orders.read'\`);
+      await operator.query(`UPDATE public.hc_core_employee_pilot_grants
+        SET revoked_at=now() WHERE employee_id=901 AND operation='special-orders.read'`);
       assert.equal((await get('/api/special-orders/orders',signedHeaders)).status,403,
         'Revoking the durable grant immediately denies existing session/station');
       assert.deepEqual(reached,['GET /orders','GET /stats']);
