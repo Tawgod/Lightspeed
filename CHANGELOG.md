@@ -1,5 +1,13 @@
 # Hobby Corner Lightspeed — Development Changelog
 
+## 2026-11-13 — Expired first-Owner staging activation recovery (draft, not applied)
+
+- Draft [PR #75](https://github.com/Tawgod/Lightspeed/pull/75) proposes a **single** operator-only reissue for an expired/unconsumed `hc_owner_stage_test` first Owner authorization without erasing its original SHA-256 digest, timestamps or issuer.
+- Add separately approved staging-only migration for append-only recovery audit, `SECURITY DEFINER` one-shot function, advisory lock and least-privilege EXECUTE for the restricted operator role only; no runtime issuance permission.
+- Extend the private interactive issuer with distinct `--reissue-expired-staging-owner` flag, additional acknowledgement, live canonical Timeclock employee recheck and 10-minute database-clock expiry; preserve the original first-issue mode.
+- Add negative/static and explicit disposable PostgreSQL regression tests, plus recovery runbook. Operator-provided HTTP staging checks: health ready, page/client 200, cross-site/missing-activation 403.
+- **Not yet independently tested against PostgreSQL or a real passkey.** No staging migration, operator token issuance, runtime deploy, production, gateway, extension, or Owner access change. Review and approve separately.
+
 ## 2026-11-06 — Employee Administration & Security foundation (development, unmounted)
 
 - Created draft PR #34 on `feature/employee-admin-security-foundation-20261106`, stacked on shared services Phase 1 branch.
