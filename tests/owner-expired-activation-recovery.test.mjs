@@ -47,6 +47,8 @@ test('one expired unused activation can be reissued with immutable audit, never 
  const stageURL=new URL(url.toString());
  stageURL.pathname='/hc_owner_stage_test';
  let stage=null,operator=null,runtime=null,dbCreated=false;
+ let phase='guarding disposable database';
+ let testFailure=null;
  const op='hc_owner_recovery_op_'+process.pid;
  const rt='hc_owner_recovery_runtime_'+process.pid;
  const groupNames=['hc_owner_stage_operator_privs','hc_owner_stage_runtime_privs'];
@@ -62,8 +64,10 @@ test('one expired unused activation can be reissued with immutable audit, never 
   assert.equal(guard.rows[0].has_stage,false,'must not reuse or delete any existing staging DB');
   assert.equal(guard.rows[0].roles,0,'must not reuse or alter existing roles');
 
+  phase='creating fresh disposable owner database';
   await admin.query('CREATE DATABASE hc_owner_stage_test');
   dbCreated=true;
+  phase='loading prerequisite schemas';
   stage=new pg.Pool({connectionString:stageURL.toString(),max:2});
   for(const filename of [
    'hc_staff_passkeys.sql','hc_admin_delegations.sql',
@@ -71,6 +75,7 @@ test('one expired unused activation can be reissued with immutable audit, never 
   ]) {
    await stage.query(await readFile(new URL('../db/'+filename,import.meta.url),'utf8'));
   }
+  phase='provisioning isolated test-only roles';
   for(const group of groupNames)await stage.query('CREATE ROLE '+group+' NOLOGIN');
   await stage.query('CREATE ROLE '+op+" LOGIN PASSWORD '"+password+"'");
   await stage.query('CREATE ROLE '+rt+" LOGIN PASSWORD '"+password+"'");
@@ -79,6 +84,7 @@ test('one expired unused activation can be reissued with immutable audit, never 
   await stage.query('GRANT USAGE ON SCHEMA public TO hc_owner_stage_operator_privs, hc_owner_stage_runtime_privs');
   await stage.query(
    'GRANT SELECT, INSERT ON public.hc_first_owner_activations TO hc_owner_stage_operator_privs');
+  phase='applying recovery candidate SQL in disposable database';
   await stage.query(await readFile(sql,'utf8'));
 
   const opURL=new URL(stageURL);
@@ -88,6 +94,7 @@ test('one expired unused activation can be reissued with immutable audit, never 
   rtURL.username=rt;rtURL.password=password;
   runtime=new pg.Pool({connectionString:rtURL.toString(),max:1});
 
+  phase='checking runtime and operator privilege separation';
   const privilege=await stage.query(
    `SELECT has_function_privilege($1,
        'public.hc_reissue_expired_first_owner_activation(bigint,text,text)','EXECUTE')
@@ -105,6 +112,7 @@ test('one expired unused activation can be reissued with immutable audit, never 
    'UPDATE public.hc_first_owner_activations SET activation_digest=$1 WHERE employee_id=1',
    [digest()]),/permission denied/i);
 
+  phase='inserting test authorization';
   const oldDigest=digest(),replacementDigest=digest();
   const now=Date.now();
   await stage.query(
@@ -117,12 +125,14 @@ test('one expired unused activation can be reissued with immutable audit, never 
    'SELECT public.hc_reissue_expired_first_owner_activation($1,$2,$3) AS expires_at',
    [1,replacementDigest,'verified-operator']
   );
+  phase='unexpired-authorization refusal';
   await assert.rejects(reissue(),/recovery denied/i,'unexpired authorization must refuse');
   await stage.query(
    `UPDATE hc_first_owner_activations
       SET approved_at=now()-interval '12 minutes',
           expires_at=now()-interval '2 minutes' WHERE employee_id=1`);
 
+  phase='consumed-authorization refusal';
   await stage.query(
    `UPDATE hc_first_owner_activations
       SET consumed_at=now(),credential_id='credential-consumed-test' WHERE employee_id=1`);
@@ -131,17 +141,20 @@ test('one expired unused activation can be reissued with immutable audit, never 
    `UPDATE hc_first_owner_activations SET consumed_at=NULL,credential_id=NULL
       WHERE employee_id=1`);
 
+  phase='existing-Owner refusal';
   await stage.query(
    "INSERT INTO hc_admin_principals(employee_id,role) VALUES(1,'owner')");
   await assert.rejects(reissue(),/recovery denied/i,'existing Owner blocks renewal');
   await stage.query('DELETE FROM hc_admin_principals WHERE employee_id=1');
 
+  phase='existing-passkey refusal';
   await stage.query(
    `INSERT INTO hc_staff_passkeys(credential_id,employee_id,public_key)
       VALUES('already-registered-credential',1,$1)`,[randomBytes(32)]);
   await assert.rejects(reissue(),/recovery denied/i,'existing passkey blocks renewal');
   await stage.query('DELETE FROM hc_staff_passkeys WHERE employee_id=1');
 
+  phase='fault-injection rollback of audit write';
   // Fault injection: an audit failure must roll back approval changes too.
   await stage.query(
    `CREATE FUNCTION public.hc_test_fail_owner_reissue_audit()
@@ -159,6 +172,7 @@ test('one expired unused activation can be reissued with immutable audit, never 
    'DROP TRIGGER hc_test_fail_owner_reissue_audit ON hc_first_owner_activation_reissues');
   await stage.query('DROP FUNCTION public.hc_test_fail_owner_reissue_audit()');
 
+  phase='successful single recovery';
   const approved=await reissue();
   assert.equal(approved.rowCount,1);
   const row=(await stage.query(
@@ -178,6 +192,7 @@ test('one expired unused activation can be reissued with immutable audit, never 
   assert.equal(log.rows[0].previous_activation_digest,oldDigest);
   assert.equal(log.rows[0].replacement_activation_digest,replacementDigest);
   assert.equal(log.rows[0].previous_issued_by,'original-operator');
+  phase='rejecting second recovery and enforcing append-only audit';
   await assert.rejects(reissue(),/recovery denied/i,'one recovery only, no silent reuse');
   await assert.rejects(
    stage.query('DELETE FROM hc_first_owner_activation_reissues'),
@@ -185,14 +200,40 @@ test('one expired unused activation can be reissued with immutable audit, never 
   assert.equal((await stage.query(
    'SELECT count(*)::integer AS n FROM hc_first_owner_activation_reissues'
   )).rows[0].n,1);
+ }catch(error){
+  // Preserve the actual failing test step instead of allowing a subsequent
+  // teardown problem to hide it with an unrelated SQL connection error.
+  testFailure=new Error('Owner recovery test failed at ['+phase+']: '+error.message,{
+   cause:error
+  });
  }finally{
-  await Promise.allSettled([operator?.end(),runtime?.end(),stage?.end()].filter(Boolean));
-  if(dbCreated){
-   await admin.query('DROP DATABASE hc_owner_stage_test WITH (FORCE)');
-   for(const role of [op,rt,...groupNames]) {
-    await admin.query('DROP ROLE IF EXISTS '+role);
+  const cleanupErrors=[];
+  for(const [label,pool] of [['operator',operator],['runtime',runtime],['stage',stage]]){
+   if(pool){
+    try{await pool.end();}
+    catch(error){cleanupErrors.push(label+' pool: '+error.message);}
    }
   }
-  await admin.end();
+  if(dbCreated){
+   // Deliberately NEVER use WITH (FORCE): if connections unexpectedly remain,
+   // show a useful cleanup error rather than killing a test connection.
+   try{await admin.query('DROP DATABASE hc_owner_stage_test');}
+   catch(error){cleanupErrors.push('drop disposable db: '+error.message);}
+   for(const role of [op,rt,...groupNames]){
+    try{await admin.query('DROP ROLE IF EXISTS '+role);}
+    catch(error){cleanupErrors.push('drop throwaway role: '+error.message);}
+   }
+  }
+  try{await admin.end();}
+  catch(error){cleanupErrors.push('admin pool: '+error.message);}
+  if(cleanupErrors.length){
+   const detail='Disposable cleanup issues: '+cleanupErrors.join(' | ');
+   if(testFailure){
+    console.error(detail);
+   }else{
+    testFailure=new Error(detail);
+   }
+  }
  }
+ if(testFailure)throw testFailure;
 });
