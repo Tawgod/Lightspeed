@@ -116,6 +116,45 @@ passphrase, encrypted payload, employee data or database credentials to chat.
 If verification fails, stop and report only the sanitized error. The
 original backup helper also now uses a correct unique Docker container name.
 
+## Offsite backup independently found in Google Drive — 2026-11-13
+
+The operator said the backup was uploaded. A live Google Drive folder readback
+found [the exact encrypted file](https://drive.google.com/file/d/1pLRPMwAU1f0Xn8pCnWv5BO5SEjBZUbqW/view?usp=drivesdk)
+in [HC Backups → Railway → Railway backups](https://drive.google.com/drive/folders/1FClPbgzdZljQzjqENdoK88omJC000Zom):
+`hc-owner-stage-20261113T204750Z-64857.dump.age`, 37,741 bytes.
+This matches the previously independently **restored** Codespaces file's
+filename and length. The Drive copy has not itself been decrypted or
+SHA-256-verified; it is **confirmed to exist offsite**. Keep the passphrase
+outside the backup folder.
+
+## Step 3a — Read-only staging migration preflight (prepared, not run)
+
+A guarded, no-write script exists at
+`scripts/preflight-owner-recovery-staging.sh`. Run in the same authenticated
+Codespace on the existing feature branch:
+
+```bash
+cd /workspaces/Lightspeed-owner-migration
+git pull --ff-only
+bash -n scripts/preflight-owner-recovery-staging.sh
+bash scripts/preflight-owner-recovery-staging.sh
+```
+
+It calls the exact Railway staging project/environment and **Postgres-x8Ui**
+service, and verifies the currently expired, unconsumed employee-1 activation,
+zero Owners, no registration event/passkey/reissue and restricted DB groups.
+It returns only `HC_OWNER_STAGING_RECOVERY_PREFLIGHT_OK` or blocked; no
+tokens, hashes, secrets, or other personal data. Any failure is a stop.
+
+A *separate* operator script, `scripts/apply-owner-recovery-staging-sql.sh`,
+is prepared but **MUST NOT BE RUN before explicit in-chat user approval** of
+`db/hc_owner_stage_expired_activation_recovery.sql` to **only**
+`hc_owner_stage_test` in isolated staging. That script is gated by a TTY,
+exact Git SQL blob, local verified encrypted backup SHA, a fresh read-only
+preflight, separate local approval acknowledgement, exact Railway service
+ID, and post-migration function-owner/ACL readback. It adds a recovery
+audit/function; it does **not** issue an activation token or create an Owner.
+
 ## Step 3 — Migration approval gate
 
 - Privately reconfirm Owner staging database `hc_owner_stage_test`, target employee 1, original authorization expired+unused, no first Owner, no passkey and no prior reissue, plus reviewed staging backup.
