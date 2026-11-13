@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hobby Corner · Isolated employee read pilot</title>
+  <link rel="stylesheet" href="/HobbyCorner/pilot.css">
+  <script type="module" src="/HobbyCorner/pilot.js"></script>
+</head>
+<body>
+  <main class="shell">
+    <header class="heading">
+      <div class="brand"><span class="mark">HC</span><div><strong>Hobby Corner</strong><span>Security pilot · Test environment</span></div></div>
+      <div class="tag">SYNTHETIC DATA ONLY</div>
+    </header>
+    <section class="hero">
+      <p class="eyebrow">Separate Railway test environment</p>
+      <h1>Employee read-access pilot</h1>
+      <p>Validate signed test employee sessions, registered workstation proof, and exact PostgreSQL read permissions. This page has no access to actual customers, Lightspeed, Timeclock or store orders.</p>
+      <p class="warning">No real employee PINs, passwords, passkeys, or customer information belong on this page.</p>
+    </section>
+    <section class="stack">
+      <article class="panel">
+        <div class="step">01</div><div class="panelcopy"><h2>Sign in as the synthetic employee</h2>
+          <p>Enter the test-only 4-digit PIN. It is not your store Timeclock PIN.</p>
+          <form id="login"><label for="pin">Synthetic test PIN</label>
+            <div class="inline"><input id="pin" inputmode="numeric" maxlength="4" minlength="4" pattern="[0-9]{4}" type="password" autocomplete="off" required><button type="submit">Sign in</button></div>
+          </form>
+          <p id="login-state" class="helper">Not signed in</p>
+        </div>
+      </article>
+      <article class="panel">
+        <div class="step">02</div><div class="panelcopy"><h2>Register this test workstation</h2>
+          <p>Generates a non-exportable Ed25519 private key in this browser. Registration requires a separate, high-entropy one-time operator key, available only to the test environment administrator.</p>
+          <label for="operator-key">One-time test operator key</label>
+          <input id="operator-key" type="password" autocomplete="off" placeholder="Paste the operator key from Railway">
+          <button id="register" type="button">Generate and register test station</button>
+          <p id="station-state" class="helper">Checking for existing browser registration…</p>
+        </div>
+      </article>
+      <article class="panel">
+        <div class="step">03</div><div class="panelcopy"><h2>Verify the station cryptographically</h2>
+          <p>A fresh one-use 90-second challenge is signed with this browser's private key. The resulting employee-bound proof expires after five minutes.</p>
+          <button id="prove" type="button">Verify workstation</button>
+          <p id="proof-state" class="helper">No active proof</p>
+        </div>
+      </article>
+      <article class="panel">
+        <div class="step">04</div><div class="panelcopy"><h2>Test exact read access</h2>
+          <p>Both requests are constrained to synthetic, read-only fixture responses. Order creation and all other business endpoints remain denied.</p>
+          <div class="inline"><button id="orders" type="button">Read fixture orders</button><button id="stats" type="button">Read fixture summary</button><button id="logout" type="button" class="subtle">Sign out</button></div>
+          <pre id="result" role="status">No read requested yet.</pre>
+        </div>
+      </article>
+    </section>
+    <footer>Isolated pilot · Does not connect to production, Owner security, or the Timcorp shared gateway.</footer>
+  </main>
+</body>
+</html>
