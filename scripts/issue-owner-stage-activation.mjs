@@ -15,8 +15,14 @@ async function issue({
  createPool=opts=>new pg.Pool(opts),createIdentity=createTimeclockScannerIdentity,
  random=randomBytes,confirm
 }={}){
- if(process.argv.slice(2).join(' ')!=='--issue-staging-owner'||
-    !process.stdin.isTTY||!process.stdout.isTTY||typeof confirm!=='function')
+ // Recovery requires an EXPLICIT different flag and extra operator acknowledgement.
+ // Neither path can run unattended, over HTTP, from CI, or with the runtime DB.
+ const mode=process.argv.slice(2).join(' ');
+ const recovery=mode==='--reissue-expired-staging-owner';
+ if(!['--issue-staging-owner','--reissue-expired-staging-owner'].includes(mode)||
+    !process.stdin.isTTY||!process.stdout.isTTY||typeof confirm!=='function'||
+    (recovery&&env.HC_OWNER_OPERATOR_RECOVERY_ACK!==
+      'I_REVIEWED_EXPIRED_UNUSED_ACTIVATION'))
   refuse();
  const id=String(env.HC_OWNER_TIMECLOCK_EMPLOYEE_ID??'');
  if(env.NODE_ENV!=='test'||env.HC_SECURITY_ENV!=='isolated-staging'||
@@ -55,19 +61,37 @@ async function issue({
   await client.query('SELECT pg_advisory_xact_lock(78619136,801)');
   const owners=await client.query('SELECT 1 FROM hc_admin_principals LIMIT 1');
   if(owners.rowCount!==0)refuse();
-  const previous=await client.query('SELECT 1 FROM hc_first_owner_activations LIMIT 1');
-  if(previous.rowCount!==0)refuse(); // Never reissue an old bootstrap.
-  const row=await client.query(
-   `INSERT INTO hc_first_owner_activations
-      (employee_id,activation_digest,approved_at,expires_at,issued_by)
-    VALUES($1,$2,$3,$4,$5) RETURNING employee_id`,
-   [id,digest,new Date(instant).toISOString(),
-    new Date(instant+10*60_000).toISOString(),env.HC_OWNER_OPERATOR_REF]
-  );
-  if(row.rowCount!==1)refuse();
+  const previous=await client.query(
+   'SELECT employee_id FROM hc_first_owner_activations LIMIT 2');
+  let expiresAt;
+  if(!recovery){
+   if(previous.rowCount!==0)refuse(); // Initial grant is strictly first-use.
+   const row=await client.query(
+    `INSERT INTO hc_first_owner_activations
+       (employee_id,activation_digest,approved_at,expires_at,issued_by)
+     VALUES($1,$2,$3,$4,$5) RETURNING employee_id`,
+    [id,digest,new Date(instant).toISOString(),
+     new Date(instant+10*60_000).toISOString(),env.HC_OWNER_OPERATOR_REF]
+   );
+   if(row.rowCount!==1)refuse();
+   expiresAt=new Date(instant+10*60_000).toISOString();
+  }else{
+   // Recovery cannot be a manual UPDATE/DELETE. The separately approved,
+   // operator-only, staging DB function checks expired+unused, zero Owners,
+   // no existing credential, one reissue ever, and records immutable history.
+   if(previous.rowCount!==1||String(previous.rows[0]?.employee_id)!==id)refuse();
+   const result=await client.query(
+    `SELECT public.hc_reissue_expired_first_owner_activation(
+       $1::bigint,$2::text,$3::text) AS expires_at`,
+    [id,digest,env.HC_OWNER_OPERATOR_REF]
+   );
+   if(result.rowCount!==1||!result.rows[0]?.expires_at)refuse();
+   expiresAt=new Date(result.rows[0].expires_at).toISOString();
+   if(!Number.isFinite(new Date(expiresAt).getTime()))refuse();
+  }
   await client.query('COMMIT');
   return Object.freeze({employeeId:id,activationSecret:secret.toString('base64url'),
-   expiresAt:new Date(instant+10*60_000).toISOString()});
+   expiresAt});
  }catch(error){
   if(client)await client.query('ROLLBACK').catch(()=>{});
   refuse();
