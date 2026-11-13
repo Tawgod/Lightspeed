@@ -1,6 +1,6 @@
 # Staging First Owner — Expired Activation Recovery (draft, 2026-11-13)
 
-**Status: Testing. First full disposable PostgreSQL run PASS (4/4) on commit 0d7b995; tightened least-privilege migration still requires rerun. NO staging migration or deploy.**
+**Status: Testing — hardened SQL and recovery pass 4/4 disposable PostgreSQL 18 tests on exact branch commit 2b716f7 (operator evidence). Staging backup remains unverified; NO recovery migration or deploy.**
 **Owner account: canonical Timeclock employee 1 only (operator-selected).**
 
 ## Evidence and reason
@@ -81,13 +81,44 @@ recovery function does not run as the PostgreSQL administrator even when
 installed by that administrator. Only narrowly scoped SELECT/INSERT/
 UPDATE-column grants are assigned. The revised regression checks assert
 function ownership, restricted schema CREATE access, operator/runtime
-separation, and no privilege escalation. **These new changes are not yet
-covered by the operator's 4/4 result.** Rerun the same disposable test
-on the updated branch before requesting any staging migration approval.
+separation, and no privilege escalation. **These new changes are now covered by a second operator-run test** after
+fast-forward to exact SHA `2b716f7564194e1e9a632f844aefbc0154c8b63c`:
+**4 passed, 0 failed, 0 skipped** on disposable PostgreSQL 18. This verifies
+the candidate test suite, not the real staging role state or backup.
 
-Re-run the same disposable Codespaces test command on the latest branch
-before reviewing the migration for deployment. Do not point the runner or
-its URL at Railway or another non-disposable DB.
+Do not point the disposable test runner or its URL at Railway or any other
+persistent database. Repeat the tests if migration SQL or recovery script is
+changed again after the recorded passing commit.
+
+## Railway staging environment — independently read-only verified 2026-11-13
+
+Railway connector readback at project `5b46096d-3178-47ec-ba88-d5037696346a`,
+environment `46b93c76-3085-4e76-a37d-90dfdd250dd2`:
+
+- Dedicated Owner PostgreSQL service `Postgres-x8Ui`,
+  ID `5c4498e4-cffb-4224-916a-af57391d1cd9`, PostgreSQL 18,
+  deployment `51d04bf4-0f3e-4716-ba17-8e756a1bc1be` SUCCESS,
+  volume `04530c8a-cf70-4857-9f9b-0828b47bc54c`
+  mounted at `/var/lib/postgresql/data`.
+- Owner web service `hc-owner-staging`, ID
+  `3a8f9555-90e5-4bc2-bb63-4f48d8c852d0`,
+  deployment `7d682a97-0b62-4e49-a4c8-af83d03d8e08` SUCCESS,
+  source commit `60cefaf71d7b737753728f95f8474df17e99912c`,
+  start command `node staging/owner-security-server.js`, exact hostname
+  `hc-owner-staging-staging.up.railway.app`.
+- Environment pending changes: **none**. No resource changes committed.
+  No storage buckets are listed in this environment, but this alone cannot
+  prove that no independent or scheduled volume backup exists.
+
+**Remaining backup gate:** The connector can confirm the service/volume
+is deployed but does not expose a verified restorable backup, backup timestamp,
+PITR coverage or restore drill. In the Railway dashboard, inspect
+`HC PR63 Isolated Staging → staging → Postgres-x8Ui → Backups`
+without clicking Enable, Restore, Delete or other mutating actions. Confirm
+backup coverage, timestamp, source service and ability to restore.
+Alternatively, a privately protected, verified logical dump and disposable
+restore is acceptable as an explicit separately reviewed recovery route.
+Do not use the unrelated `Postgres` service or a production backup.
 
 ## Required gates before live staging database migration
 
