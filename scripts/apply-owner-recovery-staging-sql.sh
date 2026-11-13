@@ -20,7 +20,7 @@ if [[ $# -ne 1 || "$1" != '--apply-approved-staging-sql' ]]; then
   echo 'Usage: bash scripts/apply-owner-recovery-staging-sql.sh --apply-approved-staging-sql' >&2
   exit 2
 fi
-if [[ ! -t 0 || ! -t 1 || "$HC_OWNER_STAGING_MIGRATION_APPROVAL" != 'APPROVED_ISOLATED_STAGE_SQL_ONLY' ]]; then
+if [[ ! -t 0 || ! -t 1 || "${HC_OWNER_STAGING_MIGRATION_APPROVAL:-}" != 'APPROVED_ISOLATED_STAGE_SQL_ONLY' ]]; then
   echo 'Refusing: interactive session and scoped approval acknowledgement required.' >&2
   exit 1
 fi
@@ -92,8 +92,10 @@ VERIFY_SQL="SELECT CASE WHEN
    'public.hc_reissue_expired_first_owner_activation(bigint,text,text)','EXECUTE')
  AND NOT has_function_privilege('hc_owner_stage_runtime_privs',
    'public.hc_reissue_expired_first_owner_activation(bigint,text,text)','EXECUTE')
- AND NOT has_function_privilege('public',
-   'public.hc_reissue_expired_first_owner_activation(bigint,text,text)','EXECUTE')
+ AND NOT EXISTS (
+   SELECT 1
+   FROM aclexplode(COALESCE(p.proacl,acldefault('f',p.proowner))) acl
+   WHERE acl.grantee=0 AND acl.privilege_type='EXECUTE')
  AND (SELECT count(*) FROM public.hc_first_owner_activations)=1
  AND NOT EXISTS(SELECT 1 FROM public.hc_first_owner_activation_reissues)
  AND NOT EXISTS(SELECT 1 FROM public.hc_admin_principals)
