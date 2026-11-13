@@ -75,6 +75,8 @@ test('separate roles, real signed device proof and one-time operator setup work 
       await admin.query(`CREATE TABLE IF NOT EXISTS public.hc_pilot_device_registration (
         id smallint PRIMARY KEY CHECK(id=1),consumed_at timestamptz,device_id uuid UNIQUE)`);
       await admin.query('INSERT INTO public.hc_pilot_device_registration(id) VALUES(1) ON CONFLICT DO NOTHING');
+      // The previous disposable test may have left a revoked fixture grant.
+      await admin.query("DELETE FROM public.hc_core_employee_pilot_grants WHERE employee_id=901");
       for(const [user,password] of [[authUser,env.HC_PILOT_AUTH_PASSWORD],[readUser,env.HC_PILOT_READ_PASSWORD]]){
         await admin.query('CREATE ROLE '+user+" LOGIN PASSWORD '"+password+"' NOSUPERUSER NOCREATEDB NOCREATEROLE");
       }
