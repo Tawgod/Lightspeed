@@ -127,7 +127,7 @@ test('separate roles, real signed device proof and one-time operator setup work 
       assert.equal((await fetchPath('/HobbyCorner/pilot.js')).status,200);
       assert.equal((await fetchPath('/HobbyCorner/pilot.css')).status,200);
       assert.equal((await json('/HobbyCorner/api/special-orders/orders')).status,403);
-      assert.equal((await json('/HobbyCorner/api/admin/navigation-access')).status,403);
+      assert.equal((await json('/HobbyCorner/api/admin/navigation-access')).status,404);
       assert.equal((await json('/HobbyCorner/api/pilot/register-station',{
         method:'POST',body:{publicKeySpki:'not-a-key',label:'test'}
       })).status,403);
