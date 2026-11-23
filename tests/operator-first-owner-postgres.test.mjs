@@ -57,7 +57,7 @@ test('operator-controlled exact employee activation atomically registers first O
     `INSERT INTO hc_first_owner_activations
       (employee_id,activation_digest,approved_at,expires_at,issued_by)
       VALUES($1,$2,$3,$4,$5)`,
-    [owner,createHash('sha256').update(token).digest('hex'),
+    [owner,createHash('sha256').update(Buffer.from(token,'base64url')).digest('hex'),
      new Date(t-3000),new Date(t+120000),'deployment-operator']
   );
   await assert.rejects(candidate.beginRegistration({
