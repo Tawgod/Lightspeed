@@ -78,8 +78,17 @@ REMOTE_APP
 DB_REMOTE=$(cat <<'REMOTE_DB'
 set -eu
 DB='hc_owner_stage_test'
-if ! printenv HC_OWNER_OPERATOR_DB_PASSWORD >/dev/null; then
-  echo 'HC_OWNER_OPERATOR_PREFLIGHT_BLOCKED: DB password missing' >&2
+# Railway SSH can provide a restricted shell environment that omits
+# variables present in the running service. Retrieve only this service's
+# existing password from its running PostgreSQL process, entirely inside
+# the isolated container; never print, persist or send it to Codespaces.
+if [ -z "${HC_OWNER_OPERATOR_DB_PASSWORD:-}" ] && [ -r /proc/1/environ ]; then
+  HC_OWNER_OPERATOR_DB_PASSWORD="$(tr '\000' '\n' < /proc/1/environ |
+    sed -n 's/^HC_OWNER_OPERATOR_DB_PASSWORD=//p' | head -n 1)"
+  export HC_OWNER_OPERATOR_DB_PASSWORD
+fi
+if [ -z "${HC_OWNER_OPERATOR_DB_PASSWORD:-}" ]; then
+  echo 'HC_OWNER_OPERATOR_PREFLIGHT_BLOCKED: password unavailable to Railway SSH' >&2
   exit 2
 fi
 SQL="SELECT CASE WHEN current_database()='hc_owner_stage_test'
