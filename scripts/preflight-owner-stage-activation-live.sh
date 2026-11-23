@@ -31,7 +31,7 @@ fi
 # Reuse only the running container's PATH; never print its environment.
 if ! command -v node >/dev/null 2>&1; then
   if [ -r /proc/1/environ ]; then
-    RUNTIME_PATH="$(tr '\\000' '\\n' < /proc/1/environ | sed -n 's/^PATH=//p' | head -n 1)"
+    RUNTIME_PATH="$(tr '\000' '\n' < /proc/1/environ | sed -n 's/^PATH=//p' | head -n 1)"
     if [ -n "$RUNTIME_PATH" ]; then PATH="$RUNTIME_PATH:$PATH"; export PATH; fi
   fi
 fi
