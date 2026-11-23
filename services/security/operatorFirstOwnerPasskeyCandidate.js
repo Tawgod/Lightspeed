@@ -11,7 +11,15 @@ const SECRET=/^[A-Za-z0-9_-]{43}$/; // 32 cryptographically random bytes, base64
 const denied=()=>Object.assign(new Error('First Owner activation denied.'),{
  status:403,code:'HC_FIRST_OWNER_ACTIVATION_DENIED'
 });
-const hash=value=>createHash('sha256').update(value,'utf8').digest('hex');
+// The private operator issuer hashes 32 RANDOM BYTES, then displays those
+// bytes as 43-character base64url. Decode before SHA-256, otherwise even a
+// valid signed session and unexpired approval can never match the stored hash.
+// Reject noncanonical encodings so their textual spelling cannot be ambiguous.
+const hash=value=>{
+ const raw=Buffer.from(value,'base64url');
+ if(raw.length!==32||raw.toString('base64url')!==value)throw denied();
+ return createHash('sha256').update(raw).digest('hex');
+};
 
 export function createOperatorFirstOwnerPasskeyCandidate({
  environment,enabled=false,expectedOwnerEmployeeId,staffAuthGateway,
