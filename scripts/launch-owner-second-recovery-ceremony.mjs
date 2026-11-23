@@ -36,9 +36,10 @@ try {
   " AND expires_at<clock_timestamp()) AS expired_unused,",
   "(SELECT count(*)=1 FROM public.hc_first_owner_activation_reissues) AS first_audit,",
   "NOT EXISTS(SELECT 1 FROM public.hc_first_owner_activation_second_recoveries) AS not_yet_issued,",
-  "NOT EXISTS(SELECT 1 FROM public.hc_admin_principals) AS no_owners,",
-  "NOT EXISTS(SELECT 1 FROM public.hc_staff_passkeys) AS no_passkeys,",
-  "NOT EXISTS(SELECT 1 FROM public.hc_first_owner_activation_events) AS no_events"
+  // The restricted operator deliberately has no SELECT on passkeys/events.
+  // The DB SECURITY DEFINER recovery function checks both under the same
+  // transaction/lock before issuing anything. Do not grant operator access.
+  "NOT EXISTS(SELECT 1 FROM public.hc_admin_principals) AS no_owners"
  ].join('\n'));
  if(r.rows.length!==1||Object.values(r.rows[0]).some(v=>v!==true))
   fail('restricted operator eligibility failed; no code issued');
