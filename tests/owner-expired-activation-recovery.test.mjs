@@ -37,6 +37,29 @@ test('expired Owner recovery remains private, reviewed and non-destructive',asyn
  assert.doesNotMatch(attempt.stdout,/PRIVATE one-time staging activation/);
 });
 
+test('second Owner recovery is not accessible without a private TTY and separate acknowledgement',async()=>{
+ const [migration,cli]=await Promise.all([readFile(secondSQL,'utf8'),readFile(script,'utf8')]);
+ assert.match(migration,/current_database\(\)<>'hc_owner_stage_test'/);
+ assert.match(migration,/SECURITY DEFINER/);
+ assert.match(migration,/hc_first_owner_activation_second_recoveries/);
+ assert.match(migration,/hc_first_owner_reissue_audit_immutable/);
+ assert.match(migration,/pg_advisory_xact_lock\(78619136,801\)/);
+ assert.match(migration,/OWNER TO hc_owner_stage_recovery_definer/);
+ assert.match(migration,/TO hc_owner_stage_operator_privs/);
+ assert.doesNotMatch(migration,/GRANT EXECUTE ON FUNCTION[^;]*TO hc_owner_stage_runtime_privs/i);
+ assert.match(cli,/--second-recover-expired-staging-owner/);
+ assert.match(cli,/I_REVIEWED_SECOND_FAILED_ENROLLMENT_RECOVERY/);
+ assert.match(cli,/process\.stdin\.isTTY/);
+ assert.match(cli,/process\.stdout\.isTTY/);
+ const attempt=spawnSync(process.execPath,[script.pathname,'--second-recover-expired-staging-owner'],{
+   encoding:'utf8',timeout:10000,
+   env:{...process.env,HC_OWNER_OPERATOR_SECOND_RECOVERY_ACK:'I_REVIEWED_SECOND_FAILED_ENROLLMENT_RECOVERY'}
+ });
+ assert.notEqual(attempt.status,0);
+ assert.match(attempt.stderr,/Owner staging activation was NOT issued/);
+ assert.doesNotMatch(attempt.stdout,/PRIVATE one-time staging activation/);
+});
+
 // Requires a deliberately created throwaway PostgreSQL server on localhost,
 // and an admin hc_test database. Refuses any staging/production Railway URL,
 // any pre-existing hc_owner_stage_test database, or existing global roles.
