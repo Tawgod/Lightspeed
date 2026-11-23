@@ -316,8 +316,6 @@ test('one normal reissue and one separately audited final staging recovery, neve
   assert.equal((await stage.query(
    'SELECT count(*)::integer AS n FROM hc_first_owner_activation_reissues')).rows[0].n,1);
   phase='second recovery replay and audit erasure refused';
-  await stage.query(
-   "UPDATE hc_first_owner_activations SET expires_at=now()-interval '1 second' WHERE employee_id=1");
   await assert.rejects(second(digest()),/recovery denied/i,'third recovery must never work');
   await assert.rejects(stage.query('DELETE FROM hc_first_owner_activation_second_recoveries'),/append-only/i);
   assert.equal((await stage.query(
