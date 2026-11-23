@@ -19,10 +19,14 @@ async function issue({
  // Neither path can run unattended, over HTTP, from CI, or with the runtime DB.
  const mode=process.argv.slice(2).join(' ');
  const recovery=mode==='--reissue-expired-staging-owner';
- if(!['--issue-staging-owner','--reissue-expired-staging-owner'].includes(mode)||
+ const secondRecovery=mode==='--second-recover-expired-staging-owner';
+ if(!['--issue-staging-owner','--reissue-expired-staging-owner',
+      '--second-recover-expired-staging-owner'].includes(mode)||
     !process.stdin.isTTY||!process.stdout.isTTY||typeof confirm!=='function'||
     (recovery&&env.HC_OWNER_OPERATOR_RECOVERY_ACK!==
-      'I_REVIEWED_EXPIRED_UNUSED_ACTIVATION'))
+      'I_REVIEWED_EXPIRED_UNUSED_ACTIVATION')||
+    (secondRecovery&&env.HC_OWNER_OPERATOR_SECOND_RECOVERY_ACK!==
+      'I_REVIEWED_SECOND_FAILED_ENROLLMENT_RECOVERY'))
   refuse();
  const id=String(env.HC_OWNER_TIMECLOCK_EMPLOYEE_ID??'');
  if(env.NODE_ENV!=='test'||env.HC_SECURITY_ENV!=='isolated-staging'||
@@ -64,7 +68,7 @@ async function issue({
   const previous=await client.query(
    'SELECT employee_id FROM hc_first_owner_activations LIMIT 2');
   let expiresAt;
-  if(!recovery){
+  if(!recovery&&!secondRecovery){
    if(previous.rowCount!==0)refuse(); // Initial grant is strictly first-use.
    const row=await client.query(
     `INSERT INTO hc_first_owner_activations
@@ -80,8 +84,11 @@ async function issue({
    // operator-only, staging DB function checks expired+unused, zero Owners,
    // no existing credential, one reissue ever, and records immutable history.
    if(previous.rowCount!==1||String(previous.rows[0]?.employee_id)!==id)refuse();
+   const functionName=secondRecovery
+    ?'hc_second_recover_expired_first_owner_activation'
+    :'hc_reissue_expired_first_owner_activation';
    const result=await client.query(
-    `SELECT public.hc_reissue_expired_first_owner_activation(
+    `SELECT public.${functionName}(
        $1::bigint,$2::text,$3::text) AS expires_at`,
     [id,digest,env.HC_OWNER_OPERATOR_REF]
    );
