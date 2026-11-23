@@ -60,6 +60,21 @@ test('second Owner recovery is not accessible without a private TTY and separate
  assert.doesNotMatch(attempt.stdout,/PRIVATE one-time staging activation/);
 });
 
+test('ceremony respects operator least privilege while DB enforces passkey/event guards',async()=>{
+ const [ceremony,migration]=await Promise.all([
+  readFile(new URL('../scripts/launch-owner-second-recovery-ceremony.mjs',import.meta.url),'utf8'),
+  readFile(secondSQL,'utf8')
+ ]);
+ assert.match(ceremony,/has_function_privilege\(current_user/);
+ assert.match(ceremony,/NOT EXISTS\(SELECT 1 FROM public\.hc_admin_principals\)/);
+ assert.doesNotMatch(ceremony,/SELECT 1 FROM public\.hc_staff_passkeys/);
+ assert.doesNotMatch(ceremony,/SELECT 1 FROM public\.hc_first_owner_activation_events/);
+ assert.match(migration,/SECURITY DEFINER/);
+ assert.match(migration,/EXISTS\(SELECT 1 FROM public\.hc_staff_passkeys\)/);
+ assert.match(migration,/EXISTS\(SELECT 1 FROM public\.hc_first_owner_activation_events\)/);
+ assert.match(migration,/EXISTS\(SELECT 1 FROM public\.hc_admin_principals\)/);
+});
+
 // Requires a deliberately created throwaway PostgreSQL server on localhost,
 // and an admin hc_test database. Refuses any staging/production Railway URL,
 // any pre-existing hc_owner_stage_test database, or existing global roles.
