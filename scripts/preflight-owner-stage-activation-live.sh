@@ -9,6 +9,16 @@ ENV='46b93c76-3085-4e76-a37d-90dfdd250dd2'
 [[ "$#" -eq 0 ]] || { echo 'Usage: bash scripts/preflight-owner-stage-activation-live.sh' >&2; exit 2; }
 command -v railway >/dev/null || { echo 'Railway CLI is required' >&2; exit 1; }
 
+# Optional explicit private key: Railway may otherwise pick a locked older key.
+SSH_KEY="${HC_OWNER_RAILWAY_SSH_KEY:-}"
+SSH_OPTS=()
+if [[ -n "$SSH_KEY" ]]; then
+  [[ -f "$SSH_KEY" && -f "$SSH_KEY.pub" ]] || {
+    echo 'Specified Railway SSH key or public key file missing' >&2; exit 1;
+  }
+  SSH_OPTS=(-i "$SSH_KEY")
+fi
+
 APP_REMOTE=$(cat <<'REMOTE_APP'
 set -eu
 if test -f /app/services/scannerTimeclockIdentity.js; then
@@ -109,14 +119,14 @@ REMOTE_DB
 )
 
 echo 'Checking deployed staging Timeclock identity inside Railway.'
-if ! railway ssh --project "$PROJECT" --environment "$ENV" \
+if ! railway ssh "${SSH_OPTS[@]}" --project "$PROJECT" --environment "$ENV" \
     --service hc-owner-staging -- sh -lc "$APP_REMOTE"; then
   echo 'STOP: Timeclock lookup unavailable. No recovery issued.' >&2
   exit 1
 fi
 
 echo 'Checking unused recovery and restricted operator login inside dedicated PostgreSQL.'
-if ! railway ssh --project "$PROJECT" --environment "$ENV" \
+if ! railway ssh "${SSH_OPTS[@]}" --project "$PROJECT" --environment "$ENV" \
     --service Postgres-x8Ui -- sh -lc "$DB_REMOTE"; then
   echo 'STOP: restricted DB operator check failed. No recovery issued.' >&2
   exit 1
