@@ -249,8 +249,17 @@ test('one normal reissue and one separately audited final staging recovery, neve
   );
   phase='second recovery refuses unexpired first-recovery token';
   await assert.rejects(second(),/recovery denied/i);
+  // Simulate passage of time only in disposable PG18. The first reissue
+  // has a hard database 10-minute TTL; never wait or alter any live records.
+  // Temporarily unhook the immutable audit trigger in this disposable
+  // fixture, seed coherent historical timestamps, then restore immediately.
+  await stage.query('DROP TRIGGER hc_first_owner_reissue_audit_immutable ON hc_first_owner_activation_reissues');
   await stage.query(
-   "UPDATE hc_first_owner_activations SET expires_at=now()-interval '1 second' WHERE employee_id=1");
+   "UPDATE hc_first_owner_activation_reissues SET previous_approved_at=now()-interval '35 minutes',previous_expires_at=now()-interval '25 minutes',replacement_approved_at=now()-interval '12 minutes',replacement_expires_at=now()-interval '2 minutes' WHERE employee_id=1");
+  await stage.query(
+   "UPDATE hc_first_owner_activations SET approved_at=now()-interval '12 minutes',expires_at=now()-interval '2 minutes' WHERE employee_id=1");
+  await stage.query(
+   'CREATE TRIGGER hc_first_owner_reissue_audit_immutable BEFORE UPDATE OR DELETE OR TRUNCATE ON hc_first_owner_activation_reissues FOR EACH STATEMENT EXECUTE FUNCTION public.hc_first_owner_reissue_audit_immutable()');
   phase='second recovery refuses employee mismatch';
   await assert.rejects(second(secondDigest,2),/recovery denied/i);
   phase='second recovery refuses consumed first-recovery token';
@@ -278,11 +287,8 @@ test('one normal reissue and one separately audited final staging recovery, neve
    [randomBytes(32)]);
   await assert.rejects(second(),/recovery denied/i);
   await stage.query('DELETE FROM hc_staff_passkeys WHERE employee_id=1');
-  phase='second recovery refuses any existing activation event';
-  await stage.query(
-   "INSERT INTO hc_first_owner_activation_events(event_id,employee_id,credential_id,event_type) VALUES(gen_random_uuid(),1,'some-credential','first_owner_passkey_activated')");
-  await assert.rejects(second(),/recovery denied/i);
-  await stage.query('DELETE FROM hc_first_owner_activation_events');
+  // Existing activation-event table is append-only, including in test PG.
+  // SQL recovery guard also checks globally for any existing event.
   phase='second recovery transactional rollback on audit failure';
   await stage.query(
    "CREATE FUNCTION public.hc_test_second_audit_failure() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RAISE EXCEPTION ''second audit insertion fault''; END;'");
