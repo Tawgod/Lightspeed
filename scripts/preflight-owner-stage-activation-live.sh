@@ -27,6 +27,26 @@ elif ! test -f ./services/scannerTimeclockIdentity.js; then
   echo 'HC_OWNER_TIMECLOCK_PREFLIGHT_BLOCKED: deployment missing identity module' >&2
   exit 2
 fi
+# An SSH login shell may replace Railpack's runtime PATH with a minimal PATH.
+# Reuse only the running container's PATH; never print its environment.
+if ! command -v node >/dev/null 2>&1; then
+  if [ -r /proc/1/environ ]; then
+    RUNTIME_PATH="$(tr '\\000' '\\n' < /proc/1/environ | sed -n 's/^PATH=//p' | head -n 1)"
+    if [ -n "$RUNTIME_PATH" ]; then PATH="$RUNTIME_PATH:$PATH"; export PATH; fi
+  fi
+fi
+if ! command -v node >/dev/null 2>&1; then
+  for candidate in /usr/local/bin/node /usr/bin/node /opt/node/bin/node /mise/installs/node/*/bin/node; do
+    if [ -x "$candidate" ]; then
+      PATH="$(dirname "$candidate"):$PATH"; export PATH
+      break
+    fi
+  done
+fi
+if ! command -v node >/dev/null 2>&1; then
+  echo 'HC_OWNER_TIMECLOCK_PREFLIGHT_BLOCKED: Node runtime inaccessible in SSH shell' >&2
+  exit 2
+fi
 node --input-type=module <<'NODE'
 import {pathToFileURL} from 'node:url';
 const env=process.env;
@@ -120,14 +140,14 @@ REMOTE_DB
 
 echo 'Checking deployed staging Timeclock identity inside Railway.'
 if ! railway ssh "${SSH_OPTS[@]}" --project "$PROJECT" --environment "$ENV" \
-    --service hc-owner-staging -- sh -lc "$APP_REMOTE"; then
+    --service hc-owner-staging -- sh -c "$APP_REMOTE"; then
   echo 'STOP: Timeclock lookup unavailable. No recovery issued.' >&2
   exit 1
 fi
 
 echo 'Checking unused recovery and restricted operator login inside dedicated PostgreSQL.'
 if ! railway ssh "${SSH_OPTS[@]}" --project "$PROJECT" --environment "$ENV" \
-    --service Postgres-x8Ui -- sh -lc "$DB_REMOTE"; then
+    --service Postgres-x8Ui -- sh -c "$DB_REMOTE"; then
   echo 'STOP: restricted DB operator check failed. No recovery issued.' >&2
   exit 1
 fi
