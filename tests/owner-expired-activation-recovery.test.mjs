@@ -6,6 +6,7 @@ import {spawnSync} from 'node:child_process';
 import pg from 'pg';
 
 const sql=new URL('../db/hc_owner_stage_expired_activation_recovery.sql',import.meta.url);
+const secondSQL=new URL('../db/hc_owner_stage_second_failed_enrollment_recovery.sql',import.meta.url);
 const script=new URL('../scripts/issue-owner-stage-activation.mjs',import.meta.url);
 const digest=()=>createHash('sha256').update(randomBytes(32)).digest('hex');
 
@@ -41,7 +42,7 @@ test('expired Owner recovery remains private, reviewed and non-destructive',asyn
 // any pre-existing hc_owner_stage_test database, or existing global roles.
 const database=process.env.HC_TEST_DATABASE_URL;
 const enabled=process.env.HC_OWNER_RECOVERY_DB_TEST==='1';
-test('one expired unused activation can be reissued with immutable audit, never twice',
+test('one normal reissue and one separately audited final staging recovery, never a third',
  {skip:enabled&&database?false:'Explicit disposable PostgreSQL required'},async()=>{
  const url=new URL(database);
  if(url.pathname!=='/hc_test'||!['localhost','127.0.0.1','::1'].includes(url.hostname))
@@ -229,6 +230,94 @@ test('one expired unused activation can be reissued with immutable audit, never 
   assert.equal((await stage.query(
    'SELECT count(*)::integer AS n FROM hc_first_owner_activation_reissues'
   )).rows[0].n,1);
+
+  phase='migrating additive second recovery SQL in disposable database';
+  await stage.query(await readFile(secondSQL,'utf8'));
+  const scope=await stage.query(
+   "SELECT pg_get_userbyid(proowner) AS owner FROM pg_proc WHERE oid='public.hc_second_recover_expired_first_owner_activation(bigint,text,text)'::regprocedure");
+  assert.equal(scope.rows[0].owner,recoveryRole);
+  const secondPrivilege=await stage.query(
+   "SELECT has_function_privilege($1,'public.hc_second_recover_expired_first_owner_activation(bigint,text,text)','EXECUTE') AS runtime_can,has_function_privilege($2,'public.hc_second_recover_expired_first_owner_activation(bigint,text,text)','EXECUTE') AS operator_can,has_table_privilege($1,'hc_first_owner_activation_second_recoveries','INSERT') AS runtime_audit_insert",
+   [rt,op]);
+  assert.deepEqual(secondPrivilege.rows[0],{
+   runtime_can:false,operator_can:true,runtime_audit_insert:false
+  });
+  const secondDigest=digest();
+  const second=(replacement=secondDigest,employee=1)=>operator.query(
+   'SELECT public.hc_second_recover_expired_first_owner_activation($1,$2,$3) AS expires_at',
+   [employee,replacement,'second-recovery-operator']
+  );
+  phase='second recovery refuses unexpired first-recovery token';
+  await assert.rejects(second(),/recovery denied/i);
+  await stage.query(
+   "UPDATE hc_first_owner_activations SET expires_at=now()-interval '1 second' WHERE employee_id=1");
+  phase='second recovery refuses employee mismatch';
+  await assert.rejects(second(secondDigest,2),/recovery denied/i);
+  phase='second recovery refuses consumed first-recovery token';
+  await stage.query(
+   "UPDATE hc_first_owner_activations SET consumed_at=now(),credential_id='test-used' WHERE employee_id=1");
+  await assert.rejects(second(),/recovery denied/i);
+  await stage.query(
+   "UPDATE hc_first_owner_activations SET consumed_at=NULL,credential_id=NULL WHERE employee_id=1");
+  phase='second recovery refuses mismatched prior audit chain';
+  await stage.query(
+   "UPDATE hc_first_owner_activations SET activation_digest=$1 WHERE employee_id=1",
+   [digest()]);
+  await assert.rejects(second(),/recovery denied/i);
+  await stage.query(
+   "UPDATE hc_first_owner_activations SET activation_digest=$1 WHERE employee_id=1",
+   [replacementDigest]);
+  phase='second recovery refuses existing Owner';
+  await stage.query(
+   "INSERT INTO hc_admin_principals(employee_id,role) VALUES(1,'owner')");
+  await assert.rejects(second(),/recovery denied/i);
+  await stage.query('DELETE FROM hc_admin_principals WHERE employee_id=1');
+  phase='second recovery refuses existing passkey';
+  await stage.query(
+   "INSERT INTO hc_staff_passkeys(credential_id,employee_id,public_key) VALUES('staging-test-registered',1,$1)",
+   [randomBytes(32)]);
+  await assert.rejects(second(),/recovery denied/i);
+  await stage.query('DELETE FROM hc_staff_passkeys WHERE employee_id=1');
+  phase='second recovery refuses any existing activation event';
+  await stage.query(
+   "INSERT INTO hc_first_owner_activation_events(event_id,employee_id,credential_id,event_type) VALUES(gen_random_uuid(),1,'some-credential','first_owner_passkey_activated')");
+  await assert.rejects(second(),/recovery denied/i);
+  await stage.query('DELETE FROM hc_first_owner_activation_events');
+  phase='second recovery transactional rollback on audit failure';
+  await stage.query(
+   "CREATE FUNCTION public.hc_test_second_audit_failure() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RAISE EXCEPTION ''second audit insertion fault''; END;'");
+  await stage.query(
+   "CREATE TRIGGER hc_test_second_audit_failure BEFORE INSERT ON hc_first_owner_activation_second_recoveries FOR EACH ROW EXECUTE FUNCTION public.hc_test_second_audit_failure()");
+  await assert.rejects(second(),/second audit insertion fault/i);
+  assert.equal((await stage.query(
+   'SELECT activation_digest FROM hc_first_owner_activations WHERE employee_id=1'
+  )).rows[0].activation_digest,replacementDigest);
+  await stage.query(
+   'DROP TRIGGER hc_test_second_audit_failure ON hc_first_owner_activation_second_recoveries');
+  await stage.query('DROP FUNCTION public.hc_test_second_audit_failure()');
+  phase='second and final recovery succeeds once';
+  const finalGrant=await second();
+  assert.equal(finalGrant.rowCount,1);
+  const finalActive=(await stage.query(
+   'SELECT activation_digest,expires_at,approved_at FROM hc_first_owner_activations WHERE employee_id=1')).rows[0];
+  assert.equal(finalActive.activation_digest,secondDigest);
+  assert.equal(new Date(finalActive.expires_at)-new Date(finalActive.approved_at),600000);
+  const secondAudit=(await stage.query(
+   'SELECT previous_activation_digest,replacement_activation_digest,first_reissue_id FROM hc_first_owner_activation_second_recoveries WHERE employee_id=1')).rows[0];
+  assert.equal(secondAudit.previous_activation_digest,replacementDigest);
+  assert.equal(secondAudit.replacement_activation_digest,secondDigest);
+  assert.equal(secondAudit.first_reissue_id,log.rows[0].reissue_id);
+  assert.equal((await stage.query(
+   'SELECT count(*)::integer AS n FROM hc_first_owner_activation_reissues')).rows[0].n,1);
+  phase='second recovery replay and audit erasure refused';
+  await stage.query(
+   "UPDATE hc_first_owner_activations SET expires_at=now()-interval '1 second' WHERE employee_id=1");
+  await assert.rejects(second(digest()),/recovery denied/i,'third recovery must never work');
+  await assert.rejects(stage.query('DELETE FROM hc_first_owner_activation_second_recoveries'),/append-only/i);
+  assert.equal((await stage.query(
+   'SELECT count(*)::integer AS n FROM hc_first_owner_activation_second_recoveries')).rows[0].n,1);
+
+
  }catch(error){
   // Preserve the actual failing test step instead of allowing a subsequent
   // teardown problem to hide it with an unrelated SQL connection error.
