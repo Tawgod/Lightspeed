@@ -279,8 +279,14 @@ test('one normal reissue and one separately audited final staging recovery, neve
   await stage.query('DROP TRIGGER hc_first_owner_reissue_audit_immutable ON hc_first_owner_activation_reissues');
   await stage.query(
    "UPDATE hc_first_owner_activation_reissues SET previous_approved_at=now()-interval '35 minutes',previous_expires_at=now()-interval '25 minutes',replacement_approved_at=now()-interval '12 minutes',replacement_expires_at=now()-interval '2 minutes' WHERE employee_id=1");
+  // Match precise audit timestamps; separate now() calls differ at the
+  // microsecond level, which the recovery SQL correctly rejects.
   await stage.query(
-   "UPDATE hc_first_owner_activations SET approved_at=now()-interval '12 minutes',expires_at=now()-interval '2 minutes' WHERE employee_id=1");
+   `UPDATE hc_first_owner_activations a
+       SET approved_at=r.replacement_approved_at,
+           expires_at=r.replacement_expires_at
+      FROM hc_first_owner_activation_reissues r
+     WHERE a.employee_id=1 AND r.employee_id=a.employee_id`);
   await stage.query(
    'CREATE TRIGGER hc_first_owner_reissue_audit_immutable BEFORE UPDATE OR DELETE OR TRUNCATE ON hc_first_owner_activation_reissues FOR EACH STATEMENT EXECUTE FUNCTION public.hc_first_owner_reissue_audit_immutable()');
   phase='second recovery refuses employee mismatch';
