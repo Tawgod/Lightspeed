@@ -33,8 +33,8 @@ export function createInvoicePersistenceFixture({transaction,authorize,auditDeni
     const input=copy(await tx.loadInvoiceEvidence(p.invoiceId));
     if(input.header?.invoiceId!==p.invoiceId)throw fail('INVOICE_SCOPE_CONFLICT');
     const at=clock().toISOString();
-    const built=buildDocumentInvoiceReview({...input,previousRevision:prior,expectedRevision:p.expectedRevision,recordedAt:at});
     if(action==='review'){
+     const built=buildDocumentInvoiceReview({...input,previousRevision:prior,expectedRevision:p.expectedRevision,recordedAt:at});
      if(built.state!=='review_required')throw fail('INVOICE_EVIDENCE_UNRESOLVED');
      const proposal=built.evidence.proposal;
      const resource={invoiceId:p.invoiceId,supplierId:proposal.supplierId,outletId:proposal.outletId};
@@ -42,7 +42,7 @@ export function createInvoicePersistenceFixture({transaction,authorize,auditDeni
      // Stable identity claim excludes same invoice, rejects competing source/hash/number.
      if(await tx.reserveDocumentIdentity({invoiceId:p.invoiceId,sourceKey:key([input.document.source.provider,input.document.source.accountRef,input.document.source.messageId,input.document.attachment.id]),documentHash:proposal.documentHash,supplierId:proposal.supplierId,invoiceNumber:proposal.invoiceNumber})!==true)
       throw fail('INVOICE_DUPLICATE');
-     await tx.saveInvoiceReview({invoiceId:p.invoiceId,revision:built.revision,evidence:built.evidence,reviewActor:p.actor,approval:null});
+     await tx.saveInvoiceReview({invoiceId:p.invoiceId,revision:built.revision,evidence:built.evidence,reviewActor:p.actor,previousRevision:prior,approval:null});
      return {invoiceId:p.invoiceId,revision:built.revision.revision,state:'review_recorded',executable:false};
     }
     // Rebuild original revision from trusted current input using its original timestamp
