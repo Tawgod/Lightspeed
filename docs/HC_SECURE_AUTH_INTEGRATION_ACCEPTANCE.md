@@ -78,3 +78,23 @@ The runner generates a random throwaway DB password locally, uses an in-memory P
 
 **Important:** The original `db/hc_owner_staging_privilege_groups.sql` wraps its own `BEGIN`/`COMMIT`. The disposable test strips exactly those delimiters and refuses transaction control in other fixtures to guarantee outer rollback. Original Owner schema file and live databases remain unchanged. Tests cannot prove new-host WebAuthn credential continuity or employee MFA integration.
 
+
+
+## New HC Secure-specific Railway DB bootstrap and locked-role gate — 2026-11-24
+
+**Authoring only; do not execute on live Railway until a separate provisioning authorization.** The existing Owner one-shot DB scripts are pinned to a different Railway project and must never be reused for HC Secure. Two new explicit one-shot programs prepare the new project:
+
+1. `scripts/bootstrap-hc-secure-staging-db.mjs` demands exact new project `120de974-f2e8-46be-9a00-8eb8b1be4cc4`, staging env `8c8cd3a9-079f-4fe8-b8f5-a76c79813f0c`, separate offline service name `hc-secure-db-bootstrap-once` (not provisioned yet), `HC_SECURE_DB_BOOTSTRAP_ONLY=true`, operator action `HC_SECURE_DB_MUTATION_APPROVED=HC_SECURE_FRESH_DB_SCHEMA_ONLY`, independent root URL (postgres user, private `hc-secure-postgres-staging.railway.internal/railway`, nonblank 16+ character password) and no business/auth credentials. Requires PostgreSQL 18, zero existing `hc_owner_stage_test` DB and no existing HC Owner login or group roles. Creates a brand-new test DB, applies **seven reviewed Owner schema fixtures** in a controlled transaction with required nine tables, two NOLOGIN grant groups, restricted activation issuance, and zero Owner/activation rows. Never issues Owner activation. If DB creation succeeds but schema fails, leaves DB intact for explicit operator reconciliation; never drops/retries automatically.
+2. `scripts/prepare-hc-secure-locked-roles.mjs` separately requires `HC_SECURE_ROLE_PREPARE_ONLY=true` and `HC_SECURE_DB_MUTATION_APPROVED=HC_SECURE_LOCKED_ROLES_ONLY`, exact same new project/environment/service and protected root URL; requires no existing Owner or activation rows, no existing login roles and correct NOLOGIN groups, then creates separate `hc_owner_stage_runtime` and `hc_owner_stage_operator` login roles with **PASSWORD NULL**, least-privilege non-overlapping memberships, verifies privileges, and commits. Does not set passwords and refuses to reissue first-Owner authority.
+
+**Tests authored, not executed:** `tests/hc-secure-staging-bootstrap.test.mjs` (6 cases) and `tests/hc-secure-locked-roles.test.mjs` (5 cases). Mock-only, no external database connections. Run from Lightspeed Codespaces branch:
+```bash
+cd /workspaces/Lightspeed
+git switch feature/hc-secure-staging-readiness-20261123
+git pull --ff-only
+node --test tests/hc-secure-staging-bootstrap.test.mjs tests/hc-secure-locked-roles.test.mjs
+```
+This must pass before additional source review and separate real Railway authorization.
+
+**Deployment prerequisites still outstanding:** `HC Secure/staging` currently has *only staged-create* PostgreSQL 18 image/volume and guarded Owner app; no DB bootstrap password/variables, no privileged one-shot service or hardened network transport, no login secrets, dedicated authenticator encryption keys, signed employee security policy, newly registered WebAuthn credential for the new RP ID, or new custom domain/DNS/TLS. Do not accept Railway staged patch; provisioning code is not yet deployed or configured. A separate credential-commissioning milestone must generate independent runtime/operator passwords and verify access, deny incorrect credentials, and provide key custody without logging secrets. Do not copy original Owner secrets or registered WebAuthn rows.
+
