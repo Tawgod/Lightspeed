@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {commissionHcSecureCredentials as commission}
+import {commissionHcSecureCredentials as commission,buildScramVerifier}
  from '../scripts/commission-hc-secure-db-credentials.mjs';
 const env=()=>({
  RAILWAY_PROJECT_ID:'120de974-f2e8-46be-9a00-8eb8b1be4cc4',
@@ -128,4 +128,32 @@ test('ambiguous COMMIT never claims transaction rollback safely re-locked roles'
  await assert.rejects(commission({environment:env(),createClient:()=>root}),/uncertain COMMIT.*manual database security review/);
  assert.equal(sqlLog.filter(s=>s==='COMMIT').length,1);
  // No successful commit acknowledgement: user must independently inspect roles.
+});
+
+test('SCRAM verifier has PostgreSQL format, independent salt, and no plaintext',()=>{
+ const password=env().HC_SECURE_DB_RUNTIME_PASSWORD;
+ const a=buildScramVerifier(password),b=buildScramVerifier(password);
+ assert.match(a,/^SCRAM-SHA-256\$4096:[A-Za-z0-9+/]+={0,2}\$[A-Za-z0-9+/]+={0,2}:[A-Za-z0-9+/]+={0,2}$/);
+ assert.notEqual(a,b);
+ assert.equal(a.includes(password),false);
+ assert.throws(()=>buildScramVerifier("invalid"),/blocked/);
+});
+test('password SQL contains only verifiers and follows logging safeguards',async()=>{
+ const sqlLog=[];
+ await assert.rejects(commission({environment:env(),createClient:()=>mockRoot({sqlLog,stopAt:'SELECT rolname,rolpassword'})}),/blocked/);
+ const writes=sqlLog.filter(s=>s.startsWith('ALTER ROLE'));
+ assert.equal(writes.length,2);
+ for(const sql of writes){
+  assert.ok(sql.includes('SCRAM-SHA-256$4096:'));
+  assert.equal(sql.includes(env().HC_SECURE_DB_RUNTIME_PASSWORD),false);
+  assert.equal(sql.includes(env().HC_SECURE_DB_OPERATOR_PASSWORD),false);
+ }
+ assert.ok(sqlLog.indexOf("SET LOCAL log_min_error_statement='panic'")<sqlLog.indexOf(writes[0]));
+ assert.ok(sqlLog.includes('ROLLBACK'));
+});
+test('logging safeguard failure prevents password writes',async()=>{
+ const sqlLog=[];
+ await assert.rejects(commission({environment:env(),createClient:()=>mockRoot({sqlLog,stopAt:'SET LOCAL log_min_error_statement'})}),/blocked/);
+ assert.equal(sqlLog.some(s=>s.startsWith('ALTER ROLE')),false);
+ assert.ok(sqlLog.includes('ROLLBACK'));
 });
