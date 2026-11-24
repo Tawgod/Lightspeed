@@ -30,7 +30,7 @@ export function projectSupplierDocument({source,attachment,extraction}={}){
       !exact(l.documentRef)||!(l.supplierSku===null||exact(l.supplierSku))||
       !(l.quantity===null||(typeof l.quantity==='string'&&/^-?\d{1,12}(?:\.\d{1,6})?$/.test(l.quantity)))||
       !(l.unitCost===null||(typeof l.unitCost==='string'&&/^-?\d{1,12}(?:\.\d{1,6})?$/.test(l.unitCost)))||
-      !(l.currency===null||/^[A-Z]{3}$/.test(l.currency)))return review('line_evidence_unresolved');
+      !(l.currency===null||(typeof l.currency==='string'&&/^[A-Z]{3}$/.test(l.currency))))return review('line_evidence_unresolved');
    lines.push({id:l.id,page:l.page,documentRef:l.documentRef,supplierSku:l.supplierSku,
      quantity:l.quantity,unitCost:l.unitCost,currency:l.currency});
  }
@@ -55,6 +55,7 @@ export function resolveDocumentSupplier({document,aliasRows,complete=false}={}){
  if(document?.state!=='staged_evidence'||!exact(document.source?.senderKey))return review('document_unresolved');
  // Source is a dedicated mail/vendor sender namespace; never infer from a domain.
  const source='purchasing:'+document.source.provider+':'+document.source.accountRef;
+ if(source.length>512)return review('supplier_alias_unresolved');
  let result;
  try{result=resolveSupplierIdentity({source,alias:document.source.senderKey},aliasRows,{complete});}
  catch{return review('supplier_alias_unresolved');}
