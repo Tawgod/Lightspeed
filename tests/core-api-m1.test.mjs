@@ -63,3 +63,36 @@ test('default transport denies POST before network and supplies timeout signal',
   assert.equal(calls,0);
   await t.request('/api/2.0/products');assert.equal(calls,1);
 });
+
+test('continuations cannot drop, replace or introduce original filters', async () => {
+  for(const next of ['?page=2','?sku=123&page=2','?sku=000123&outlet=other&page=2','?sku=000123&tag=a&page=2','?sku=000123&tag=b&tag=a&page=2']){
+    let calls=0;
+    await assert.rejects(readLightspeedCollection({path:'/api/2.0/products?sku=000123&tag=a&tag=b&page=1',transport:{request:async()=>{calls++;return {data:[1],links:{next}};}}}),LightspeedIncompleteReadError);
+    assert.equal(calls,1);
+  }
+});
+test('conflicting continuation metadata fails without returning partial rows', async () => {
+  for(const metadata of [
+    {links:{next:null},pagination:{next:'?page=2'}},
+    {links:{next:'?page=2'},pagination:{has_next:false}},
+    {pagination:{has_next:true,hasNext:false}},
+    {pagination:{has_next:'false'}},
+    {next:null,pagination:{has_next:true}}
+  ]){
+    let calls=0;
+    await assert.rejects(readLightspeedCollection({path:'/api/2.0/products?page=1',transport:{request:async()=>{calls++;return {data:[1],...metadata};}}}),LightspeedIncompleteReadError);
+    assert.equal(calls,1);
+  }
+});
+test('original query values and correlation survive multiple pages and transport', async () => {
+  const seen=[];
+  const transport=createLightspeedTransport({domain:'fixture',token:'fake',fetchImpl:async(url,options)=>{
+    seen.push({url,trace:options.headers['X-Request-ID']});
+    return new Response(JSON.stringify(seen.length===1?{data:[1],links:{next:'?tag=a&tag=b&sku=000123&page=2'}}:{data:[2],links:{next:null}}));
+  }});
+  const run=createCoreReadExecutor({environment:'test',authorizeRead:async()=>true});
+  const result=await run({operation:'products.exact',read:({correlationId})=>readLightspeedCollection({transport,correlationId,path:'/api/2.0/products?sku=000123&tag=a&tag=b&page=1'})});
+  assert.deepEqual(result.body.data,[1,2]);
+  assert.equal(seen.length,2);
+  assert.ok(seen.every(x=>x.trace===result.body.correlationId && new URL(x.url).searchParams.get('sku')==='000123'));
+});
