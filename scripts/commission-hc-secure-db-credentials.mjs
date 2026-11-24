@@ -105,7 +105,7 @@ export async function commissionHcSecureCredentials({
  const rootUrl=new URL(environment.HC_SECURE_BOOTSTRAP_ROOT_URL);
  rootUrl.pathname='/hc_owner_stage_test';
  const root=createClient({connectionString:rootUrl.toString(),connectionTimeoutMillis:7000});
- let begun=false,committed=false,modified=false,rootConnected=false;
+ let begun=false,committed=false,modified=false,rootConnected=false,commitAttempted=false;
  try{
   await root.connect();rootConnected=true;
   await root.query('BEGIN');begun=true;
@@ -123,6 +123,7 @@ export async function commissionHcSecureCredentials({
    "FROM pg_authid WHERE rolname=ANY($1::text[])",[ROLE_NAMES]
   );
   if(hashes.rowCount!==2||hashes.rows.some(x=>x.scram!==true))throw denied();
+  commitAttempted=true;
   await root.query('COMMIT');committed=true;begun=false;
 
   await verifyRoleLogin({rootUrl,role:RUNTIME,
@@ -139,6 +140,11 @@ export async function commissionHcSecureCredentials({
   return Object.freeze({runtimeVerified:true,operatorVerified:true,
    badPasswordDenied:true,activations:0});
  }catch{
+  // COMMIT can succeed server-side even if the network drops before its
+  // acknowledgement. Never claim that ROLLBACK alone has locked those roles.
+  // Halt for manual privileged review; no automatic rerun or credential use.
+  if(commitAttempted&&!committed)
+   throw new Error('HC Secure commissioning uncertain COMMIT: manual database security review required.');
   if(rootConnected){
    if(modified||begun){
     // Any failed rollback/relock must be surfaced as an incident, not success.
