@@ -77,3 +77,44 @@ test('projection exposes no write operations and propagates upstream errors',asy
   assert.deepEqual(Object.keys(evidence).sort(),['creditEvidence','customer','fulfillmentEvidence','matchContact','sale','salesPage']);
   await assert.rejects(evidence.customer('01'),e=>e===failure);
 });
+
+test('malformed explicit customer reference cannot be hidden by valid nested ID', async()=>{
+  for(const row of [
+    {id:'S1',customer_id:1,customer:{id:'01'}},
+    {id:'S1',customer_id:'',customer:{id:'01'}},
+    {id:'S1',customer_id:'01',customer:{id:1}},
+    {id:'S1',customer_id:'01',customer:'01'}
+  ]) await assert.rejects(setup(()=>({data:row})).evidence.sale('S1'),incomplete);
+});
+test('state search rejects inconsistent missing and nonmatching state evidence', async()=>{
+  for(const row of [
+    {id:'S1',state:'CLOSED'},
+    {id:'S1',state:'OPEN',status:'CLOSED'},
+    {id:'S1'},
+    {id:'S1',state:1,status:'OPEN'}
+  ]) await assert.rejects(setup(()=>({data:[row]})).evidence.salesPage('state','OPEN'),incomplete);
+  for(const row of [{id:'S1',state:'OPEN'},{id:'S1',status:'OPEN'},{id:'S1',state:'OPEN',status:'OPEN'}]){
+    const {evidence,calls}=setup(()=>({data:[row]}));
+    const out=await evidence.salesPage('state','OPEN');
+    assert.equal(out.items[0].state,'OPEN');assert.equal(out.complete,false);
+    assert.deepEqual(calls,['/api/2.0/search?type=sales&state=OPEN&page_size=1000']);
+  }
+});
+test('fulfillment rejects conflicting nested associations and coerced raw identifiers', async()=>{
+  for(const row of [
+    {id:'F1',sale_id:'01',sale:{id:'02'}},
+    {id:'F1',sale_id:1,sale:{id:'1'}},
+    {id:'F1',sale_id:'',sale:{id:'01'}},
+    {id:1,sale_id:'01'},
+    {id:'F1',sale_id:'01',sale:{id:1}}
+  ]) await assert.rejects(setup(()=>({data:[row]})).evidence.fulfillmentEvidence('01'),incomplete);
+  const valid=await setup(()=>({data:[{id:'F1',sale_id:'01',sale:{id:'01'}}]})).evidence.fulfillmentEvidence('01');
+  assert.equal(valid.items[0].association,'source-confirmed');
+});
+test('credit association is evidence scoped and rejects inconsistent nested IDs', async()=>{
+  const read=row=>setup(()=>({data:row})).evidence.creditEvidence('01');
+  assert.equal((await read({amount:'0'})).association,'request-scoped');
+  assert.equal((await read({amount:'0',customer:{id:'01'}})).association,'source-confirmed');
+  await assert.rejects(read({amount:'0',customer_id:'01',customer:{id:'02'}}),incomplete);
+  await assert.rejects(read({amount:'0',customer_id:1}),incomplete);
+});
