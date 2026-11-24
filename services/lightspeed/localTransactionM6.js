@@ -20,7 +20,7 @@ function normalizeEffects(effects,targets){
 export function createLocalTransactionM6({tenant,transaction,authorize,authorizeRead,authorizeReconcile,auditDenied,inspectCommitted}={}){
   if(!id(tenant)||![transaction,authorize,authorizeRead,authorizeReconcile,auditDenied,inspectCommitted].every(f=>typeof f==='function'))throw TypeError('Explicit synthetic adapters required');
   return async function run({scope,key,actor,targets,effects,readEffects,reconcileEffects,payload,expectedRevisions,approval=null,verifyLocked,apply,receiptFields,projectResult}={}){
-    if(!id(key)||key.length<8||!type(scope)||!actor||actor.tenant!==tenant||!id(actor.id)||!id(actor.realm)||!['employee','service'].includes(actor.type)||!['none','delegated'].includes(actor.delegation?.kind)||![verifyLocked,apply,projectResult].every(f=>typeof f==='function'))throw TypeError('Invalid synthetic command');
+    if(!id(key)||key.length<8||!type(scope)||!scope.startsWith('test.')||!actor||actor.tenant!==tenant||!id(actor.id)||!id(actor.realm)||!['employee','service'].includes(actor.type)||!['none','delegated'].includes(actor.delegation?.kind)||![verifyLocked,apply,projectResult].every(f=>typeof f==='function'))throw TypeError('Invalid synthetic command');
     const a=snap(actor);
     if(!exact(a,['type','id','realm','tenant','delegation'])||a.realm!==a.type|| (a.delegation.kind==='none'?!exact(a.delegation,['kind']):a.type!=='service'||!exact(a.delegation,['kind','subject','id','audience','scope'])||![a.delegation.subject,a.delegation.id,a.delegation.audience,a.delegation.scope].every(id)))throw TypeError('Invalid actor namespace');
     const ts=snap(targets);
@@ -63,7 +63,8 @@ export function createLocalTransactionM6({tenant,transaction,authorize,authorize
           for(const r of revisions){const row=locked.find(x=>targetKey(x.target)===targetKey(r.target)).row;if((row?.revision??null)!==r.revision)throw fail('CORE_REVISION_CONFLICT');}
           if(await verifyLocked({command,evidence})!==true)throw fail('CORE_EFFECT_CHANGED');
           await check('afterLocks');
-          const r=receipt(await apply(tx,command,evidence));
+          const domainTx=Object.freeze({insertDomain:tx.insertDomain,replaceDomain:tx.replaceDomain,enqueueCanonical:tx.enqueueCanonical});
+          const r=receipt(await apply(domainTx,command,evidence));
           await tx.appendAudit({...meta,outcome:'committed',effects:es.map(e=>e.operation)});
           await tx.complete({...meta,result:r});
           await check('beforeCommit');
@@ -87,6 +88,7 @@ export function createLocalTransactionM6({tenant,transaction,authorize,authorize
       return {replayed:result.replayed,result:projected};
     }catch(error){
       if(error?.code==='CORE_FORBIDDEN'){try{await auditDenied({...meta,stage,outcome:'denied',transactionOutcome:outcome});}catch{throw fail('CORE_DENIAL_AUDIT_FAILED',outcome);}}
+      if(outcome==='committed'&&error?.outcome!=='committed')throw fail(error?.code??'CORE_PROJECTION_FAILED','committed');
       throw error;
     }
   };
