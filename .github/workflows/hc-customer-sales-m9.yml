@@ -1,0 +1,22 @@
+name: Customer Sales M9 targeted offline
+on:
+  pull_request:
+    branches: ['test/hc-foundation-combined-v6-20261124']
+    paths: ['services/lightspeed/customerSalesM9.js','tests/customer-sales-m9.test.mjs','tests/customer-sales-evidence.test.mjs','.github/workflows/hc-customer-sales-m9.yml']
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: |
+          node --check services/lightspeed/customerSalesM9.js
+          node --test tests/customer-sales-*.test.mjs tests/customer-identity-m5.test.mjs
