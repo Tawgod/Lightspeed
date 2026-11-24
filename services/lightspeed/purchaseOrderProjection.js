@@ -42,7 +42,9 @@ function lineProjection(line) {
   const supplierSku = agree('supplier SKU', raw.supplier_sku, raw.supplier_code);
   const sku = agree('SKU', raw.sku, raw.product?.sku);
   const upc = agree('UPC', raw.upc, raw.product?.upc);
-  const orderedQty = qty(raw.quantity_ordered ?? raw.quantity ?? raw.count);
+  const quantities = [raw.quantity_ordered, raw.quantity, raw.count, raw.ordered_quantity, raw.order_quantity].filter(v => v != null && v !== '');
+  const parsed = quantities.map(qty);
+  const orderedQty = parsed.length && parsed.every(v => v !== null && v === parsed[0]) ? parsed[0] : null;
   return { id, productId, productName: text(line.productName), supplierSku, sku, upc, orderedQty,
     // A product-level supplier code may belong to a different supplier. Do not promote it.
     warnings: [!id && 'missing_line_id', !productId && 'missing_product_id', !supplierSku && 'unverified_supplier_sku', orderedQty === null && 'unknown_ordered_qty'].filter(Boolean) };
