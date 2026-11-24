@@ -52,12 +52,11 @@ function reviewPayload({proposal,quantityEvidence,poVersion,historyVersion,catal
    (proposal.mode==='update_open'&&(!exact(poVersion)||!exact(proposal.targetPoId)))||
    (proposal.mode==='create_open'&&(poVersion!==null||proposal.targetPoId!==null||proposal.proposedInitialStatus!=='OPEN')))
    throw new TypeError('Invalid review proposal or version evidence.');
- const cumulative=inspectCumulativeInvoiceQuantities({proposal,...quantityEvidence, // explicit proposal wins below
-   proposal});
+ const cumulative=inspectCumulativeInvoiceQuantities({priorLines:quantityEvidence?.priorLines,coverageComplete:quantityEvidence?.coverageComplete,proposal});
  if(cumulative.state!=='candidate')throw new TypeError(cumulative.reason);
  // Bind full proposal plus relevant evidence versions and cumulative totals.
  // This is a content fingerprint, NOT an approval signature or grant.
- return {proposal,poVersion,historyVersion,catalogVersion,totals:cumulative.totals};
+ return {proposal,poVersion,historyVersion,catalogVersion,priorLines:quantityEvidence.priorLines,totals:cumulative.totals};
 }
 export function prepareInvoiceReviewRevision({previous=null,expectedRevision,proposal,quantityEvidence,poVersion,historyVersion,catalogVersion,reviewRef,recordedAt}={}){
  if(!exact(reviewRef)||!instant(recordedAt)||!Number.isSafeInteger(expectedRevision)||expectedRevision<0)
@@ -66,7 +65,7 @@ export function prepareInvoiceReviewRevision({previous=null,expectedRevision,pro
    previous.invoiceId!==proposal?.invoiceId||previous.supplierId!==proposal?.supplierId||
    previous.outletId!==proposal?.outletId||!hash(previous.fingerprint)||!instant(previous.recordedAt)||
    Date.parse(recordedAt)<=Date.parse(previous.recordedAt)))return fail('revision_conflict');
- if(previous&&['applied','unknown','pending_write'].includes(previous.state))return fail('revision_requires_write_recovery');
+ if(previous&&previous.state!=='review_required')return fail('revision_requires_write_recovery');
  if(expectedRevision===Number.MAX_SAFE_INTEGER)return fail('revision_overflow');
  try{
    const payload=reviewPayload({proposal,quantityEvidence,poVersion,historyVersion,catalogVersion});
