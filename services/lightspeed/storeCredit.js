@@ -2,9 +2,9 @@
 export function createLightspeedStoreCreditRead({ transport } = {}) {
   if (typeof transport?.request !== 'function') throw new TypeError('Lightspeed transport required.');
   return Object.freeze({
-    get: customerId => {
+    get: (customerId, { correlationId } = {}) => {
       if (!customerId || !String(customerId).trim()) throw new TypeError('Customer ID required.');
-      return transport.request('/api/2026-07/store_credits/' + encodeURIComponent(String(customerId)));
+      return transport.request('/api/2026-07/store_credits/' + encodeURIComponent(String(customerId)), ...(correlationId === undefined ? [] : [{ correlationId }]));
     }
   });
 }
