@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createCustomerSalesEvidence} from '../services/lightspeed/customerSalesEvidence.js';
-import {createLightspeedCustomersRead} from '../services/lightspeed/customers.js';
+import {createLightspeedCustomersRead, buildCustomerSearchPath} from '../services/lightspeed/customers.js';
 import {createLightspeedSalesRead} from '../services/lightspeed/sales.js';
 import {createLightspeedFulfillmentsRead} from '../services/lightspeed/fulfillments.js';
 import {createLightspeedStoreCreditRead} from '../services/lightspeed/storeCredit.js';
@@ -117,4 +117,52 @@ test('credit association is evidence scoped and rejects inconsistent nested IDs'
   assert.equal((await read({amount:'0',customer:{id:'01'}})).association,'source-confirmed');
   await assert.rejects(read({amount:'0',customer_id:'01',customer:{id:'02'}}),incomplete);
   await assert.rejects(read({amount:'0',customer_id:1}),incomplete);
+});
+
+test('shared search query builder preserves Special Orders initial URL for name email and phone',()=>{
+  const fixtures=[
+    ['  Jane Doe  ','type=customers&page_size=20&first_name=Jane&last_name=Doe'],
+    ['Jane Mary Doe','type=customers&page_size=20&first_name=Jane&last_name=Mary+Doe'],
+    ['Jane','type=customers&page_size=20&first_name=Jane'],
+    ['a+b@example.test','type=customers&page_size=20&email=a%2Bb%40example.test'],
+    ['+1 (319) 555-0101','type=customers&page_size=20&phone=%2B1+%28319%29+555-0101'],
+    ['   ',null]
+  ];
+  for(const [query,expected] of fixtures) assert.equal(buildCustomerSearchPath(query),expected===null?null:'/api/2026-04/search?'+expected);
+});
+test('first page compatibility preserves raw rows and order; feature enrichment stays outside reader',async()=>{
+  const remote=[{id:'002',first_name:'Jane',email:'j@example.test',extra:'keep'},{id:'001',first_name:'Jane'}];
+  const original=structuredClone(remote);
+  const {readers,calls}=setup(()=>({data:remote,links:{next:'?offset=2'}}));
+  const result=await readers.customers.searchFirstPage('Jane');
+  assert.deepEqual(result,{rows:original,coverage:'single-page',complete:false});
+  assert.equal(calls.length,1);
+  // Fixture of existing feature-owned local enrichment, not a production implementation.
+  const local=new Map([['002',{id:'local-2',discord_handle:'fixture',phone:'5550101',notes:'fixture note'}]]);
+  const enriched=result.rows.map(row=>{
+    const saved=local.get(row.id);
+    return saved?{...row,local_customer_id:saved.id,discord_handle:saved.discord_handle||null,
+      facebook_messenger_id:saved.facebook_messenger_id||null,whatsapp_number:saved.whatsapp_number||null,
+      special_orders_phone:saved.phone||null,special_orders_notes:saved.notes||null}:row;
+  });
+  assert.deepEqual(enriched,[{...original[0],local_customer_id:'local-2',discord_handle:'fixture',facebook_messenger_id:null,whatsapp_number:null,special_orders_phone:'5550101',special_orders_notes:'fixture note'},original[1]]);
+  assert.deepEqual(remote,original);
+});
+test('different consumers can use first page or existing paginated search without local data dependency',async()=>{
+  const first=Array.from({length:20},(_,i)=>({id:'C'+i}));
+  const {readers,calls}=setup(path=>({data:path.includes('offset=20')?[{id:'C20'}]:first}));
+  assert.equal((await readers.customers.searchFirstPage('Jane')).rows.length,20);
+  assert.equal((await readers.customers.search('Jane')).length,21);
+  assert.equal(calls.length,3);
+  assert.equal(calls[0],calls[1]);
+  assert.ok(calls[2].includes('offset=20'));
+});
+test('blank query never contacts vendor and first page malformed shape or upstream errors reject',async()=>{
+  const failure=new Error('fixture upstream error');
+  const {readers,calls}=setup(()=>{throw failure;});
+  assert.deepEqual(await readers.customers.searchFirstPage('  '),{rows:[],coverage:'not-queried',complete:false});
+  assert.deepEqual(await readers.customers.search(' '),[]);
+  assert.equal(calls.length,0);
+  await assert.rejects(readers.customers.searchFirstPage('Jane'),e=>e===failure);
+  await assert.rejects(setup(()=>({unexpected:[]})).readers.customers.searchFirstPage('Jane'),incomplete);
 });
