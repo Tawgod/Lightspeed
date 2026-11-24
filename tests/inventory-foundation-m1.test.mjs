@@ -36,3 +36,26 @@ test('rejects unknown, pending, wrong-sign and conflicting physical events', () 
 test('rejects same-time boundaries, invalid dates, shelf-only and unverified cost', () => {
   for (const change of [f => { f.events = [event('sale', '-1', '00')]; }, f => { f.events = [event('sale', '-1', '30')]; }, f => { f.scan.scannedAt = '2026-02-30T10:00:00.000Z'; }, f => { f.scan.countMode = 'shelf'; }, f => { f.cost.verified = false; }]) { const f = fixture(); change(f); assert.equal(reconcileInventoryCount(f).executable, false); assert.equal(reconcileInventoryCount(f).status, 'needsReview'); }
 });
+
+test('linked full reversal is applied once even when supplied out of order', () => {
+  const f = fixture(); const sale = event('sale', '-2', '10', 'sale-1');
+  const reversal = { ...event('return', '2', '20', 'return-1'), reversalOfEventId: 'sale-1' };
+  f.events = [reversal, sale, reversal]; assert.equal(reconcileInventoryCount(f).expectedQuantity, '8');
+});
+test('reversal of a pre-scan sale changes only post-scan quantity', () => {
+  const f = fixture(); f.scan.scannedAt = t('05');
+  f.events = [event('sale', '-2', '02', 'sale-1'), { ...event('return', '2', '20', 'return-1'), reversalOfEventId: 'sale-1' }];
+  assert.equal(reconcileInventoryCount(f).expectedQuantity, '10');
+});
+test('rejects missing, partial, duplicate and chronologically invalid linked reversals', () => {
+  const sale = event('sale', '-2', '10', 'sale-1');
+  const reversal = { ...event('return', '2', '20', 'return-1'), reversalOfEventId: 'sale-1' };
+  for (const events of [[reversal], [sale, {...reversal, quantityDelta:'1'}], [sale, reversal, {...reversal, eventId:'return-2'}], [sale, {...reversal, occurredAt:t('09')}], [sale,reversal,{...reversal,reversalOfEventId:'other'}]]) {
+    const f = fixture(); f.events = events; assert.equal(reconcileInventoryCount(f).status, 'needsReview');
+  }
+});
+test('rejects impossible intermediate stock even when later receiving restores it', () => {
+  const f = fixture(); f.scan.countedQuantity = '1';
+  f.events = [event('supplier_receipt','5','20','receipt'),event('sale','-2','10','sale')];
+  assert.equal(reconcileInventoryCount(f).reason,'negative-expected-stock');
+});
