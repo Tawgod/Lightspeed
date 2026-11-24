@@ -4,6 +4,7 @@ on:
     branches: ['feature/hc-product-catalog-m1-20261124']
     paths:
       - 'services/lightspeed/catalog.js'
+      - 'services/lightspeed/productCatalogProjection.js'
       - 'services/lightspeed/products.js'
       - 'services/lightspeed/productIdentity.js'
       - 'tests/product-catalog-m*.test.mjs'
@@ -21,9 +22,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Verify isolated syntax and run M1-M4 fixtures
+      - name: Verify isolated syntax and run M1-M5 fixtures
         run: |
           node --check services/lightspeed/catalog.js
           node --check services/lightspeed/products.js
           node --check services/lightspeed/productIdentity.js
-          node --test tests/product-catalog-m1.test.mjs tests/product-catalog-m2.test.mjs tests/product-catalog-m3.test.mjs tests/product-catalog-m4.test.mjs
+          node --check services/lightspeed/productCatalogProjection.js
+          node --test tests/product-catalog-m1.test.mjs tests/product-catalog-m2.test.mjs tests/product-catalog-m3.test.mjs tests/product-catalog-m4.test.mjs tests/product-catalog-m5.test.mjs
