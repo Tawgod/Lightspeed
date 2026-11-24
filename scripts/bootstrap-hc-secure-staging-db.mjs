@@ -50,7 +50,7 @@ async function verifyPristineRoot(root){
     x?.version<180000||x?.version>=190000)throw fail();
  const db=await root.query('SELECT 1 FROM pg_database WHERE datname=$1',[DATABASE]);
  if(db.rowCount!==0)throw fail(); // Never rerun on existing database.
- const roles=await root.query('SELECT rolname FROM pg_roles WHERE rolname=ANY($1::text[])',[...GROUPS,...LOGINS]);
+ const roles=await root.query('SELECT rolname FROM pg_roles WHERE rolname=ANY($1::text[])',[[...GROUPS,...LOGINS]]);
  if(roles.rowCount!==0)throw fail(); // Never overwrite any existing role.
 }
 async function checkRestrictedGroups(client){
@@ -60,7 +60,7 @@ async function checkRestrictedGroups(client){
  if(t.rowCount!==1||EXPECTED_TABLES.some((_,i)=>t.rows[0]['t'+i]!==true))throw fail();
  const r=await client.query(
   'SELECT rolname,rolcanlogin,rolsuper,rolcreatedb,rolcreaterole FROM pg_roles '+
-  'WHERE rolname=ANY($1::text[])',[...GROUPS]);
+  'WHERE rolname=ANY($1::text[])',[GROUPS]);
  if(r.rowCount!==2||r.rows.some(x=>x.rolcanlogin||x.rolsuper||x.rolcreatedb||x.rolcreaterole))throw fail();
  const p=await client.query(
   "SELECT "+
