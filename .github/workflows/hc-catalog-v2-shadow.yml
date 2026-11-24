@@ -1,0 +1,24 @@
+name: Catalog V2 shadow offline
+on:
+  push:
+    branches: ['feature/hc-catalog-v2-shadow-20261124']
+    paths:
+      - 'services/lightspeed/productCatalogShadow.js'
+      - 'tests/product-catalog-v2-shadow.test.mjs'
+      - '.github/workflows/hc-catalog-v2-shadow.yml'
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: |
+          node --check services/lightspeed/productCatalogShadow.js
+          node --test tests/product-catalog-m*.test.mjs tests/product-catalog-v2-shadow.test.mjs
