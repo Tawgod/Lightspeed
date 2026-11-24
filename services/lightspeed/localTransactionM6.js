@@ -5,7 +5,7 @@ const snap=v=>{fp(v);return JSON.parse(JSON.stringify(v));};
 const freeze=v=>{if(v&&typeof v==='object'){Object.values(v).forEach(freeze);Object.freeze(v);}return v;};
 const id=v=>typeof v==='string'&&v.length>0&&v.length<=512&&!/[\x00-\x1f]/.test(v);
 const type=v=>typeof v==='string'&&/^[a-z][a-z0-9_.-]{0,95}$/.test(v);
-const exact=(v,keys)=>v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).sort().join(',')===keys.sort().join(',');
+const exact=(v,keys)=>v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(key=>Object.hasOwn(v,key));
 const targetKey=t=>JSON.stringify([t.type,t.id]);
 const ordered=(a,b)=>a<b?-1:a>b?1:0;
 function normalizeEffects(effects,targets){

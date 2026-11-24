@@ -71,3 +71,20 @@ pg('M6 unknown commit requires independent reconciliation and never repeats',asy
 pg('M6 projection failure is committed and does not repeat effects',async f=>{
  const run=make(f);await reject(run({...base,projectResult:()=>{throw Error('projection');}}),'CORE_PROJECTION_FAILED','committed');assert.equal((await run(base)).replayed,true);
 });
+
+pg('M6 frozen receipt allowlist survives fresh commit and reordered replay; exact keys enforced',async f=>{
+ const run=make(f);
+ const fields=Object.freeze(['revision','id']);
+ const c={...base,receiptFields:fields,apply:async(tx,command)=>{
+  assert.ok(Object.isFrozen(command.receiptFields));
+  assert.deepEqual(command.receiptFields,['id','revision']);
+  await base.apply(tx);return Object.freeze({revision:1,id:t.id});
+ }};
+ assert.deepEqual(await run(c),{replayed:false,result:{id:t.id,revision:1}});
+ assert.deepEqual(fields,['revision','id']);
+ assert.deepEqual(await run({...c,receiptFields:Object.freeze(['id','revision']),apply:()=>assert.fail('reapplied')}),{replayed:true,result:{id:t.id,revision:1}});
+ const next={...c,key:'fixture-002',expectedRevisions:[{target:t,revision:1}]};
+ for(const malformed of [{id:t.id},{id:t.id,revision:1,extra:'no'},{'id,revision':t.id},{id:t.id,revision:1.5}])
+  await reject(run({...next,apply:()=>malformed}),'CORE_RECEIPT_INVALID','not_committed');
+ assert.equal((await f.counts()).commands,1);
+});
