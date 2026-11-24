@@ -19,20 +19,20 @@ export function buildCustomerSearchPath(query) {
 export function createLightspeedCustomersRead({ transport } = {}) {
   if (typeof transport?.request !== 'function') throw new TypeError('Shared Lightspeed transport required.');
   return Object.freeze({
-    async get(customerId) {
+    async get(customerId, { correlationId } = {}) {
       if (!customerId) throw new TypeError('Customer ID is required.');
-      return transport.request('/api/2.0/customers/' + encodeURIComponent(String(customerId)));
+      return transport.request('/api/2.0/customers/' + encodeURIComponent(String(customerId)), ...(correlationId === undefined ? [] : [{ correlationId }]));
     },
-    async search(query) {
+    async search(query, { correlationId } = {}) {
       const path = buildCustomerSearchPath(query);
       if (!path) return [];
-      return readLightspeedCollection({ transport, path });
+      return readLightspeedCollection({ transport, path, correlationId });
     },
     // Compatibility mode for interactive consumers that currently show one page.
     // Never interpret this response as proof of duplicate absence.
-    async searchFirstPage(query) {
+    async searchFirstPage(query, { correlationId } = {}) {
       const path = buildCustomerSearchPath(query);
-      const rows = path ? requireLightspeedRows(await transport.request(path)) : [];
+      const rows = path ? requireLightspeedRows(await transport.request(path, ...(correlationId === undefined ? [] : [{ correlationId }])) ) : [];
       return { rows, coverage: path ? 'single-page' : 'not-queried', complete: false };
     }
   });

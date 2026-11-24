@@ -1,0 +1,20 @@
+name: Purchasing V2 offline evidence
+on:
+  pull_request:
+    branches: [test/hc-foundation-combined-20261124]
+    paths:
+      - 'services/lightspeed/supplierDocumentEvidence.js'
+      - 'tests/purchasing-foundation-m5.test.mjs'
+      - '.github/workflows/hc-purchasing-p5-v2.yml'
+permissions:
+  contents: read
+jobs:
+  purchasing-v2-offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tests/purchasing-foundation-m{1,2,3,4,5}.test.mjs tests/product-catalog-m3.test.mjs
