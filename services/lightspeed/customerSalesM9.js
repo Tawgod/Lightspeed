@@ -52,13 +52,14 @@ const currency=v=>typeof v==='string'&&/^[A-Z]{3}$/.test(v);
 export function assessCumulativeEvidence({saleId,customerId,revision,lines,payments,deposits,credits,events,coverage}={}){
  if(!id(saleId)||!id(customerId)||!id(revision))fail();
  const maps=new Map(),eventIds=new Set();
- const kinds={pickup:'line',return:'line','payment-reversal':'payment','deposit-reversal':'deposit','credit-reversal':'credit'};
+ const kinds=Object.freeze({pickup:'line',return:'line','payment-reversal':'payment','deposit-reversal':'deposit','credit-reversal':'credit'});
  for(const [type,rows] of [['line',lines],['payment',payments],['deposit',deposits],['credit',credits]]){
   if(!Array.isArray(rows)||rows.length>1000)fail();
   const map=new Map();maps.set(type,map);
   for(const row of rows){
    if(!id(row?.id)||map.has(row.id)||row.saleId!==saleId||row.customerId!==customerId)fail();
    if(type==='line'?!id(row.productId):!currency(row.currency))fail();
+   if(type!=='line'&&row.sourceConfirmed!==true)fail();
    const limit=units(type==='line'?row.quantity:row.amount);
    map.set(row.id,{row,limit,pickup:0n,returned:0n,reversed:0n});
   }
@@ -70,7 +71,7 @@ export function assessCumulativeEvidence({saleId,customerId,revision,lines,payme
  for(const e of events){
   if(!id(e?.eventId)||eventIds.has(e.eventId)||e.saleId!==saleId||e.customerId!==customerId||!Number.isSafeInteger(e.sequence)||e.sequence<=last)fail();
   last=e.sequence;eventIds.add(e.eventId);
-  const type=e.kind==='pickup-reversal'?'line':kinds[e.kind];
+  const type=e.kind==='pickup-reversal'?'line':Object.hasOwn(kinds,e.kind)?kinds[e.kind]:null;
   if(!type)fail();
   const target=maps.get(type).get(e.targetId);
   if(!target||(type==='line'?e.productId!==target.row.productId:e.currency!==target.row.currency))fail();
@@ -87,7 +88,7 @@ export function assessCumulativeEvidence({saleId,customerId,revision,lines,payme
   }
   if(target.pickup>target.limit||target.returned>target.limit||target.reversed>target.limit)fail();
  }
- const complete=coverage?.revision===revision&&coverage?.complete===true;
+ const complete=coverage?.revision===revision&&coverage?.complete===true&&coverage?.saleId===saleId&&coverage?.customerId===customerId;
  const result=[];
  for(const [type,map] of maps)for(const [targetId,t] of map){
   result.push(type==='line'?{type,targetId,productId:t.row.productId,observedPickup:fmt(t.pickup),observedReturn:fmt(t.returned),remainingPickup:complete?fmt(t.limit-t.pickup):null,remainingReturn:complete?fmt(t.limit-t.returned):null}:{type,targetId,currency:t.row.currency,observedReversal:fmt(t.reversed),remainingReversal:complete?fmt(t.limit-t.reversed):null});
