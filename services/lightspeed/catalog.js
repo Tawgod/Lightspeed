@@ -56,3 +56,30 @@ export function createLightspeedCatalogRead({ transport } = {}) {
     async tags() { return readLightspeedCollection({ transport, path:'/api/2026-04/tags?page_size=1000' }); }
   });
 }
+
+// Additive diagnostics over the existing normalized category representation.
+// A path string by itself is not proof of a valid hierarchy.
+export function inspectCategoryHierarchy(result) {
+  const categories = normalizeProductCategories(result);
+  const byId = new Map(categories.map(row => [row.id, row]));
+  const issues = [];
+  for (const row of categories) {
+    const seen = new Set();
+    let current = row;
+    while (current) {
+      if (seen.has(current.id)) {
+        issues.push({ id: row.id, code: 'CATEGORY_CYCLE' });
+        break;
+      }
+      seen.add(current.id);
+      if (!current.parent_id) break;
+      const parent = byId.get(current.parent_id);
+      if (!parent) {
+        issues.push({ id: row.id, code: 'CATEGORY_PARENT_MISSING', parentId: current.parent_id });
+        break;
+      }
+      current = parent;
+    }
+  }
+  return { categories, issues, hierarchyValid: issues.length === 0 };
+}
