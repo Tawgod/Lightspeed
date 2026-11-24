@@ -236,3 +236,20 @@ test('malformed vendor envelope is deliberately rejected rather than treated as 
   assert.equal(original.status,200);assert.deepEqual(original.result,[]);
   assert.equal(proposed.status,502);assert.equal(proposed.queries.length,0);
 });
+
+test('Special Orders actual handler preserves full 20-row first page and feature-local enrichment',async()=>{
+ const body={data:Array.from({length:20},(_,i)=>({id:String(20-i).padStart(3,'0'),first_name:'Jane',last_name:'Doe',email:'fixture@example.test'})),links:{next:'?offset=20'}};
+ const local=[{lightspeed_customer_id:'020',id:'local-20',phone:'3195550101',notes:'fixture note'},{lightspeed_customer_id:'001',id:'local-1',whatsapp_number:'fixture'}];
+ for(const q of ['Jane Mary Doe','a+b@example.test','+1 (319) 555-0101']){
+  const actual=await runCustomerRoute({q,body,local}),candidate=await runCustomerRoute({candidate:true,q,body,local});
+  assert.deepEqual(candidate,actual);assert.equal(candidate.calls.length,1);assert.equal(candidate.result.length,20);
+  assert.equal(candidate.result[0].id,'020');assert.equal(candidate.result[19].id,'001');
+  assert.equal(candidate.result[0].special_orders_notes,'fixture note');
+ }
+});
+test('first-page consumer remains usable when later paginated page fails',async()=>{
+ const calls=[];const readers=createLightspeedCustomersRead({transport:{async request(path){calls.push(path);if(path.includes('offset=20'))throw Error('later page unavailable');return {data:Array.from({length:20},(_,i)=>({id:String(i+1)}))};}}});
+ assert.equal((await readers.searchFirstPage('Jane')).rows.length,20);
+ await assert.rejects(readers.search('Jane'),/later page unavailable/);
+ assert.equal(calls.length,3);
+});
