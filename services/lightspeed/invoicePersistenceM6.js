@@ -33,7 +33,7 @@ export function isCurrentInvoiceReviewIntent({intent,current}={}){
   current.revision.fingerprint===intent.fingerprint&&current.approval.approvalRef===intent.approvalRef);
 }
 export function createInvoicePersistenceM6({tenant,transaction,authorize,authorizeRead,authorizeReconcile,auditDenied,inspectCommitted,
- resolveActor,loadEvidence,verifyReviewer,clock=()=>new Date(),maxAgeMs=120000}={}){
+ resolveActor,loadEvidence,verifyReviewer,clock=()=>new Date(),maxAgeMs=120000,strictP09=false}={}){
  if(![resolveActor,loadEvidence,verifyReviewer,authorize,authorizeRead,authorizeReconcile].every(f=>typeof f==='function')||
  !Number.isSafeInteger(maxAgeMs)||maxAgeMs<=0)throw TypeError('Trusted synthetic adapters required');
  // Domain plan is derived exclusively from fixture evidence, not request claims. The prepared
@@ -64,10 +64,22 @@ export function createInvoicePersistenceM6({tenant,transaction,authorize,authori
   const readEffects=[effect(O.read,invoice,['receipt'])];
   // Proposed existing reconciliation capability, scoped here to local command receipts;
   // actual registry scope and any separation from remote reconciliation are Security-owned.
-  const reconcileEffects=[effect('purchasing.invoice.reconcile-unknown',invoice,['receipt']),effect('purchasing.audit.read',invoice,['receipt'])];
+  const reconcileEffects=[effect(strictP09?'purchasing.invoice.receipt.inspect':'purchasing.invoice.reconcile-unknown',invoice,['receipt']),effect('purchasing.audit.read',invoice,['receipt'])];
   const checkActor=async()=>same(await resolveActor(context),actor);
   const reviewAuthority=async()=>approval===null||await verifyReviewer({context,actor,approval:copy(approval),revision:copy(revision),tenant})===true;
-  const wrap=adapter=>async q=>await checkActor()&&await reviewAuthority()&&await adapter(q)===true;
+  const wrap=adapter=>async q=>{
+   if(!await checkActor()||!await reviewAuthority()||await adapter(q)!==true)return false;
+   if(strictP09){
+    // Check again after the injected decision, including the final precommit stage.
+    // This narrows the synthetic race, not a distributed authorization fence.
+    if(!await checkActor()||!await reviewAuthority())return false;
+    if(approval&&['beforeCommit','beforeDisclosure','readProjection','afterProjection','beforeReconcile','reconcile'].includes(q.stage)){
+     const age=clock().getTime()-Date.parse(approval.recordedAt);
+     if(!Number.isFinite(age)||age<0||age>maxAgeMs)return false;
+    }
+   }
+   return true;
+  };
   const run=createLocalTransactionM6({tenant,transaction,authorize:wrap(authorize),authorizeRead:wrap(authorizeRead),
    authorizeReconcile:wrap(authorizeReconcile),auditDenied,inspectCommitted});
   const payload={invoiceId,action,supplierId:proposal.supplierId,outletId:proposal.outletId,
@@ -99,7 +111,10 @@ export function createInvoicePersistenceM6({tenant,transaction,authorize,authori
     }
     return {invoiceId,revision:revision.revision,outcome:action==='review'?'review_recorded':'approval_recorded'};
    },
-   projectResult:r=>({invoiceId:r.invoiceId,revision:r.revision,state:r.outcome,executable:false})};
+   projectResult:r=>{
+    if(strictP09&&(r.invoiceId!==invoiceId||r.revision!==revision.revision||r.outcome!==(action==='review'?'review_recorded':'approval_recorded')))throw fail('INVOICE_RECEIPT_SCOPE_CONFLICT');
+    return {invoiceId:r.invoiceId,revision:r.revision,state:r.outcome,executable:false};
+   }};
   return Object.freeze({submit:()=>run(command)});
  }});
 }
