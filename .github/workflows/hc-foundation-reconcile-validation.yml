@@ -1,0 +1,50 @@
+name: Shared business foundation isolated validation
+on:
+  push:
+    branches: ['feature/hc-foundation-reconcile-20261124']
+    paths:
+      - 'services/lightspeed/**'
+      - 'routes/sharedLightspeedRead.js'
+      - 'db/lightspeed_shared_foundation.sql'
+      - 'tests/shared-lightspeed-*.test.mjs'
+      - '.github/workflows/hc-foundation-reconcile-validation.yml'
+permissions:
+  contents: read
+jobs:
+  offline-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: hc_test
+          POSTGRES_PASSWORD: disposable_ci_only
+          POSTGRES_DB: hc_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hc_test -d hc_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      HC_TEST_DATABASE_URL: postgresql://hc_test:disposable_ci_only@127.0.0.1:5432/hc_test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies without lifecycle scripts
+        run: npm install --ignore-scripts --no-audit --no-fund --package-lock=false
+      - name: Verify shared source syntax and unmounted gateway
+        run: |
+          for f in services/lightspeed/*.js routes/sharedLightspeedRead.js; do node --check "$f" || exit 1; done
+          node --check server.js
+          if grep -Eq 'createSharedLightspeedReadRouter|sharedLightspeedRead' server.js; then exit 1; fi
+      - name: Run shared foundation and disposable PostgreSQL tests
+        run: node --test tests/shared-lightspeed-foundation.test.mjs tests/shared-lightspeed-adapters.test.mjs tests/shared-lightspeed-reads.test.mjs tests/shared-lightspeed-postgres.test.mjs
+      - name: Verify existing core operations regression
+        run: node --test tests/core-ops-navigation.test.mjs tests/core-ops-auth-session.test.mjs
