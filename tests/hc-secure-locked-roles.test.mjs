@@ -6,7 +6,8 @@ const env=()=>({
  RAILWAY_PROJECT_ID:'120de974-f2e8-46be-9a00-8eb8b1be4cc4',
  RAILWAY_ENVIRONMENT_ID:'8c8cd3a9-079f-4fe8-b8f5-a76c79813f0c',
  RAILWAY_SERVICE_NAME:'hc-secure-db-bootstrap-once',
- HC_SECURE_DB_BOOTSTRAP_ONLY:'true',
+ HC_SECURE_DB_BOOTSTRAP_ONLY:'false',
+ HC_SECURE_CREDENTIAL_COMMISSION_ONLY:'false',
  HC_SECURE_DB_MUTATION_APPROVED:'HC_SECURE_LOCKED_ROLES_ONLY',
  HC_SECURE_ROLE_PREPARE_ONLY:'true',
  HC_SECURE_BOOTSTRAP_ROOT_URL:
@@ -21,6 +22,8 @@ test('wrong scope, credential exposure and old project refuse before connection'
   {RAILWAY_PROJECT_ID:'5b46096d-3178-47ec-ba88-d5037696346a'},
   {RAILWAY_ENVIRONMENT_ID:'46b93c76-3085-4e76-a37d-90dfdd250dd2'},
   {HC_SECURE_ROLE_PREPARE_ONLY:'false'},
+  {HC_SECURE_DB_BOOTSTRAP_ONLY:'true'},
+  {HC_SECURE_CREDENTIAL_COMMISSION_ONLY:'true'},
   {HC_SECURE_DB_MUTATION_APPROVED:'HC_SECURE_FRESH_DB_SCHEMA_ONLY'},
   {HC_OWNER_TIMECLOCK_EMPLOYEE_ID:'1'},
   {HC_OWNER_DB_RUNTIME_PASSWORD:'forbidden'},
@@ -88,4 +91,11 @@ test('existing Owner or activation prevents role creation',async()=>{
  };
  await assert.rejects(prepareHcSecureLockedRoles({environment:env(),createClient:()=>c}),/refused/);
  assert.equal(sql.some(q=>q.startsWith('CREATE ROLE')),false);
+});
+
+test('role preparation does not arm schema or credential mutation flags',()=>{
+ const e=env();checkHcSecureLockedRoleScope(e);
+ assert.equal(e.HC_SECURE_DB_BOOTSTRAP_ONLY,'false');
+ assert.equal(e.HC_SECURE_CREDENTIAL_COMMISSION_ONLY,'false');
+ assert.equal(e.HC_SECURE_DB_MUTATION_APPROVED,'HC_SECURE_LOCKED_ROLES_ONLY');
 });
