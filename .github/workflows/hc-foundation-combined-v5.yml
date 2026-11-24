@@ -1,0 +1,40 @@
+name: Combined foundation V5 regression
+on:
+  push:
+    branches: ['test/hc-foundation-combined-v5-20261124']
+permissions:
+  contents: read
+jobs:
+  combined:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: hc_test
+          POSTGRES_PASSWORD: disposable_ci_only
+          POSTGRES_DB: hc_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U hc_test -d hc_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      HC_TEST_DATABASE_URL: postgresql://hc_test:disposable_ci_only@127.0.0.1:5432/hc_test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --ignore-scripts --no-audit --no-fund --package-lock=false
+      - name: Verify syntax and gateway isolation
+        run: |
+          for f in services/lightspeed/*.js routes/sharedLightspeedRead.js; do node --check "$f" || exit 1; done
+          node --check server.js
+          if grep -Eq 'createSharedLightspeedReadRouter|sharedLightspeedRead' server.js; then exit 1; fi
+      - name: Run combined foundation regression
+        run: node --test tests/core-api-m1.test.mjs tests/core-api-m3-integration.test.mjs tests/core-api-m4-capabilities.test.mjs tests/core-api-m4-postgres.test.mjs tests/core-ops-auth-session.test.mjs tests/core-ops-navigation.test.mjs tests/customer-identity-m5.test.mjs tests/customer-sales-evidence.test.mjs tests/customer-sales-m6.test.mjs tests/inventory-foundation-m1.test.mjs tests/inventory-locations.test.mjs tests/inventory-m6-transaction.test.mjs tests/inventory-persistence.test.mjs tests/product-catalog-m1.test.mjs tests/product-catalog-m2.test.mjs tests/product-catalog-m3.test.mjs tests/product-catalog-m4.test.mjs tests/product-catalog-m5.test.mjs tests/product-catalog-v2-shadow.test.mjs tests/product-catalog-v3-m6.test.mjs tests/purchasing-foundation-m1.test.mjs tests/purchasing-foundation-m2.test.mjs tests/purchasing-foundation-m3.test.mjs tests/purchasing-foundation-m4.test.mjs tests/purchasing-foundation-m5.test.mjs tests/purchasing-foundation-m6.test.mjs tests/shared-lightspeed-adapters.test.mjs tests/shared-lightspeed-foundation.test.mjs tests/shared-lightspeed-postgres.test.mjs tests/shared-lightspeed-reads.test.mjs tests/inventory-m7-postgres.test.mjs tests/core-api-m5-postgres.test.mjs tests/purchasing-foundation-m7-postgres.test.mjs tests/product-catalog-v4-m7.test.mjs tests/customer-sales-m7.test.mjs
