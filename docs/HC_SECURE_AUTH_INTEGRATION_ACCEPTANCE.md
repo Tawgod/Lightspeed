@@ -98,3 +98,22 @@ This must pass before additional source review and separate real Railway authori
 
 **Deployment prerequisites still outstanding:** `HC Secure/staging` currently has *only staged-create* PostgreSQL 18 image/volume and guarded Owner app; no DB bootstrap password/variables, no privileged one-shot service or hardened network transport, no login secrets, dedicated authenticator encryption keys, signed employee security policy, newly registered WebAuthn credential for the new RP ID, or new custom domain/DNS/TLS. Do not accept Railway staged patch; provisioning code is not yet deployed or configured. A separate credential-commissioning milestone must generate independent runtime/operator passwords and verify access, deny incorrect credentials, and provide key custody without logging secrets. Do not copy original Owner secrets or registered WebAuthn rows.
 
+
+
+## HC Secure separate credential-commissioning program — 2026-11-24
+
+**Read-only preflight passed 4/4 based on operator Codespace report.** Implemented separately gated `scripts/commission-hc-secure-db-credentials.mjs` for independent role passwords. This uses the *new* HC Secure-only `verifyHcSecureCredentialCommissioningScope`, targets the private new PG18 `hc_owner_stage_test`, and refuses any existing Owners or activation records, old Owner project/DB or unexpected preconfigured/unlocked roles. It verifies restricted role memberships and cannot silently promote runtime to operator. Passwords must be distinct, generated out of band, never printed, and must not be copied from original Owner or business systems.
+
+The program checks PostgreSQL 18 context, issues two parameter-format-constrained 48-character password assignments in a single SQL transaction (Postgres does not parameterize `ALTER ROLE PASSWORD`; preflight guarantees strictly ASCII alphanumeric), requires SCRAM-SHA-256 password hashes, commits, verifies runtime and operator login permissions, runs the existing runtime nine-table privilege gate, and verifies an intentionally incorrect password returns PostgreSQL auth error **28P01** (not a network error). If it fails before committing, it rolls back; if checks fail after committing, it attempts to relock both roles to `PASSWORD NULL` in a new transaction. Failed relocking requires incident review, not a retry. No First Owner activation or WebAuthn enrolment occurs here.
+
+**Important:** This one-shot source is **NOT DEPLOYED**; no live credentials, DB or Railway services have been modified. Its tests are **new and not yet executed**. Additional security review is required before running it on real staging PG; particularly handling ambiguous network failures at COMMIT and ensuring roles are locked after failures. The new SQL schema/role provisioner is also not deployed.
+
+Codespace test (mock-only):
+```bash
+cd /workspaces/Lightspeed
+git switch feature/hc-secure-staging-readiness-20261123
+git pull --ff-only
+node --test tests/hc-secure-credential-commissioning.test.mjs
+```
+Six test cases: wrong project rejects before client, nonempty Owner/activation rows refuse, unlocked roles refuse, transactional rollback after partial update, relock after postcommit login failure, and reject network failure as wrong-password proof. **Do not set real Railway credential variables or run the live commissioning program for this test.**
+
