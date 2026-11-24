@@ -83,3 +83,133 @@ export function inspectCategoryHierarchy(result) {
   }
   return { categories, issues, hierarchyValid: issues.length === 0 };
 }
+
+// M3: internal evidence projections. No vendor schema or alias authority is
+// inferred. Inputs are trusted, single-tenant normalized offline observations.
+const catalogText = v => typeof v === 'string' && v.length <= 512 &&
+  v.trim().length > 0 && !/[\u0000-\u001f\u007f]/u.test(v);
+const nullableText = v => v === null || catalogText(v);
+const evidenceFields = r => catalogText(r?.source) && catalogText(r?.provenance);
+const instant = v => typeof v === 'string' &&
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(v) &&
+  Number.isFinite(Date.parse(v)) && new Date(v).toISOString() === v;
+const money = v => typeof v === 'string' && /^(0|[1-9]\d{0,17})(\.\d{1,8})?$/.test(v);
+
+// Alias scope is source-specific. Only verified canonical links are evidence;
+// never treat a shipping sender, name similarity or case folding as identity.
+export function resolveSupplierIdentity(query, rows, { complete = false } = {}) {
+  if (!catalogText(query?.source) || !catalogText(query?.alias) || !Array.isArray(rows))
+    throw new TypeError('Source, exact alias and evidence rows required.');
+  const issues = new Set(), matches = new Map();
+  for (const r of rows) {
+    if (!evidenceFields(r) || !catalogText(r.alias) || !catalogText(r.supplierId) ||
+        typeof r.verified !== 'boolean' || !instant(r.observedAt)) {
+      issues.add('MALFORMED_ALIAS'); continue;
+    }
+    if (r.source !== query.source || r.alias !== query.alias) continue;
+    if (!r.verified) { issues.add('UNVERIFIED_ALIAS'); continue; }
+    const e = { supplierId:r.supplierId, source:r.source, alias:r.alias,
+      provenance:r.provenance, observedAt:r.observedAt };
+    const list = matches.get(r.supplierId) || [];
+    if (!list.some(x=>JSON.stringify(x)===JSON.stringify(e))) list.push(e);
+    matches.set(r.supplierId,list);
+  }
+  const candidates = [...matches].map(([supplierId,evidence])=>({supplierId,evidence}));
+  const coverage = complete === true && issues.size === 0;
+  const status = candidates.length > 1 ? 'AMBIGUOUS' : !coverage ? 'INCOMPLETE' :
+    candidates.length ? 'EXACT_UNIQUE' : 'NO_MATCH';
+  return {status, complete:coverage, candidates, issues:[...issues]};
+}
+
+// All mappings are observations: no promotion, overwrite or default primary.
+// Separate SKU evidence by canonical supplier and exact product/variant.
+export function inspectSupplierProductLinks(target, rows, { complete = false } = {}) {
+  if (!catalogText(target?.productId) || !nullableText(target?.variantId) || !Array.isArray(rows))
+    throw new TypeError('Exact product and explicit variant scope required.');
+  const issues = new Set(), groups = new Map();
+  for (const r of rows) {
+    if (!catalogText(r?.productId) || !nullableText(r.variantId) ||
+        !catalogText(r.supplierId) || !nullableText(r.supplierSku) ||
+        ![true,false,null].includes(r.primary) || !evidenceFields(r) || !instant(r.observedAt)) {
+      issues.add('MALFORMED_LINK'); continue;
+    }
+    if (r.productId !== target.productId || r.variantId !== target.variantId) continue;
+    const group = groups.get(r.supplierId) || {supplierId:r.supplierId, observations:[]};
+    const e = {supplierSku:r.supplierSku, primary:r.primary, source:r.source,
+      provenance:r.provenance, observedAt:r.observedAt};
+    if (!group.observations.some(x=>JSON.stringify(x)===JSON.stringify(e))) group.observations.push(e);
+    groups.set(r.supplierId,group);
+  }
+  const links = [...groups.values()].map(g=>{
+    const skus = new Set(g.observations.map(r=>r.supplierSku).filter(v=>v!==null));
+    const primary = new Set(g.observations.map(r=>r.primary).filter(v=>v!==null));
+    if (skus.size > 1) issues.add('CONFLICTING_SUPPLIER_SKU');
+    if (primary.size > 1) issues.add('CONFLICTING_PRIMARY_STATUS');
+    return {...g, supplierSku:skus.size===1?[...skus][0]:null,
+      primary:primary.size===1?[...primary][0]:null};
+  });
+  const primaries = links.filter(r=>r.primary===true);
+  if (primaries.length > 1) issues.add('MULTIPLE_PRIMARY_SUPPLIERS');
+  const coverage = complete === true && issues.size === 0;
+  return {links, complete:coverage, primarySupplierId:coverage && primaries.length===1 &&
+      links.every(r=>r.primary!==null) ? primaries[0].supplierId:null, issues:[...issues]};
+}
+
+// Exact decimal observations; do not derive one price from another, convert
+// currency or pick a winner across conflicting source values.
+export function inspectCatalogPrices(target, rows, { complete = false } = {}) {
+  if (!catalogText(target?.productId) || !nullableText(target?.variantId) || !Array.isArray(rows))
+    throw new TypeError('Exact product and explicit variant scope required.');
+  const groups = new Map(), issues = new Set();
+  for (const r of rows) {
+    if (!catalogText(r?.productId) || !nullableText(r.variantId) ||
+        !['COST','MSRP','RETAIL'].includes(r.kind) ||
+        !nullableText(r.supplierId) || !nullableText(r.outletId) ||
+        (r.amount!==null && !money(r.amount)) ||
+        (r.currency!==null && (typeof r.currency!=='string' || !/^[A-Z]{3}$/.test(r.currency))) ||
+        (r.amount!==null && r.currency===null) || !evidenceFields(r) || !instant(r.observedAt)) {
+      issues.add('MALFORMED_PRICE'); continue;
+    }
+    if (r.productId!==target.productId || r.variantId!==target.variantId) continue;
+    const key=JSON.stringify([r.kind,r.supplierId,r.outletId,r.currency]);
+    const group=groups.get(key)||{kind:r.kind,supplierId:r.supplierId,outletId:r.outletId,
+      currency:r.currency,observations:[]};
+    const e={amount:r.amount,source:r.source,provenance:r.provenance,observedAt:r.observedAt};
+    if (!group.observations.some(x=>JSON.stringify(x)===JSON.stringify(e))) group.observations.push(e);
+    groups.set(key,group);
+  }
+  const prices=[...groups.values()].map(g=>{
+    const values=new Set(g.observations.map(r=>r.amount).filter(v=>v!==null));
+    if(values.size>1) issues.add('CONFLICTING_PRICE');
+    return {...g,amount:values.size===1?[...values][0]:null};
+  });
+  return {prices,complete:complete===true && issues.size===0,issues:[...issues]};
+}
+
+// Strict flat normalized reference inputs only. Reuse the existing hierarchy
+// diagnostic after rejecting malformed/duplicate identities; no raw vendor
+// envelope inference or completeness claim from a page length.
+export function inspectCatalogReferences(input, { complete = false } = {}) {
+  const kinds=['suppliers','brands','manufacturers','departments','categories','tags'];
+  const references={}, issues=[];
+  for(const kind of kinds){
+    const rows=input?.[kind], ids=new Set(), valid=[];
+    if(!Array.isArray(rows)){issues.push({kind,code:'MISSING_REFERENCE_LIST'});references[kind]=[];continue;}
+    for(const r of rows){
+      if(!catalogText(r?.id)||!catalogText(r.name)||!evidenceFields(r)||
+        ((kind==='categories'||kind==='departments')&&!nullableText(r.parent_id))){
+        issues.push({kind,code:'MALFORMED_REFERENCE'});continue;
+      }
+      if(ids.has(r.id)){issues.push({kind,code:'DUPLICATE_REFERENCE_ID',id:r.id});continue;}
+      ids.add(r.id);
+      valid.push({id:r.id,name:r.name,source:r.source,provenance:r.provenance,
+        ...((kind==='categories'||kind==='departments')?{parent_id:r.parent_id}:{})});
+    }
+    references[kind]=valid;
+    if(kind==='categories'||kind==='departments'){
+      const diagnostic=inspectCategoryHierarchy(valid.map(r=>({id:r.id,name:r.name,parent_id:r.parent_id})));
+      issues.push(...diagnostic.issues.map(r=>({...r,kind})));
+    }
+  }
+  return {references,complete:complete===true&&issues.length===0,issues};
+}
