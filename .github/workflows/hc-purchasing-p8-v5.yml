@@ -1,0 +1,39 @@
+name: Purchasing V5 M6 disposable review fixtures
+on:
+  pull_request:
+    branches: [test/hc-foundation-combined-v5-20261124]
+    paths:
+      - 'services/lightspeed/invoicePersistenceM6.js'
+      - 'tests/purchasing-foundation-m8-postgres.test.mjs'
+      - '.github/workflows/hc-purchasing-p8-v5.yml'
+permissions:
+  contents: read
+jobs:
+  disposable-review:
+    if: github.head_ref == 'feature/hc-purchasing-p8-v5-20261124'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: hc_test
+          POSTGRES_PASSWORD: disposable_ci_only
+          POSTGRES_DB: hc_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hc_test -d hc_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      HC_TEST_DATABASE_URL: postgresql://hc_test:disposable_ci_only@127.0.0.1:5432/hc_test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --ignore-scripts --no-audit --no-fund --package-lock=false
+      - run: node --test tests/purchasing-foundation-m{1,2,3,4,5,6}.test.mjs tests/purchasing-foundation-m7-postgres.test.mjs tests/purchasing-foundation-m8-postgres.test.mjs
