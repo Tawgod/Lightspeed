@@ -8,7 +8,7 @@ const id=v=>typeof v==='string'&&v.length>0&&v.length<=256&&v.trim()===v&&!/[\x0
 const invalid=()=>{throw new LightspeedIncompleteReadError('Invalid integrated evidence.');};
 const denied=()=>{const e=new Error('Read not authorized.');e.code='CORE_FORBIDDEN';throw e;};
 const unwrap=v=>v&&Object.hasOwn(v,'data')?v.data:v;
-const saleOps=['sales.read','sales.payments.read','sales.deposit.read','sales.work-orders.read','fulfillments.read','sales.reversals.read','sales.returns.read','store-credit.read'];
+const saleOps=['customers.read','sales.read','sales.payments.read','sales.deposit.read','sales.work-orders.read','fulfillments.read','sales.reversals.read','sales.returns.read','store-credit.read'];
 // Unsplit vendor responses may include contact/custom fields. Require broad
 // source admission; outputs still use minimal fixed projections.
 const customerOps=['customers.read','customers.contacts.read','customers.custom-fields.read','customers.notes.read'];
@@ -53,17 +53,17 @@ export function createOfflineCustomerSales({environment,authorize,customers,sale
   },
   async identity(actor,customerId,purpose){
    if(!id(customerId)||!id(purpose))throw new TypeError('Exact customer and purpose required.');
-   const s=session(actor),resource={kind:'customer',id:customerId};
+   const s=session(actor),resource={kind:'customer',id:customerId,scope:'all-returned-fields'};
    const row=unwrap(await s.read(customerOps,resource,o=>customers.get(customerId,o)));
    if(row?.id!==customerId)invalid();
-   const links=await s.read(['customers.identity.read'],resource,o=>readLinks(customerId,o));
-   const consents=await s.read(['customers.consent.read'],{...resource,purpose},o=>readConsents(customerId,{...o,purpose}));
+   const links=await s.read(['customers.identity.read'],{...resource,providers:'all-supported'},o=>readLinks(customerId,o));
+   const consents=await s.read(['customers.consent.read'],{...resource,purpose,channels:'all-supported'},o=>readConsents(customerId,{...o,purpose}));
    if(!Array.isArray(consents)||consents.some(c=>c.purpose!==purpose))invalid();
    return s.finish({...projectCustomerIdentity({customerId,links,consents}),purpose});
   },
   async workflow(actor,saleId){
    if(!id(saleId))throw new TypeError('Exact sale ID required.');
-   const s=session(actor),resource={kind:'sale',id:saleId};
+   const s=session(actor),resource={kind:'sale',id:saleId,scope:'all-returned-fields'};
    // Raw sale and reversal feeds are not field-filtered. All relevant grants
    // required before either request; no partial success for denied components.
    const sale=unwrap(await s.read(saleOps,resource,o=>sales.get(saleId,o)));
