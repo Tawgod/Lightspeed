@@ -48,7 +48,7 @@ export function createOfflineCustomerSales({environment,authorize,customers,sale
     return {customerId:row.id,firstName:typeof row.first_name==='string'?row.first_name:null,lastName:typeof row.last_name==='string'?row.last_name:null};
    });
    // Per-result admission before any output; cannot substitute for source scoping.
-   for(const item of items)await s.read(['customers.search'],{kind:'customer',id:item.customerId},async()=>null);
+   for(const item of items)await s.read(['customers.search','customers.read'],{kind:'customer',id:item.customerId},async()=>null);
    return s.finish({items,coverage:firstPage?'single-page':'search-candidates-only',complete:false,requiresReview:true});
   },
   async identity(actor,customerId,purpose){
@@ -73,6 +73,7 @@ export function createOfflineCustomerSales({environment,authorize,customers,sale
    const deposits=await s.read(['sales.deposit.read'],resource,o=>readDeposits(saleId,o));
    const orders=await s.read(['sales.work-orders.read'],resource,o=>readOrders(saleId,o));
    const workflow=projectSaleWorkflow({saleId,sale,fulfillments:physical.map(r=>r.raw),depositEvents:deposits,workOrders:orders});
+   if(workflow.customerId!==null)await s.read(['customers.read'],{kind:'customer',id:workflow.customerId},async()=>null);
    const events=await s.read(saleOps,resource,o=>readReversals(saleId,o));
    const customerId=workflow.customerId;
    const creditSnapshot=customerId===null?null:unwrap(await s.read(['customers.read','store-credit.read'],{kind:'customer',id:customerId},o=>storeCredit.get(customerId,o)));
@@ -82,8 +83,14 @@ export function createOfflineCustomerSales({environment,authorize,customers,sale
    if(!Array.isArray(pickups)||pickups.length>1000)invalid();
    const seen=new Set(),pickupEvidence=pickups.map(p=>{
     if(!id(p?.eventId)||seen.has(p.eventId)||p.saleId!==saleId||customerId===null||p.customerId!==customerId||!['pickup-confirmed','pickup-reversed'].includes(p.kind)||typeof p.quantity!=='string'||!/^\d{1,18}(?:\.\d{1,6})?$/.test(p.quantity)||!/[1-9]/.test(p.quantity)||!workflow.lineItems?.some(l=>l.lineId===p.lineId&&l.productId===p.productId))invalid();
-    seen.add(p.eventId);return {eventId:p.eventId,kind:p.kind,lineId:p.lineId,productId:p.productId,quantity:p.quantity};
+    seen.add(p.eventId);return {eventId:p.eventId,kind:p.kind,lineId:p.lineId,productId:p.productId,quantity:p.quantity,originalEventId:p.originalEventId??null};
    });
+   for(const p of pickups){
+    if(p.kind==='pickup-reversed'){
+     const original=pickups.find(x=>x.eventId===p.originalEventId);
+     if(!original||original.kind!=='pickup-confirmed'||original.lineId!==p.lineId||original.productId!==p.productId)invalid();
+    }else if(p.originalEventId!=null)invalid();
+   }
    return s.finish({workflow,reversal,pickupEvidence,pickupCoverage:'supplied-evidence-only',netPickup:null,executionAuthorized:false});
   }
  });
