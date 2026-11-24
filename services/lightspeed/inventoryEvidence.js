@@ -40,7 +40,7 @@ export async function observeOutletInventory({ reader, productId, outletId, cloc
 }
 // Inputs are trusted, normalized backend evidence only. No raw webhook/PO/sale adapters yet.
 // A count must be a full outlet observation, not a shelf count or additive scan.
-export function reconcileInventoryCount({ scan, snapshot, coverage, events, cost, evaluatedAt, maxAgeMs }) {
+export function reconcileInventoryCount({ scan, snapshot, coverage, events, cost, evaluatedAt, maxAgeMs } = {}) {
   if (!validKey(scan) || !validKey(snapshot) || !same(scan, snapshot) || scan.countMode !== 'full-outlet' || !id(scan.scanId)) return review('identity-or-count-mode');
   const start = instant(scan.scannedAt), end = instant(snapshot.snapshotAsOf), now = instant(evaluatedAt);
   if (start === null || end === null || now === null || start >= end || end > now || !Number.isSafeInteger(maxAgeMs) || maxAgeMs < 0 || now - end > maxAgeMs || snapshot.evidenceStatus !== 'verified' || snapshot.sourceSystem !== 'lightspeed-x') return review('snapshot-time-or-evidence');
@@ -53,6 +53,7 @@ export function reconcileInventoryCount({ scan, snapshot, coverage, events, cost
     if (matches.length !== 1 || c.status !== 'complete' || c.paginationComplete !== true || c.effectiveTimeVerified !== true || c.lateArrivalsResolved !== true || instant(c.from) === null || instant(c.through) === null || instant(c.from) > start || instant(c.through) < end || !id(c.sourceRef)) return review('coverage:' + type);
   }
   let expected = counted;
+  const ordered = [];
   const seen = new Map();
   for (const e of events) {
     if (!validKey(e)) return review('event-identity');
@@ -61,13 +62,34 @@ export function reconcileInventoryCount({ scan, snapshot, coverage, events, cost
     if (!TYPES.includes(e.eventType) || time === null || delta === null || !id(e.eventId) || !id(e.sourceRef) || e.effectiveTimeVerified !== true || e.physicalEffectVerified !== true) return review('event-evidence');
     if ((e.eventType === 'sale' && delta >= 0n) || (['return', 'supplier_receipt'].includes(e.eventType) && delta <= 0n)) return review('event-sign');
     if (!coverage.some(c => c && same(c, scan) && c.eventType === e.eventType && c.sourceRef === e.sourceRef)) return review('event-source');
-    const fingerprint = JSON.stringify([e.eventType, e.occurredAt, format(delta), e.sourceRef]);
+    const fingerprint = JSON.stringify([e.eventType, e.occurredAt, format(delta), e.sourceRef, e.reversalOfEventId ?? null]);
     if (seen.has(e.eventId)) { if (seen.get(e.eventId) !== fingerprint) return review('conflicting-event'); continue; }
     seen.set(e.eventId, fingerprint);
     if (time === start || time === end) return review('ambiguous-boundary-event');
-    if (time > start && time < end) expected += delta;
+    ordered.push({ e, time, delta });
   }
-  if (expected < 0n) return review('negative-expected-stock');
+  // Reversals are linked to a single verified original, not inferred from sale status.
+  const originals = new Map(ordered.map(x => [x.e.eventId, x]));
+  const reversed = new Set();
+  for (const x of ordered) {
+    const target = x.e.reversalOfEventId;
+    if (target == null) continue;
+    const original = originals.get(target);
+    if (!id(target) || !original || original.time >= x.time ||
+        original.e.reversalOfEventId != null || reversed.has(target) ||
+        original.delta !== -x.delta) return review('reversal-evidence');
+    reversed.add(target);
+  }
+  ordered.sort((a, b) => a.time - b.time);
+  for (let i = 0; i < ordered.length;) {
+    const time = ordered[i].time;
+    let sum = 0n;
+    do { sum += ordered[i++].delta; } while (i < ordered.length && ordered[i].time === time);
+    if (time > start && time < end) {
+      expected += sum;
+      if (expected < 0n) return review('negative-expected-stock');
+    }
+  }
   const variance = expected - stock;
   const unitCost = decimal(cost?.unitCost);
   if (unitCost === null || unitCost < 0n || cost?.verified !== true || !id(cost.basis) || !/^[A-Z]{3}$/.test(cost.currency || '')) return review('cost-evidence');
