@@ -107,3 +107,37 @@ test('failed after new DB create does not automatically delete or retry the DB',
  assert.equal(commands.filter(x=>x.startsWith('CREATE DATABASE')).length,1);
  assert.equal(commands.some(x=>/DROP DATABASE|DROP ROLE|DELETE FROM/i.test(x)),false);
 });
+
+test('successful bootstrap binds each ANY array as one PostgreSQL parameter',async()=>{
+ const calls=[];let clients=0;
+ const row=x=>({rowCount:1,rows:[x]});
+ const groupNames=['hc_owner_stage_runtime_privs','hc_owner_stage_operator_privs'];
+ const root={connect:async()=>{},end:async()=>{},query:async(sql,params=[])=>{
+  calls.push(sql);
+  if(sql.startsWith('SELECT current_database()'))return row({db:'railway',role:'postgres',version:180001});
+  if(sql.startsWith('SELECT 1 FROM pg_database'))return {rowCount:0,rows:[]};
+  if(sql.includes('ANY($1::text[])')){
+   assert.deepEqual(params,[[...groupNames,'hc_owner_stage_runtime','hc_owner_stage_operator']]);
+   return {rowCount:0,rows:[]};
+  }
+  if(sql.startsWith('CREATE DATABASE'))return {};
+  throw Error('unexpected root SQL');
+ }};
+ const target={connect:async()=>{},end:async()=>{},query:async(sql,params=[])=>{
+  calls.push(sql);
+  if(sql.startsWith('SELECT to_regclass'))return row(Object.fromEntries(Array.from({length:9},(_,i)=>['t'+i,true])));
+  if(sql.includes('ANY($1::text[])')){
+   assert.deepEqual(params,[groupNames]);
+   return {rowCount:2,rows:groupNames.map(rolname=>({rolname,rolcanlogin:false,rolsuper:false,rolcreatedb:false,rolcreaterole:false}))};
+  }
+  if(sql.startsWith('SELECT has_table_privilege'))return row({issue:false,remove:false,digest:false,employee:false,expiry:false,consume:true,credential:true,operator_issue:true,operator_totp:false});
+  if(sql.startsWith('SELECT (SELECT COUNT(*)'))return row({owners:0,activations:0});
+  return {};
+ }};
+ const result=await bootstrapHcSecureStagingDb({environment:env(),createClient:()=>clients++?target:root,
+  loadFixture:async name=>name==='db/hc_owner_staging_privilege_groups.sql'?'BEGIN;\nSELECT 1;\nCOMMIT;':'SELECT 1;'});
+ assert.equal(result.schemaCreated,true);
+ assert.equal(calls.filter(x=>x.startsWith('CREATE DATABASE')).length,1);
+ assert.ok(calls.includes('COMMIT'));
+ assert.equal(calls.includes('ROLLBACK'),false);
+});
