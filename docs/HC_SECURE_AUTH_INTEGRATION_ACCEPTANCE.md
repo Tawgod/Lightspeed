@@ -117,3 +117,24 @@ node --test tests/hc-secure-credential-commissioning.test.mjs
 ```
 Six test cases: wrong project rejects before client, nonempty Owner/activation rows refuse, unlocked roles refuse, transactional rollback after partial update, relock after postcommit login failure, and reject network failure as wrong-password proof. **Do not set real Railway credential variables or run the live commissioning program for this test.**
 
+
+
+## Real disposable PG18 credential commissioning integration — 2026-11-24
+
+**Operator reported 6/6 mocked one-shot credential commissioning tests passed.** A separate integration checkpoint is now prepared, not executed.
+
+Source additions:
+- `scripts/test-hc-secure-credentials-disposable.mjs` uses fresh empty Docker PG18 with fixed cluster identity, exact loopback port `127.0.0.1:15489`, reviewed seven Owner schema fixtures and two password-locked logins. Test-only adapter maps fictional HC Secure private hostname to the local container; the real deployment function still validates the *new* HC Secure project/env/service scope and never sees an original Owner DB. It injects a post-commit operator verification failure and verifies both logins were re-locked; then commissions fresh simulated passwords for real SCRAM authentication, checks both login permissions, all nine runtime tables, requires invalid-password PostgreSQL `28P01`, confirms zero Owner/activation rows, and finally re-locks the roles.
+- `scripts/run-hc-secure-disposable-credentials-pg18.sh`: starts disposable `postgres:18` with tmpfs data and ephemeral root password, binds only to loopback, and removes Docker container on exit. **No Railway network or credentials.**
+- Critical security hardening: an ambiguous initial password `COMMIT` (e.g. server commits but connection drops before acknowledgement) now returns explicit **manual security review required** rather than falsely treating `ROLLBACK` as proof both passwords were re-locked. Such an event requires independent database role inspection and containment, not unattended retry.
+
+**Codespace next checkpoint:**
+```bash
+cd /workspaces/Lightspeed
+git switch feature/hc-secure-staging-readiness-20261123
+git pull --ff-only
+node --test tests/hc-secure-credential-commissioning.test.mjs
+bash scripts/run-hc-secure-disposable-credentials-pg18.sh
+```
+Expected unit suite **6/6 PASS** and integration line `HC_SECURE_DISPOSABLE_CREDENTIALS_OK postcommit_relock=true scram_logins=true bad_password_denied=true final_roles_locked=true owner_activations=0`. The Docker integration is **NOT YET RUN**; report failures and do not run script against existing Owner or Railway DB. Additional test for ambiguous commit branch and external security review are still recommended before any live Railway DB creation/activation.
+
