@@ -62,6 +62,7 @@ export function createSyntheticPurchaseOrderMutation({enabled=false,fixture,poli
    // It is a test fixture, not a durable implementation of that contract.
    return fixture.withExclusiveInvoiceScope(invoiceId,async()=>{
      const state=clone(await fixture.loadReview(invoiceId));
+     if(state.executionState!=='review_ready'&&state.executionState!=='verified')throw deny('PO_EXECUTION_STATE_BLOCKED');
      if(state.revision?.invoiceId!==invoiceId||state.evidence?.proposal?.invoiceId!==invoiceId)throw deny('PO_REVIEW_IDENTITY');
      const binding=inspectApprovalBinding({revision:state.revision,approval:state.approval,currentEvidence:state.evidence,
        now:clock().toISOString(),maxAgeMs});
@@ -74,10 +75,12 @@ export function createSyntheticPurchaseOrderMutation({enabled=false,fixture,poli
      // additionally required from durable review scope; Core scopes keys by operation.
      const key='invoice-'+fingerprintLightspeedPayload(invoiceId);
      let before=null,attempted=false;
+     if(state.executionState==='verified'&&state.verifiedFingerprint!==binding.fingerprint)throw deny('PO_VERIFIED_REVISION_CONFLICT');
      try{
        const response=await core.run({principal,operation,correlationId,key,entityType:'supplier-po',
          entityId:command.targetPoId,payload:{command,reviewFingerprint:binding.fingerprint},
          execute:async approved=>{
+           if(state.executionState==='verified')throw deny('PO_VERIFIED_REPLAY_MISSING');
            requireTrue(await fixture.assertNoDuplicate({invoiceId,command:approved.command,reviewFingerprint:binding.fingerprint}), 'PO_DUPLICATE_OR_UNCERTAIN');
            if(command.kind==='update_open'){
              before=normalizedSnapshot(await fixture.readPO(command.targetPoId));
@@ -85,6 +88,7 @@ export function createSyntheticPurchaseOrderMutation({enabled=false,fixture,poli
                command.lines.some(l=>!before.lines.some(x=>x.id===l.poLineId&&x.productId===l.productId&&
                x.supplierSku===l.supplierSku&&x.orderedQty===l.orderedQty&&x.currency===l.currency)))throw deny('PO_PRECONDITION_CHANGED');
              // No receipt-bearing PO is eligible in this conservative fixture.
+             if(!same(before,state.expectedBefore))throw deny('PO_PRECONDITION_CHANGED');
              if(before.lines.some(x=>x.receivedQty!==0))throw deny('PO_RECEIPT_PRESENT');
            }
            attempted=true;
