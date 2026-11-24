@@ -121,3 +121,11 @@ test('wrong-password network errors are NOT accepted as proof of denial',async()
  assert.ok(rootLog.includes('ALTER ROLE hc_owner_stage_runtime PASSWORD NULL'));
  assert.ok(rootLog.includes('ALTER ROLE hc_owner_stage_operator PASSWORD NULL'));
 });
+
+test('ambiguous COMMIT never claims transaction rollback safely re-locked roles',async()=>{
+ const sqlLog=[];
+ const root=mockRoot({sqlLog,stopAt:'COMMIT'});
+ await assert.rejects(commission({environment:env(),createClient:()=>root}),/uncertain COMMIT.*manual database security review/);
+ assert.equal(sqlLog.filter(s=>s==='COMMIT').length,1);
+ // No successful commit acknowledgement: user must independently inspect roles.
+});
