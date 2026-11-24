@@ -166,3 +166,73 @@ test('blank query never contacts vendor and first page malformed shape or upstre
   await assert.rejects(readers.customers.searchFirstPage('Jane'),e=>e===failure);
   await assert.rejects(setup(()=>({unexpected:[]})).readers.customers.searchFirstPage('Jane'),incomplete);
 });
+
+// Offline route-source harness. Execute only the checked-in customer GET handler
+// with injected fake vendor/DB dependencies; never import the production app.
+import {readFileSync} from 'node:fs';
+import {runInNewContext} from 'node:vm';
+const routeSource=readFileSync(new URL('../special-orders.js',import.meta.url),'utf8');
+const routeStart="  router.get('/customers/search', async (req, res) => {";
+const routeEnd="  router.post('/customers/create-lightspeed',";
+const start=routeSource.indexOf(routeStart), end=routeSource.indexOf(routeEnd,start);
+assert.ok(start>=0 && end>start && routeSource.indexOf(routeStart,start+1)===-1);
+const actualRoute=routeSource.slice(start,end).trim();
+assert.ok(actualRoute.endsWith('});'));
+const vendorStart=actualRoute.indexOf('      const response = await fetch(');
+const vendorEnd=actualRoute.indexOf('\n\n      if (pool && candidates.length)',vendorStart);
+assert.ok(vendorStart>=0 && vendorEnd>vendorStart);
+// Proposed substitution only in memory; the rest is actual route source.
+const candidateRoute=actualRoute.slice(0,vendorStart)+
+  '      const page = await customers.searchFirstPage(q);\n      for (const c of page.rows) candidates.push(c);'+actualRoute.slice(vendorEnd);
+async function runCustomerRoute({candidate=false,q='Jane Doe',body={data:[]},local=[],dbError=false,upstreamError=false,withPool=true}={}) {
+  const calls=[],queries=[];
+  const request=async path=>{
+    calls.push(path);
+    if(upstreamError) throw Error('synthetic unavailable');
+    return structuredClone(body);
+  };
+  const customers=createLightspeedCustomersRead({transport:{request}});
+  let handler;
+  const router={get(path,fn){assert.equal(path,'/customers/search');handler=fn;}};
+  const pool=withPool?{async query(sql,args){queries.push({sql,args:JSON.parse(JSON.stringify(args))});if(dbError)throw Error('synthetic DB unavailable');return {rows:structuredClone(local)};}}:null;
+  const fetch=async url=>{
+    assert.equal(candidate,false,'candidate must not call legacy fetch');
+    const parsed=new URL(url);
+    assert.equal(parsed.host,'fixture.retail.lightspeed.app');
+    const response=await request(parsed.pathname+parsed.search);
+    return {ok:true,async text(){return JSON.stringify(response);}};
+  };
+  runInNewContext(candidate?candidateRoute:actualRoute,{router,pool,customers,fetch,URLSearchParams,lightspeedDomain:'fixture',lightspeedToken:'synthetic',lightspeedHeaders:()=>({})},{timeout:1000});
+  let status=200,result;
+  const res={status(value){status=value;return this;},json(value){result=JSON.parse(JSON.stringify(value));return this;}};
+  await handler({query:{q}},res);
+  return {status,result,calls,queries};
+}
+test('actual Special Orders GET handler and candidate substitution preserve legacy results and local enrichment',async()=>{
+  const body={data:[{id:'002',first_name:'Jane',custom:'retained'},{id:'001',email:'j@example.test'}],links:{next:'?offset=20'}};
+  const local=[{lightspeed_customer_id:'002',id:'local-2',discord_handle:'fixture',phone:'5550101',notes:'note'}];
+  for(const q of [' Jane Doe ','j@example.test','319-555-0101']) {
+    const original=await runCustomerRoute({q,body,local});
+    const proposed=await runCustomerRoute({candidate:true,q,body,local});
+    assert.deepEqual(proposed,original);
+    assert.equal(proposed.calls.length,1);
+    assert.deepEqual(proposed.queries[0].args,[['002','001']]);
+    assert.equal(proposed.result[0].local_customer_id,'local-2');
+    assert.equal(proposed.result[0].custom,'retained');
+    assert.deepEqual(proposed.result[1],body.data[1]);
+  }
+});
+test('route substitution preserves blank queries, empty results, absent pool and synthetic dependency errors',async()=>{
+  for(const options of [{q:'  '},{body:{data:[]}},{withPool:false,body:{data:[{id:'01'}]}},{dbError:true,body:{data:[{id:'01'}]}},{upstreamError:true}]) {
+    assert.deepEqual(await runCustomerRoute({...options,candidate:true}),await runCustomerRoute(options));
+  }
+  const blank=await runCustomerRoute({q:' ',candidate:true});
+  assert.deepEqual(blank.calls,[]);assert.deepEqual(blank.queries,[]);
+});
+test('malformed vendor envelope is deliberately rejected rather than treated as empty',async()=>{
+  const body={unexpected:[]};
+  const original=await runCustomerRoute({body});
+  const proposed=await runCustomerRoute({body,candidate:true});
+  assert.equal(original.status,200);assert.deepEqual(original.result,[]);
+  assert.equal(proposed.status,502);assert.equal(proposed.queries.length,0);
+});
