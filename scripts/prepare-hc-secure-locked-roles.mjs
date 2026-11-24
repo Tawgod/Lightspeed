@@ -9,13 +9,16 @@ const GROUPS=['hc_owner_stage_runtime_privs','hc_owner_stage_operator_privs'];
 const fail=()=>new Error('HC Secure locked role preparation refused.');
 export function checkHcSecureLockedRoleScope(e={}){
  if(e.HC_SECURE_ROLE_PREPARE_ONLY!=='true'||
+    e.HC_SECURE_DB_BOOTSTRAP_ONLY!=='false'||
+    e.HC_SECURE_CREDENTIAL_COMMISSION_ONLY!=='false'||
     e.HC_SECURE_DB_MUTATION_APPROVED!=='HC_SECURE_LOCKED_ROLES_ONLY'||
     e.HC_OWNER_TIMECLOCK_EMPLOYEE_ID||e.HC_OWNER_DB_RUNTIME_PASSWORD||
     e.HC_OWNER_DB_OPERATOR_PASSWORD||e.HC_OWNER_STAGING_DATABASE_URL||
     e.HC_OWNER_OPERATOR_DATABASE_URL)throw fail();
  // Reuse exact Railway/PG URL safety scope, but require a distinct explicit
  // approval sentinel for this one-shot action, never a shared operation flag.
- const scope={...e,HC_SECURE_DB_MUTATION_APPROVED:'HC_SECURE_FRESH_DB_SCHEMA_ONLY'};
+ // Adapt only the local validation copy; never enable the schema operation in the real environment.
+ const scope={...e,HC_SECURE_DB_BOOTSTRAP_ONLY:'true',HC_SECURE_DB_MUTATION_APPROVED:'HC_SECURE_FRESH_DB_SCHEMA_ONLY'};
  return checkHcSecureBootstrapScope(scope);
 }
 export async function prepareHcSecureLockedRoles({
