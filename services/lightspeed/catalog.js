@@ -213,3 +213,78 @@ export function inspectCatalogReferences(input, { complete = false } = {}) {
   }
   return {references,complete:complete===true&&issues.length===0,issues};
 }
+
+// M4: metadata evidence only. No URL dereference, Drive access, upload,
+// permission grant or asset assignment. Approved hosts are trusted server config.
+function assetReference(ref, hosts) {
+  if (!ref || typeof ref !== 'object' || typeof ref.value !== 'string' ||
+      ref.value.length > 2048 || /[\u0000-\u0020\u007f\\]/u.test(ref.value)) return null;
+  if (ref.kind === 'DRIVE_FILE' || ref.kind === 'STORAGE_ID') {
+    return /^[A-Za-z0-9_-]{1,200}$/.test(ref.value) ? {kind:ref.kind,value:ref.value} : null;
+  }
+  if (ref.kind !== 'HTTPS_URL' || !ref.value.startsWith('https://')) return null;
+  try {
+    const url = new URL(ref.value);
+    if (url.protocol !== 'https:' || url.username || url.password || url.port ||
+        url.search || url.hash || !hosts.has(url.hostname) ||
+        url.href !== ref.value) return null;
+    return {kind:ref.kind,value:ref.value};
+  } catch { return null; }
+}
+
+export function inspectProductAssets(target, rows, {complete=false, approvedHosts=[]}={}) {
+  if (!catalogText(target?.productId) || !nullableText(target?.variantId) ||
+      !Array.isArray(rows) || !Array.isArray(approvedHosts) ||
+      approvedHosts.some(h=>typeof h!=='string'||! /^[a-z0-9]+(?:[.-][a-z0-9]+)+$/.test(h)))
+    throw new TypeError('Exact target, asset evidence and trusted host configuration required.');
+  const hosts=new Set(approvedHosts), issues=new Set(), groups=new Map();
+  for (const r of rows) {
+    if (!catalogText(r?.productId)||!nullableText(r.variantId)) {
+      issues.add('MALFORMED_TARGET');continue;
+    }
+    if (r.productId!==target.productId||r.variantId!==target.variantId) continue;
+    const image=r.kind==='IMAGE', document=['MANUAL','DOCUMENT'].includes(r.kind);
+    if (!catalogText(r.assetId)||(!image&&!document)||
+        !(image ? ['PRIMARY','GALLERY'].includes(r.role) : r.role==='SUPPORTING')||
+        !(image ? Number.isSafeInteger(r.slot)&&r.slot>=0&&r.slot<=999 : r.slot===null)||
+        !['AVAILABLE','MISSING','UNKNOWN'].includes(r.availability)||
+        !evidenceFields(r)||!instant(r.observedAt)) {
+      issues.add('MALFORMED_ASSET');continue;
+    }
+    const ref=r.reference===null ? null : assetReference(r.reference,hosts);
+    if ((r.reference!==null&&!ref)||(r.availability==='AVAILABLE'&&!ref)) {
+      issues.add('INVALID_ASSET_REFERENCE');continue;
+    }
+    const e={kind:r.kind,role:r.role,slot:r.slot,availability:r.availability,
+      reference:ref,source:r.source,provenance:r.provenance,observedAt:r.observedAt};
+    const group=groups.get(r.assetId)||{assetId:r.assetId,observations:[]};
+    if(!group.observations.some(x=>JSON.stringify(x)===JSON.stringify(e))) group.observations.push(e);
+    groups.set(r.assetId,group);
+  }
+  const assets=[...groups.values()].map(g=>{
+    const values=new Set(g.observations.map(({source,provenance,observedAt,...v})=>JSON.stringify(v)));
+    if(values.size!==1) issues.add('CONFLICTING_ASSET');
+    return {...g,metadata:values.size===1?JSON.parse([...values][0]):null};
+  });
+  const slots=new Map(), refs=new Map(), primary=[];
+  for(const a of assets){
+    const m=a.metadata;if(!m)continue;
+    if(m.kind==='IMAGE'){
+      if(slots.has(m.slot))issues.add('DUPLICATE_IMAGE_SLOT');
+      slots.set(m.slot,a.assetId);
+      if(m.role==='PRIMARY')primary.push(a);
+    }
+    if(m.reference){
+      const key=JSON.stringify(m.reference);
+      if(refs.has(key))issues.add('DUPLICATE_ASSET_REFERENCE');
+      refs.set(key,a.assetId);
+    }
+  }
+  if(primary.length>1)issues.add('MULTIPLE_PRIMARY_IMAGES');
+  const coverage=complete===true&&issues.size===0;
+  assets.sort((a,b)=>(a.metadata?.slot??1000)-(b.metadata?.slot??1000)||a.assetId.localeCompare(b.assetId));
+  return {assets,complete:coverage,primaryImageId:coverage&&primary.length===1&&
+    primary[0].metadata.availability==='AVAILABLE'?primary[0].assetId:null,
+    missingAssetIds:assets.filter(a=>a.metadata?.availability==='MISSING').map(a=>a.assetId),
+    issues:[...issues]};
+}
