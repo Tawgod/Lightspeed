@@ -13,6 +13,14 @@ const text = v => typeof v === 'string' && v.trim() ? v : null;
 const email = v => typeof v === 'string' ? v.trim().toLowerCase() : '';
 const phone = v => typeof v === 'string' && /^[+()\d .-]+$/.test(v) ? v.replace(/[^\d]/g,'') : '';
 const decimal = v => typeof v === 'string' && /^-?\d+(\.\d+)?$/.test(v) ? v : null;
+// Missing references are unknown; malformed or contradictory references are not.
+const association = (row, key, nestedKey) => {
+  const nested = row[nestedKey];
+  if (nested != null && !record(nested)) fail();
+  const values = [row[key], nested?.id].filter(v => v != null);
+  if (values.some(v => !identifier(v)) || new Set(values).size > 1) fail();
+  return values[0] ?? null;
+};
 const requestedId = v => { const id = identifier(v); if (!id) throw new TypeError('Exact string identifier required.'); return id; };
 
 export function createCustomerSalesEvidence({ customers, sales, fulfillments, storeCredit } = {}) {
@@ -25,9 +33,8 @@ export function createCustomerSalesEvidence({ customers, sales, fulfillments, st
   };
   const projectSale = row => {
     if (!record(row) || !identifier(row.id)) fail();
-    const direct = identifier(row.customer_id), nested = identifier(row.customer?.id);
-    if (direct && nested && direct !== nested) fail();
-    return { saleId: row.id, customerId: direct ?? nested, state: text(row.state ?? row.status),
+    const customerId = association(row, 'customer_id', 'customer');
+    return { saleId: row.id, customerId, state: text(row.state ?? row.status),
       invoiceNumber: identifier(row.invoice_number), deposit: null, partialPickup: null, returnEvents: null };
   };
   return Object.freeze({
@@ -70,6 +77,11 @@ export function createCustomerSalesEvidence({ customers, sales, fulfillments, st
       if (new Set(items.map(x=>x.saleId)).size !== items.length) fail();
       if (kind === 'customer' && items.some(x=>x.customerId !== query)) fail();
       if (kind === 'invoice' && items.some(x=>x.invoiceNumber !== query)) fail();
+      if (kind === 'state' && rows.some(row => {
+        // The vendor may provide state or status; conflicting values are not proof of a match.
+        const states = [row.state, row.status].filter(v => v != null);
+        return !states.length || states.some(v => v !== query);
+      })) fail();
       return { items, coverage:'single-page', complete:false };
     },
     async fulfillmentEvidence(id) {
@@ -78,7 +90,8 @@ export function createCustomerSalesEvidence({ customers, sales, fulfillments, st
       if (!Array.isArray(rows)) fail();
       const items = rows.map(row => {
         if (!record(row) || !identifier(row.id) || row.saleId !== id) fail();
-        const explicit = identifier(row.raw?.sale_id) ?? identifier(row.raw?.sale?.id);
+        if (!record(row.raw) || identifier(row.raw.id) !== row.id) fail();
+        const explicit = association(row.raw, 'sale_id', 'sale');
         if (explicit && explicit !== id) fail();
         return { fulfillmentId:row.id, saleId:id, state:text(row.state), association:explicit === id ? 'source-confirmed':'request-scoped', pickedUpQuantity:null };
       });
@@ -88,8 +101,9 @@ export function createCustomerSalesEvidence({ customers, sales, fulfillments, st
     async creditEvidence(id) {
       id = requestedId(id);
       const row = unwrap(await storeCredit.get(id));
-      if (row.customer_id != null && row.customer_id !== id) fail();
-      return { customerId:id, amount:decimal(row.amount), currency:text(row.currency), updatedAt:text(row.updated_at), coverage:'balance-only', transactions:null };
+      const explicit = association(row, 'customer_id', 'customer');
+      if (explicit !== null && explicit !== id) fail();
+      return { customerId:id, amount:decimal(row.amount), currency:text(row.currency), updatedAt:text(row.updated_at), coverage:'balance-only', association:explicit === id ? 'source-confirmed':'request-scoped', transactions:null };
     }
   });
 }
