@@ -236,6 +236,40 @@ test('all vendor HTTP errors on writes remain uncertain and writes are never ret
   }
 });
 
+test('transport rejects declared oversized vendor payload before consuming body', async () => {
+  for (const declared of ['2048', '0002048']) {
+    let consumed = 0;
+    const client = createLightspeedTransport({
+      domain: 'shop', token: 'secret', maxResponseBytes: 1024,
+      readRetries: 0,
+      fetchImpl: async () => ({
+        ok: true, status: 200,
+        headers: { get: name => name === 'content-length' ? declared : null },
+        async text() { consumed++; throw Error('Oversized body must not be read'); }
+      })
+    });
+    await assert.rejects(client.request('/api/2.0/products'),
+      error => error.code === 'LIGHTSPEED_RESPONSE' && error.mayHaveWritten === false);
+    assert.equal(consumed, 0, 'declared oversize must be rejected before any body access');
+  }
+});
+
+test('transport still enforces actual bytes when declared length is inaccurate', async () => {
+  let consumed = 0;
+  const client = createLightspeedTransport({
+    domain: 'shop', token: 'secret', maxResponseBytes: 1024,
+    readRetries: 0,
+    fetchImpl: async () => ({
+      ok: true, status: 200,
+      headers: { get: name => name === 'content-length' ? '8' : null },
+      async text() { consumed++; return 'x'.repeat(2048); }
+    })
+  });
+  await assert.rejects(client.request('/api/2.0/products'),
+    error => error.code === 'LIGHTSPEED_RESPONSE');
+  assert.equal(consumed, 1, 'actual byte cap remains active for dishonest upstream headers');
+});
+
 test('transport bounds responses and rejects non-JSON success without exposing raw contents', async () => {
   const tooLarge = createLightspeedTransport({
     domain: 'shop', token: 'secret', maxResponseBytes: 1024,
