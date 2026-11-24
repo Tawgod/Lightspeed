@@ -1,6 +1,21 @@
-import { readLightspeedCollection } from './readCollection.js';
-// Read-only remote customer contract extracted from Special Orders search conventions.
-// Local profile enrichment remains a feature-owned responsibility until consumer migration.
+import { readLightspeedCollection, requireLightspeedRows } from './readCollection.js';
+
+// Shared backend reader. Raw rows contain PII; callers must enforce approved
+// operation grants and feature-specific projections. No local profile enrichment.
+export function buildCustomerSearchPath(query) {
+  const q = String(query || '').trim();
+  if (!q) return null;
+  const params = new URLSearchParams({ type: 'customers', page_size: '20' });
+  if (q.includes('@')) params.set('email', q);
+  else if (/^[+()\d\s.-]{7,}$/.test(q)) params.set('phone', q);
+  else {
+    const parts = q.split(/\s+/).filter(Boolean);
+    params.set('first_name', parts[0]);
+    if (parts.length > 1) params.set('last_name', parts.slice(1).join(' '));
+  }
+  return '/api/2026-04/search?' + params;
+}
+
 export function createLightspeedCustomersRead({ transport } = {}) {
   if (typeof transport?.request !== 'function') throw new TypeError('Shared Lightspeed transport required.');
   return Object.freeze({
@@ -9,18 +24,16 @@ export function createLightspeedCustomersRead({ transport } = {}) {
       return transport.request('/api/2.0/customers/' + encodeURIComponent(String(customerId)));
     },
     async search(query) {
-      const q = String(query || '').trim();
-      if (!q) return [];
-      const params = new URLSearchParams({ type: 'customers', page_size: '20' });
-      if (q.includes('@')) params.set('email', q);
-      else if (/^[+()\d\s.-]{7,}$/.test(q)) params.set('phone', q);
-      else {
-        const parts = q.split(/\s+/).filter(Boolean);
-        params.set('first_name', parts[0]);
-        if (parts.length > 1) params.set('last_name', parts.slice(1).join(' '));
-      }
-      // Customer duplicate checks must never silently stop after the first 20 results.
-      return readLightspeedCollection({ transport, path: '/api/2026-04/search?' + params });
+      const path = buildCustomerSearchPath(query);
+      if (!path) return [];
+      return readLightspeedCollection({ transport, path });
+    },
+    // Compatibility mode for interactive consumers that currently show one page.
+    // Never interpret this response as proof of duplicate absence.
+    async searchFirstPage(query) {
+      const path = buildCustomerSearchPath(query);
+      const rows = path ? requireLightspeedRows(await transport.request(path)) : [];
+      return { rows, coverage: path ? 'single-page' : 'not-queried', complete: false };
     }
   });
 }
