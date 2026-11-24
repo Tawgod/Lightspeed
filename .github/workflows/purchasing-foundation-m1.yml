@@ -7,6 +7,8 @@ on:
       - 'tests/purchasing-foundation-m1.test.mjs'
       - 'services/lightspeed/invoiceReconciliation.js'
       - 'tests/purchasing-foundation-m2.test.mjs'
+      - 'services/lightspeed/invoiceReviewContract.js'
+      - 'tests/purchasing-foundation-m3.test.mjs'
       - '.github/workflows/purchasing-foundation-m1.yml'
 permissions:
   contents: read
@@ -19,4 +21,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --test tests/purchasing-foundation-m1.test.mjs tests/purchasing-foundation-m2.test.mjs
+      - run: node --test tests/purchasing-foundation-m1.test.mjs tests/purchasing-foundation-m2.test.mjs tests/purchasing-foundation-m3.test.mjs
