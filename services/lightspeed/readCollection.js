@@ -15,6 +15,7 @@ export function requireLightspeedRows(body) {
 }
 const invalid = message => { throw new LightspeedIncompleteReadError(message); };
 const parseCursor = value => {
+  if (!['string', 'number'].includes(typeof value)) invalid('Invalid vendor version cursor.');
   if (typeof value === 'number' && !Number.isSafeInteger(value)) invalid('Unsafe vendor version cursor.');
   const str = String(value);
   if (!/^\d{1,20}$/.test(str)) invalid('Invalid vendor version cursor.');
@@ -24,7 +25,8 @@ function safeNext(next, current) {
   if (typeof next !== 'string' || next.length > 2048) invalid('Invalid continuation.');
   const path = next.startsWith('?') ? current.split('?')[0] + next : next;
   if (!path.startsWith('/api/') || path.startsWith('//') || path.includes('..') ||
-      /%2f|%5c|[\r\n\\]/i.test(path)) invalid('Unexpected pagination target.');
+      /%2f|%5c|%2e|[\x00-\x1f\x7f#\\]/i.test(path)) invalid('Unexpected pagination target.');
+  if (new URL(path, 'https://placeholder.invalid').pathname !== new URL(current, 'https://placeholder.invalid').pathname) invalid('Continuation changed collection endpoint.');
   return path;
 }
 const withParam = (path, key, value) => {
@@ -60,6 +62,7 @@ export async function readLightspeedCollection({
     if (result.length + rows.length > maxRows) invalid('Read row cap reached.');
     result.push(...rows);
     const hasNext = body?.links?.next ?? body?.pagination?.next ?? body?.next;
+    if (hasNext !== undefined && hasNext !== null && (typeof hasNext !== 'string' || !hasNext.length)) invalid('Invalid continuation metadata.');
     const hasExplicitNext = (typeof hasNext === 'string' && hasNext.length > 0);
     if (hasExplicitNext) {
       current = safeNext(hasNext, current);
@@ -77,6 +80,7 @@ export async function readLightspeedCollection({
       const limit = pageSize(current);
       const offset = Number(new URL(current, 'https://placeholder.invalid').searchParams.get('offset') || '0');
       if (!Number.isSafeInteger(offset) || offset < 0) invalid('Invalid search offset.');
+      if (rows.length >= limit && !Number.isSafeInteger(offset + rows.length)) invalid('Unsafe next search offset.');
       current = rows.length >= limit ? withParam(current, 'offset', offset + rows.length) : null;
     } else {
       // Date-versioned X-Series collection endpoints use data + version.max.
