@@ -40,6 +40,7 @@ function model(initial=snap()){
  async function execute(c,{allow=()=>true,approval=c.digest,beforeDispatch=()=>{},lose=false}={}){
   c=clone(c);
   if(!binding(c)||approval!==c.digest||!await permit(allow,c.effects,'execution',c.actor))return result('denied');
+  if(c.request.requestId!==c.proposal.plan.requestId)return result('denied');
   const k=c.request.requestId,old=commands.get(k);
   if(old)return result(old.digest!==c.digest?'conflict':old.state);
   // Synchronous all-or-nothing fixture reservation; Core owns future atomic durable implementation.
