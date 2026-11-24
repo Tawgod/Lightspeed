@@ -5,7 +5,7 @@ import {inspectSupplierProductLinks} from './catalog.js';
 
 // Test-only integration candidate. Operation names below are proposals for
 // Security review, not registered grants. Never mount this factory.
-const READ='catalog.product.read', COST='catalog.product.cost.read';
+const READ='catalog.product.read';
 const exact=v=>typeof v==='string'&&v.length>0&&v.length<=256&&v.trim()===v&&!/[\x00-\x1f\x7f]/.test(v);
 const targetOk=t=>exact(t?.productId)&&(t.variantId===null||exact(t.variantId));
 const same=(a,b)=>a?.productId===b.productId&&a?.variantId===b.variantId;
@@ -13,7 +13,7 @@ const same=(a,b)=>a?.productId===b.productId&&a?.variantId===b.variantId;
 // Do not include internal diagnostics, cost coverage, counts, supplier
 // pricing details, provenance, free-text notes, or raw vendor fields.
 // Catalog names are plain display text; UI escaping remains required.
-function displayView(view, allowCost) {
+function displayView(view) {
   const product=view.product;
   const result={
     target:view.target, observed:view.observed,
@@ -27,7 +27,7 @@ function displayView(view, allowCost) {
     prices:view.prices.filter(p=>['RETAIL','MSRP'].includes(p.kind)&&p.supplierId===null)
       .map(p=>({kind:p.kind,amount:p.amount,currency:p.currency,outletId:p.outletId}))
   };
-  if(allowCost===true)result.costs=view.coverage.prices?view.prices.filter(p=>p.kind==='COST')
+  result.costs=view.coverage.prices?view.prices.filter(p=>p.kind==='COST')
     .map(p=>({amount:p.amount,currency:p.currency,supplierId:p.supplierId,outletId:p.outletId})):null;
   return result;
 }
@@ -38,10 +38,8 @@ export function createCatalogShadowRead({authorizeRead,readSnapshot,approvedHost
     if(!targetOk(target))throw new TypeError('Exact target required.');
     const safeTarget={productId:target.productId,variantId:target.variantId};
     return execute({operation:READ,context,read:async({correlationId})=>{
-      let cost=false;
-      try{cost=(await authorizeRead({operation:COST,context,mode:'read',environment:'test',correlationId}))===true;}catch{}
       const snapshot=await readSnapshot({target:safeTarget,correlationId});
-      return displayView(projectCatalogConsumerView(safeTarget,snapshot,{approvedHosts}),cost);
+      return displayView(projectCatalogConsumerView(safeTarget,snapshot,{approvedHosts}));
     }});
   };
 }
