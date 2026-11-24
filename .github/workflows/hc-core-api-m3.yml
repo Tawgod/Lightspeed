@@ -1,0 +1,23 @@
+name: Core API M3 offline integration
+on:
+  pull_request:
+    branches: ['test/hc-foundation-combined-20261124']
+    paths:
+      - 'tests/core-api-m3-integration.test.mjs'
+      - '.github/workflows/hc-core-api-m3.yml'
+permissions:
+  contents: read
+jobs:
+  isolated:
+    if: github.head_ref == 'feature/core-api-m3-v2-20261124'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tests/core-api-m1.test.mjs tests/core-api-m3-integration.test.mjs
