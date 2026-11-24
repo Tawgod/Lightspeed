@@ -77,7 +77,7 @@ async function verifyBadPasswordDenied({rootUrl,createClient}){
  try{
   await c.connect();
   accepted=true;
- }catch{/* A denied wrong-password authentication is expected. */}
+ }catch(e){if(e?.code!=='28P01')throw denied(); /* Only auth failure proves wrong password was rejected. */}
  finally{await c.end().catch(()=>{});}
  if(accepted)throw denied();
 }
