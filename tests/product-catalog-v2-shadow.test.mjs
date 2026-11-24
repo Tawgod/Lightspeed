@@ -21,7 +21,7 @@ test('core envelope exact admission and correlation before snapshot read',async(
  const events=[];
  const r=await createCatalogShadowRead({authorizeRead:async a=>{events.push(a);return a.operation==='catalog.product.read';},readSnapshot:async a=>{events.push(a);return fixture();}})({target});
  assert.equal(r.status,200);assert.equal(r.body.version,'core.v1');assert.equal(r.body.readOnly,true);
- assert.equal(events.length,3);assert.ok(events.every(e=>e.correlationId===r.body.correlationId));assert.equal(events[0].environment,'test');
+ assert.equal(events.length,2);assert.ok(events.every(e=>e.correlationId===r.body.correlationId));assert.equal(events[0].environment,'test');
 });
 test('deny or truthy grant never reads snapshot',async()=>{
  for(const grant of [false,{granted:true},null]){
@@ -29,18 +29,15 @@ test('deny or truthy grant never reads snapshot',async()=>{
   assert.equal(r.status,403);assert.equal(calls,0);
  }
 });
-test('cost denial excludes costs, private data, internal evidence and supplier codes',async()=>{
+test('ordinary catalog read includes costs but excludes private evidence and supplier codes',async()=>{
  const r=await read();const s=JSON.stringify(r.body.data);
- for(const value of ['17.123456','private-email','private-provenance','private-storage','0007','costs','diagnostics'])assert.equal(s.includes(value),false);
- assert.equal(r.body.data.product.identifiers[0].exactValue,'00012345');
+ for(const value of ['private-email','private-provenance','private-storage','0007','diagnostics'])assert.equal(s.includes(value),false);
+ assert.equal(r.body.data.product.identifiers[0].exactValue,'00012345');assert.equal(r.body.data.costs[0].amount,'17.123456');
 });
-test('cost field requires separate literal true and incomplete costs stay null',async()=>{
- const allowed=await read(fixture(),()=>true);assert.equal(allowed.body.data.costs[0].amount,'17.123456');
- const denied=await read(fixture(),({operation})=>operation==='catalog.product.read'?true:{granted:true});
- assert.equal(Object.hasOwn(denied.body.data,'costs'),false);
- const f=fixture();f.coverage.prices=false;assert.equal((await read(f,()=>true)).body.data.costs,null);
- const outage=await read(fixture(),({operation})=>{if(operation==='catalog.product.cost.read')throw Error('private');return true;});
- assert.equal(Object.hasOwn(outage.body.data,'costs'),false);
+test('ordinary employee read needs no elevated cost grant; incomplete costs remain null',async()=>{
+ const calls=[];const r=await read(fixture(),({operation})=>{calls.push(operation);return operation==='catalog.product.read';});
+ assert.equal(r.body.data.costs[0].amount,'17.123456');assert.deepEqual(calls,['catalog.product.read']);
+ const f=fixture();f.coverage.prices=false;assert.equal((await read(f)).body.data.costs,null);
 });
 test('actual PR28 sample fields compare without claiming full parity',async()=>{
  const r=compareProductManagerShadow(sample,(await read()).body.data);
