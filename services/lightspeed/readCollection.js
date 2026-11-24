@@ -21,12 +21,21 @@ const parseCursor = value => {
   if (!/^\d{1,20}$/.test(str)) invalid('Invalid vendor version cursor.');
   return BigInt(str);
 };
-function safeNext(next, current) {
+// Only known pagination controls may change. All other query values, including
+// repeated filters and leading zeros, remain identical to the original request.
+const paginationKeys = new Set(['page', 'page_size', 'offset', 'after', 'cursor']);
+function filters(path) {
+  const params = new URL(path, 'https://placeholder.invalid').searchParams;
+  return JSON.stringify([...new Set(params.keys())].filter(k => !paginationKeys.has(k))
+    .sort().map(k => [k, params.getAll(k)]));
+}
+function safeNext(next, current, initial) {
   if (typeof next !== 'string' || next.length > 2048) invalid('Invalid continuation.');
   const path = next.startsWith('?') ? current.split('?')[0] + next : next;
   if (!path.startsWith('/api/') || path.startsWith('//') || path.includes('..') ||
       /%2f|%5c|%2e|[\x00-\x1f\x7f#\\]/i.test(path)) invalid('Unexpected pagination target.');
   if (new URL(path, 'https://placeholder.invalid').pathname !== new URL(current, 'https://placeholder.invalid').pathname) invalid('Continuation changed collection endpoint.');
+  if (filters(path) !== filters(initial)) invalid('Continuation changed collection filters.');
   return path;
 }
 const withParam = (path, key, value) => {
@@ -41,7 +50,7 @@ const pageSize = path => {
   return count;
 };
 export async function readLightspeedCollection({
-  transport, path, maxPages = 20, maxRows = 20000, pagination = 'auto'
+  transport, path, maxPages = 20, maxRows = 20000, pagination = 'auto', correlationId
 } = {}) {
   if (typeof transport?.request !== 'function' || typeof path !== 'string' || !path.startsWith('/api/')) {
     throw new TypeError('Trusted Lightspeed transport and API path required.');
@@ -57,22 +66,28 @@ export async function readLightspeedCollection({
   while (current !== null) {
     if (seenPaths.size >= maxPages || seenPaths.has(current)) invalid('Pagination limit or cycle.');
     seenPaths.add(current);
-    const body = await transport.request(current);
+    const body = await transport.request(current, ...(correlationId === undefined ? [] : [{ correlationId }]));
     const rows = requireLightspeedRows(body);
     if (result.length + rows.length > maxRows) invalid('Read row cap reached.');
     result.push(...rows);
-    const hasNext = body?.links?.next ?? body?.pagination?.next ?? body?.next;
-    if (hasNext !== undefined && hasNext !== null && (typeof hasNext !== 'string' || !hasNext.length)) invalid('Invalid continuation metadata.');
+    const continuations = [body?.links, body?.pagination, body]
+      .filter(x => x && Object.hasOwn(x, 'next')).map(x => x.next);
+    if (continuations.some(x => x !== null && (typeof x !== 'string' || !x.length))) invalid('Invalid continuation metadata.');
+    if (new Set(continuations).size > 1) invalid('Conflicting continuation metadata.');
+    const hasNext = continuations[0];
+    const flags = [body?.pagination?.has_next, body?.pagination?.hasNext].filter(x => x !== undefined);
+    if (flags.some(x => typeof x !== 'boolean') || new Set(flags).size > 1 ||
+        (flags.includes(false) && typeof hasNext === 'string') ||
+        (flags.includes(true) && hasNext === null)) invalid('Conflicting continuation flags.');
     const hasExplicitNext = (typeof hasNext === 'string' && hasNext.length > 0);
     if (hasExplicitNext) {
-      current = safeNext(hasNext, current);
+      current = safeNext(hasNext, current, path);
       continue;
     }
     if (body?.pagination?.has_next === true || body?.pagination?.hasNext === true) {
       invalid('Next page advertised without usable continuation.');
     }
-    const explicitEnd = (body?.links && Object.hasOwn(body.links, 'next') && body.links.next === null) ||
-      (body?.pagination && Object.hasOwn(body.pagination, 'next') && body.pagination.next === null);
+    const explicitEnd = hasNext === null || flags.includes(false);
     if (explicitEnd || !rows.length || mode === 'single') { current = null; continue; }
     if (mode === 'offset') {
       // X-Series search uses offset+page_size, not version cursor.
