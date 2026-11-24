@@ -1,0 +1,40 @@
+name: Core API M5 offline transactions
+on:
+  pull_request:
+    branches: ['test/hc-foundation-combined-v4-20261124']
+    paths:
+      - 'services/lightspeed/localTransactionM5.js'
+      - 'tests/fixtures/coreDisposablePg.mjs'
+      - 'tests/core-api-m5-postgres.test.mjs'
+      - '.github/workflows/hc-core-api-m5.yml'
+permissions:
+  contents: read
+jobs:
+  offline:
+    if: github.head_ref == 'feature/core-api-m5-v4-20261124'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: hc_test
+          POSTGRES_PASSWORD: disposable_ci_only
+          POSTGRES_DB: hc_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hc_test -d hc_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      HC_TEST_DATABASE_URL: postgresql://hc_test:disposable_ci_only@127.0.0.1:5432/hc_test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --ignore-scripts --no-audit --no-fund --package-lock=false
+      - run: node --test tests/core-api-m5-postgres.test.mjs tests/core-api-m4-postgres.test.mjs tests/core-api-m4-capabilities.test.mjs tests/shared-lightspeed-postgres.test.mjs
