@@ -1,0 +1,20 @@
+name: Catalog V5 M8 offline
+on:
+  push:
+    branches: ['feature/hc-catalog-v5-m8-20261124']
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: |
+          node --check tests/product-catalog-v5-m8.test.mjs
+          node --test tests/product-catalog-*.test.mjs
