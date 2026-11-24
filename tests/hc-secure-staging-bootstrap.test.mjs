@@ -32,7 +32,7 @@ test('rejects original Owner project, wrong service and unauthorized bootstraps'
   {HC_OWNER_DB_RUNTIME_PASSWORD:'do-not-copy'},
   {HC_SECURE_BOOTSTRAP_ROOT_URL:url.replace('hc-secure-postgres-staging','Postgres-x8Ui')},
   {HC_SECURE_BOOTSTRAP_ROOT_URL:url.replace('/railway','/hc_owner_stage_test')},
-  {HC_SECURE_BOOTSTRAP_ROOT_URL:url.replace('postgres:fixture','postgres:short')},
+  {HC_SECURE_BOOTSTRAP_ROOT_URL:url.replace('fixture-only-password-123456','short')},
  ];
  for(const item of examples){
   assert.throws(()=>checkHcSecureBootstrapScope({...env(),...item}),/refused/);
