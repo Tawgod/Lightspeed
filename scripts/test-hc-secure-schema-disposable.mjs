@@ -26,7 +26,12 @@ export function verifyDisposableTarget(e={}){
  return u;
 }
 export function stripFixtureTransaction(name,sql){
- if(name!=='db/hc_owner_staging_privilege_groups.sql')return sql;
+ if(name!=='db/hc_owner_staging_privilege_groups.sql'){
+  // Reject accidental transaction control in any other fixture: everything
+  // must remain inside our one outer rollback-only transaction.
+  if(/^\\s*(?:BEGIN|COMMIT|ROLLBACK)\\s*;/mi.test(sql))throw refuse();
+  return sql;
+ }
  // The original privilege fixture wraps itself in BEGIN/COMMIT. Remove
  // ONLY these exact delimiters, so the test owns a single rollback boundary.
  const start=/(^|\n)BEGIN;[ \t]*(?=\r?\n)/g;
