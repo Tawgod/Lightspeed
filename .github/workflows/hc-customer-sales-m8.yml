@@ -1,0 +1,22 @@
+name: Customer Sales M8 targeted offline
+on:
+  pull_request:
+    branches: ['test/hc-foundation-combined-v5-20261124']
+    paths: ['services/lightspeed/offlineCustomerSales.js','tests/customer-sales-m8.test.mjs','.github/workflows/hc-customer-sales-m8.yml']
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: |
+          node --check services/lightspeed/offlineCustomerSales.js
+          node --test tests/customer-sales-m8.test.mjs
