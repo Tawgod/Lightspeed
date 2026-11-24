@@ -1,0 +1,20 @@
+name: Catalog V4 offline
+on:
+  push:
+    branches: ['feature/hc-catalog-v4-m7-20261124']
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: |
+          node --check services/lightspeed/productCatalogMutationCandidate.js
+          node --test tests/product-catalog-*.test.mjs
