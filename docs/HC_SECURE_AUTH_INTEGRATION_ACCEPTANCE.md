@@ -60,3 +60,21 @@
 - No GitHub Actions unless required; prefer focused Node tests and disposable PostgreSQL/browser validation.
 - Health 200 alone isn't proof of registered factors, and successful deployment alone isn't proof of staff auth rollout.
 - Do not issue another first Owner activation or second recovery grant; registration already completed.
+
+
+## Disposable PostgreSQL 18 schema/role acceptance — 2026-11-24
+
+**Source milestone, not live DB provisioning.** Reuses the *existing*, reviewed seven SQL fixtures from `scripts/bootstrap-owner-stage-database.mjs` without calling its original-project-only provisioning entrypoint. Runs in a strictly local, ephemeral PostgreSQL 18 Docker container bound only to `127.0.0.1:15488`, with fixed cluster name `hc-secure-disposable-pg18` and fresh database `hc_owner_stage_test`. Refuses any Railway project/environment/service variables, nonlocal host or unexpected PG cluster/version. Verifies the nine Owner security tables, two `NOLOGIN` privilege groups, denied Owner activation INSERT/DELETE and approval-fact rewrites, permitted consumption/credential-column updates, operator-only INSERT and no operator TOTP SELECT. **Always ROLLBACK**, including success; never issues or copies Owner credentials.
+
+**Codespace test (requires Docker daemon and npm dependencies):**
+```bash
+cd /workspaces/Lightspeed
+git switch feature/hc-secure-staging-readiness-20261123
+git pull --ff-only
+node --test tests/hc-secure-disposable-schema.test.mjs
+bash scripts/run-hc-secure-disposable-pg18.sh
+```
+The runner generates a random throwaway DB password locally, uses an in-memory PostgreSQL volume, runs the full real SQL/role test **twice**, and removes the Docker container automatically. Expected two lines `HC_SECURE_DISPOSABLE_SCHEMA_OK fixtures=7 tables=9 nonlogin_groups=2 rollback=true`, followed by `HC_SECURE_DISPOSABLE_PG18_DOUBLE_PASS=true`. **These tests are authored but have not been run yet.** A passing disposable test is required *before*, not a substitute for, separate database bootstrap/secret provisioning authorization.
+
+**Important:** The original `db/hc_owner_staging_privilege_groups.sql` wraps its own `BEGIN`/`COMMIT`. The disposable test strips exactly those delimiters and refuses transaction control in other fixtures to guarantee outer rollback. Original Owner schema file and live databases remain unchanged. Tests cannot prove new-host WebAuthn credential continuity or employee MFA integration.
+
