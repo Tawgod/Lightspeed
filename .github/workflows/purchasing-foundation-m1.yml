@@ -1,0 +1,26 @@
+name: Purchasing foundation offline fixtures
+on:
+  pull_request:
+    branches: [feature/hc-foundation-reconcile-20261124]
+    paths:
+      - 'services/lightspeed/purchaseOrderProjection.js'
+      - 'tests/purchasing-foundation-m1.test.mjs'
+      - 'services/lightspeed/invoiceReconciliation.js'
+      - 'tests/purchasing-foundation-m2.test.mjs'
+      - 'services/lightspeed/invoiceReviewContract.js'
+      - 'tests/purchasing-foundation-m3.test.mjs'
+      - 'services/lightspeed/syntheticPurchaseOrderMutation.js'
+      - 'tests/purchasing-foundation-m4.test.mjs'
+      - '.github/workflows/purchasing-foundation-m1.yml'
+permissions:
+  contents: read
+jobs:
+  purchasing-offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tests/purchasing-foundation-m1.test.mjs tests/purchasing-foundation-m2.test.mjs tests/purchasing-foundation-m3.test.mjs tests/purchasing-foundation-m4.test.mjs

@@ -49,3 +49,38 @@ export function createLightspeedProductsRead({ transport } = {}) {
     }
   });
 }
+
+// Offline evidence contract. Coverage must be established by the trusted reader,
+// not inferred from a short vendor response or a caller's search criteria.
+// Legacy exact() and fuzzy scoring are intentionally unchanged.
+export function inspectProductIdentity(identifier, rows, { complete = false } = {}) {
+  if (typeof identifier !== 'string' || !identifier.trim() || identifier.length > 256)
+    throw new TypeError('Nonempty exact identifier string required.');
+  if (!Array.isArray(rows)) throw new TypeError('Product rows required.');
+  const matches = new Map();
+  let valid = true;
+  for (const row of rows) {
+    if (!row || typeof row.id !== 'string' || !row.id.trim()) { valid = false; continue; }
+    const values = codes(row);
+    if (values.some(value => typeof value !== 'string')) valid = false;
+    // Keep compatibility candidates visible, but only literal equality is exact.
+    if (!findExactLightspeedProducts(identifier, [row]).length &&
+        !values.includes(identifier)) continue;
+    const evidence = values.filter(value => typeof value === 'string' && value === identifier);
+    const prior = matches.get(row.id);
+    const active = typeof row.active === 'boolean' ? row.active : null;
+    if (prior && prior.active !== active) valid = false;
+    matches.set(row.id, {
+      id: row.id, active: prior && prior.active !== active ? null : active,
+      exact: Boolean(prior?.exact || evidence.length),
+      identifiers: [...new Set([...(prior?.identifiers || []), ...evidence])]
+    });
+  }
+  const candidates = [...matches.values()];
+  const coverage = complete === true && valid;
+  // An inactive match is still a collision; never filter it out.
+  const status = candidates.length > 1 ? 'AMBIGUOUS' :
+    !coverage ? 'INCOMPLETE' : !candidates.length ? 'NO_MATCH' :
+    candidates[0].exact ? 'EXACT_UNIQUE' : 'CANDIDATES';
+  return { status, complete: coverage, candidates };
+}
