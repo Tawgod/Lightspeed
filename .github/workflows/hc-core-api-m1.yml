@@ -1,0 +1,25 @@
+name: Core API M1 offline tests
+on:
+  pull_request:
+    branches: ['feature/hc-foundation-reconcile-20261124']
+    paths:
+      - 'services/lightspeed/coreReadContract.js'
+      - 'services/lightspeed/readCollection.js'
+      - 'tests/core-api-m1.test.mjs'
+      - '.github/workflows/hc-core-api-m1.yml'
+permissions:
+  contents: read
+jobs:
+  core-api-m1:
+    if: github.head_ref == 'feature/core-api-m1-20261124'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tests/core-api-m1.test.mjs
