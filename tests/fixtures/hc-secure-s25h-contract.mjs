@@ -45,6 +45,7 @@ export function createOfflineAuthorization({registry,readTrustedState,readPolicy
  if(s.employee?.id!==a.id||s.employee?.tenant!==a.tenant||s.policy?.version!==q.policyVersion)return deny('identity');
  for(const e of all){
  const mode=defs.get(e.operation).assurance;
+ if(mode==='security-admin'&&s.settings?.version!==q.policyVersion)return deny('stale-settings');
  const proof=evaluateSyntheticAssurance({actor:s.employee,session:s.session,device:s.device,site:s.site,strongProof:s.strongProof,now,mode,adminMaxMs:s.settings?.adminFreshnessMs});
  if(!proof.allowed)return deny(proof.reason);
  const r=roles({actor:s.employee,effect:narrow(e),snapshot:s.policy,now});if(!r.allowed)return deny(r.reason);
@@ -61,7 +62,7 @@ export function createOfflineAuthorization({registry,readTrustedState,readPolicy
  const p=s.approval;
  if(!p||p.id!==q.approvalId||p.scopeDigest!==executionScopeDigest(q)||p.actorId!==a.id||p.tenant!==a.tenant||p.approved!==true||p.revoked!==false||p.reviewerAuthorized!==true||!id(p.reviewerId)||p.reviewerId===a.id||!Number.isSafeInteger(p.expiresAt)||p.expiresAt<=now)return deny('approval');
  }
- const end=clock();if(end!==now||q.policyVersion!==await readPolicyVersion(a.tenant))return deny('stale-policy');
+ const end=clock();if(!Number.isSafeInteger(now+decisionMaxMs)||end!==now||q.policyVersion!==await readPolicyVersion(a.tenant))return deny('stale-policy');
  return {version:VERSION,requestId:q.requestId,correlationId:q.correlationId,stage:q.stage,decisionBinding:canonicalRequestBinding(q),executionDigest:q.executionDigest,actor:a,policyVersion:q.policyVersion,issuedAt:now,expiresAt:now+decisionMaxMs,allowed:true};
  }catch{return deny('unavailable');}
  };
