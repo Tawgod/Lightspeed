@@ -1,4 +1,4 @@
-import {prepareExecutionM7} from './localTransactionM7.js';
+import {prepareExecutionM7,normalizeLocalEffectsM7} from './localTransactionM7.js';
 import { randomUUID } from 'node:crypto';
 import { fingerprintLightspeedPayload as fp } from './idempotency.js';
 const fail=(code,outcome='not_committed')=>Object.assign(Error('M7 fixture operation cannot proceed safely.'),{code,outcome});
@@ -8,16 +8,6 @@ const id=v=>typeof v==='string'&&v.length>0&&v.length<=512&&!/[\x00-\x1f]/.test(
 const type=v=>typeof v==='string'&&/^[a-z][a-z0-9_.-]{0,95}$/.test(v);
 const exact=(v,keys)=>v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(key=>Object.hasOwn(v,key));
 const targetKey=t=>JSON.stringify([t.type,t.id]);
-const ordered=(a,b)=>a<b?-1:a>b?1:0;
-function normalizeEffects(effects,targets){
-  if(!Array.isArray(effects)||!effects.length)throw TypeError('Exact effects required');
-  const normalized=effects.map(e=>{
-    if(!exact(e,['operation','target','location','fields'])||!type(e.operation)||!exact(e.target,['type','id'])||!targets.some(t=>targetKey(t)===targetKey(e.target))||!id(e.location)||!Array.isArray(e.fields)||!e.fields.length||e.fields.some(f=>!type(f))||new Set(e.fields).size!==e.fields.length)throw TypeError('Invalid effect scope');
-    return {...e,fields:[...e.fields].sort()};
-  }).sort((a,b)=>ordered(fp(a),fp(b)));
-  if(new Set(normalized.map(fp)).size!==normalized.length)throw TypeError('Duplicate effects');
-  return normalized;
-}
 
 export function createLocalTransactionM8Internal({tenant,transaction,authorizeStage,bindScope,auditDenied,inspectCommitted,receiptSchema,projectResult}={}){
   if(!id(tenant)||![transaction,authorizeStage,bindScope,auditDenied,inspectCommitted,projectResult].every(f=>typeof f==='function'))throw TypeError('Explicit synthetic adapters required');
@@ -28,7 +18,7 @@ export function createLocalTransactionM8Internal({tenant,transaction,authorizeSt
     if(execution.tenant!==tenant||fp(execution)!==fp(command)||typeof verifyExecution!=='function'||typeof apply!=='function')throw TypeError('Prepared exact execution required');
     const digest=fp(command),proof=freeze(snap(approval));
     if(!exact(proof,['reference','executionDigest','reviewerId','expiresAt'])||!id(proof.reference)||proof.executionDigest!==digest||!id(proof.reviewerId)||!Number.isSafeInteger(proof.expiresAt))throw fail('CORE_FORBIDDEN','undisclosed');
-    const reads=freeze(normalizeEffects(snap(readEffects),command.targets)),inspects=freeze(normalizeEffects(snap(reconcileEffects),command.targets));
+    const reads=freeze(normalizeLocalEffectsM7(snap(readEffects),command.targets)),inspects=freeze(normalizeLocalEffectsM7(snap(reconcileEffects),command.targets));
     const bound=await bindScope({command,digest,approval:proof,reads,inspects});
     const meta={scope:JSON.stringify(['core.execution.v7',tenant,command.scope]),key:command.key,fingerprint:bound.persistenceDigest,actor:command.actor,correlationId:randomUUID()};
     let stage='beforeClaim',state='unconfirmed',evidence=null;
