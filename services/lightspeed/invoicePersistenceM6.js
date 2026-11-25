@@ -13,7 +13,7 @@ const k=t=>JSON.stringify([t.type,t.id]);
 const same=(a,b)=>fp(a)===fp(b);
 const currentTarget=id=>target('purchasing.invoice',id);
 const historyTarget=(id,revision,action)=>target('purchasing.invoice.'+action,fp([id,revision]));
-function identityTargets(input,proposal){
+export function identityTargets(input,proposal){
  const s=input.document.source,a=input.document.attachment;
  return [
   target('purchasing.document.source',fp([s.provider,s.accountRef,s.messageId,a.id])),
@@ -21,7 +21,7 @@ function identityTargets(input,proposal){
   target('purchasing.invoice.number',fp([proposal.supplierId,proposal.invoiceNumber]))
  ];
 }
-function proposalFor(input,current,action,at){
+export function proposalFor(input,current,action,at){
  const prior=current?.revision??null;
  return buildDocumentInvoiceReview({...input,previousRevision:action==='approve'?current?.previousRevision??null:prior,
   expectedRevision:action==='approve'?prior?.expectedPreviousRevision:prior?.revision??0,
