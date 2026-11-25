@@ -81,7 +81,9 @@ function proposalFor(input,current,action,at){
  const proposal={state:'review_required',mode:'update_open',targetPoId:po.id,supplierId:h.supplierId,outletId:h.outletId,invoiceId:h.invoiceId,invoiceNumber:h.invoiceNumber,documentHash:d.documentHash,poReadAt:po.source.readAt,proposedInitialStatus:null,lines,executable:false,requiresFullApproval:true};
  // Bind source metadata and all selected source bytes, not merely the caller's document hash.
  const sourceDigest=fp(input);
- const evidence={proposal,quantityEvidence:input.quantityEvidence,poVersion:input.poVersion,historyVersion:input.historyVersion,catalogVersion:input.catalogVersion,sourceDigest};
+ const documentIdentity=fp({source:input.document.source,attachment:input.document.attachment});
+ if(current&&current.evidence.documentIdentity!==documentIdentity)throw fail('INVOICE_SOURCE_CONFLICT');
+ const evidence={proposal,quantityEvidence:input.quantityEvidence,poVersion:input.poVersion,historyVersion:input.historyVersion,catalogVersion:input.catalogVersion,sourceDigest,documentIdentity};
  const prior=current?.revision??null;
  const revision=prepareInvoiceReviewRevision({...evidence,previous:action==='approve'?current?.previousRevision??null:prior,expectedRevision:action==='approve'?prior?.expectedPreviousRevision:prior?.revision??0,reviewRef:h.reviewRef,recordedAt:action==='approve'?prior?.recordedAt:at});
  if(revision.state!=='review_required')throw fail('INVOICE_EVIDENCE_UNRESOLVED');
@@ -112,8 +114,9 @@ export async function derivePurchasingIntentP12({tenant,actor,invoiceId,requestI
   if(reversal&&(reversal.documentHash!==p.documentHash||reversal.sourceDigest!==built.evidence.sourceDigest||!exact(reversal.reference)||!exact(reversal.reasonCode)||reversal.invoiceId!==invoiceId||reversal.supplierId!==p.supplierId||reversal.outletId!==p.outletId||reversal.revision!==revision.revision||reversal.fingerprint!==revision.fingerprint||reversal.approvalRef!==current.approval.approvalRef))throw fail('INVOICE_REVERSAL_UNRESOLVED');
   if(action==='reverse'&&!reversal)throw fail('INVOICE_REVERSAL_UNRESOLVED');
   const reversalIdentity=reversal?target('purchasing.invoice.reversal-reference',fp([p.supplierId,reversal.reference])):null;
-  const originalApprovalTarget=reversal?historyTarget(invoiceId,revision.revision,'approve'):null;
-  const targets=[invoice,...ids,history,...lines.map(l=>l.target),...(reversalIdentity?[reversalIdentity,originalApprovalTarget]:[])];
+  const originalApprovalTarget=current?.approval?historyTarget(invoiceId,current.revision.revision,'approve'):null;
+  const targets=[invoice,...ids,history,...lines.map(l=>l.target),...(reversalIdentity?[reversalIdentity]:[]),...(originalApprovalTarget?[originalApprovalTarget]:[])];
+  if(await readTrustedRow(history))throw fail('INVOICE_HISTORY_CONFLICT');
   const rows=new Map([[key(invoice),currentRow??null],[key(history),null]]);
   if(originalApprovalTarget){const old=await readTrustedRow(originalApprovalTarget);if(!old||!same(old.record,{invoiceId,approval:current.approval}))throw fail('INVOICE_APPROVAL_CONFLICT');rows.set(key(originalApprovalTarget),old);}
   if(reversalIdentity){const prior=await readTrustedRow(reversalIdentity);if(prior)throw fail('INVOICE_DUPLICATE');rows.set(key(reversalIdentity),null);}
@@ -174,6 +177,7 @@ export function createPurchasingDomainAdapterP12({tenant,resolveActor,readOrigin
    }},transaction,auditDenied,inspectCommitted,receiptSchema:{version:'purchasing.receipt.v1',fields:['invoiceId','revision','outcome']},projectResult:()=>({}),
    verifyExecution:async({evidence})=>{
     if(targets.some(t=>!same(evidence.find(x=>key(x.target)===key(t))?.row??null,rowMap.get(key(t)))))return false;
+    // Trusted local snapshot only; no vendor or network calls inside transaction.
     const fresh=copy(await readFresh(context,invoiceId,action));
     return same(fresh.input,original.input)&&same(fresh.reversal??null,original.reversal??null);
    },
