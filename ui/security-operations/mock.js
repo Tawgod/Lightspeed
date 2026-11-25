@@ -20,7 +20,8 @@ const operations = [
  ['mock-o10','Review employee access','Security','Administration','Independent explanation authorization']
 ].map(([id,label,domain,tool,description])=>({id,label,domain,tool,description,status:'provisional',scopeSchema:'Explicit synthetic location and resource',prerequisites:'Backend supplied; not an executable grant',approvalRequirements:'Not evaluated in SO-01'}));
 export const scenarios=['normal','empty','denied','stale','unavailable','unsupported','invalid','authentication_required','step_up_required','approval_required','missing','error'];
-const envelope=(status,data)=>({contractVersion:VERSION,status,requestId:'mock-request',policyVersion:'mock-policy-1',...(status==='ok'?{data}:{})});
+let requestSequence=0;
+const envelope=(status,data)=>({contractVersion:VERSION,status,requestId:'mock-request-'+(++requestSequence),policyVersion:'mock-policy-1',...(status==='ok'?{data}:{})});
 function page(rows,{query='',cursor=null,limit=2}={}){
  const n=Number.isInteger(limit)&&limit>0&&limit<=20?limit:2;
  const filtered=rows.filter(r=>Object.values(r).join(' ').toLowerCase().includes(String(query).toLowerCase()));
