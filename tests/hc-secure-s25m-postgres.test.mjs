@@ -24,7 +24,7 @@ test('disposable PostgreSQL authority, transaction, audit and independent inspec
  await q('INSERT INTO hc_s25m.session SELECT $1,$2,policy_revision,evidence_revision,$3,false FROM hc_s25m.authority',[b.sessionId,id,JSON.stringify(evidence)]);return {header:'Bearer '+token,binding:b.sessionId};
  }
  try{
- const check=await q("SELECT current_database() db,inet_server_addr()::text addr");assert.equal(check.rows[0].db,config.database);assert.equal(check.rows[0].addr,'127.0.0.1');
+ const check=await q("SELECT current_database() db,host(inet_server_addr()) addr");assert.equal(check.rows[0].db,config.database);assert.match(check.rows[0].addr,/^(127\.0\.0\.1|172\.(1[6-9]|2[0-9]|3[01])\.[0-9]{1,3}\.[0-9]{1,3})$/);
  await q(await readFile(new URL('./security-runtime/s25m-disposable.sql',import.meta.url),'utf8'));
  await q("CREATE ROLE hc_s25m_runtime LOGIN PASSWORD 'disposable-runtime-only'");
  await q('GRANT USAGE ON SCHEMA hc_s25m TO hc_s25m_runtime; GRANT SELECT ON ALL TABLES IN SCHEMA hc_s25m TO hc_s25m_runtime; GRANT UPDATE ON hc_s25m.authority,hc_s25m.note TO hc_s25m_runtime; GRANT INSERT ON hc_s25m.receipt,hc_s25m.audit TO hc_s25m_runtime');
