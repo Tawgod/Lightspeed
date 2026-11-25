@@ -22,3 +22,5 @@ jobs:
           node --version
           for f in ui/security-operations/so02/*.js; do node --check "$f" || exit 1; done
           node --test tests/security-operations/consumer.test.js tests/security-operations/so02.test.js
+
+# Security exact-source review 7175264378: six bounded corrections and focused regression evidence.
