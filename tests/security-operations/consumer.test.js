@@ -77,3 +77,10 @@ test('blank policy or missing explanation capability prevents invocation',async(
   let calls=0;assert.deepEqual(await C.readBound(()=>{calls++},'explainAccess',args,C.validExplanation,context.policyVersion,{...opts,context}),{state:'denied'});assert.equal(calls,0);
  }
 });
+
+test('no-explain fixture retains admitted navigation but denies explanation invocation',async()=>{
+ const adapter=createMock('no-explain'),transport=C.fixtureTransport(adapter);
+ const r=await C.readBound(transport,'getAdminContext',{},C.validContext);
+ assert.equal(r.state,'ok');assert.equal(C.navigation(r.data).includes('access'),true);assert.equal(C.canExplain(r.data),false);
+ let calls=0;assert.deepEqual(await C.readBound(()=>{calls++},'explainAccess',args,C.validExplanation,policy,{context:r.data,generation:1}),{state:'denied'});assert.equal(calls,0);
+});
