@@ -1,0 +1,24 @@
+name: HC Secure S2.5H offline
+on:
+  pull_request:
+    branches: [feature/hc-secure-s25g-lifecycle-20261125]
+    paths:
+      - 'tests/hc-secure-s25h-contract.test.mjs'
+      - 'tests/fixtures/hc-secure-s25h-contract.mjs'
+      - '.github/workflows/hc-secure-s25h-offline.yml'
+permissions:
+  contents: read
+jobs:
+  offline:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'feature/hc-secure-s25h-core-contract-20261125'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tests/hc-secure-s25b-registry.test.mjs tests/hc-secure-s25c-decision.test.mjs tests/hc-secure-s25d-decision.test.mjs tests/hc-secure-s25e-role-policy.test.mjs tests/hc-secure-s25f-composed.test.mjs tests/hc-secure-s25g-lifecycle.test.mjs tests/hc-secure-s25h-contract.test.mjs
