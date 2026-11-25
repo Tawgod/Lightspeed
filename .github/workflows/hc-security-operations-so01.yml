@@ -1,0 +1,16 @@
+name: HC Security Operations SO-01 offline
+on:
+  push:
+    branches: [feature/hc-security-operations-so01-20261125]
+    paths: ['.github/workflows/hc-security-operations-so01.yml']
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: node --check ui/security-operations/app.js && node --test tests/security-operations/consumer.test.js
