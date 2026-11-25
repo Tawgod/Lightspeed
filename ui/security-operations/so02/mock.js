@@ -10,7 +10,7 @@ export function createMock02(scenario='normal'){
  const next=prefix=>'mock-'+prefix+'-'+(++seq);
  const roles=new Map([['mock-r1',{...record('mock-r1','mock-rv1'),label:'Sample floor role',rules:[clone(rule)]}],['mock-r2',{...record('mock-r2','mock-rv2'),label:'Sample review role',rules:[]}]]);
  const employees=new Map([['mock-e1',{employeeId:'mock-e1',revision:'mock-av1',memberships:[{...record('mock-m1','mock-mv1'),employeeId:'mock-e1',roleId:'mock-r1'}],individual:[{...record('mock-i1','mock-iv1','expired',now-1000),employeeId:'mock-e1',rule:{...clone(rule),expiresAt:now-1000}}]}]]);
- const previews=new Map(),results=new Map(),keys=new Map(),seen=new Set();
+ const previews=new Map(),results=new Map(),keys=new Map(),seen=new Set(),uncertainTargets=new Set();
  const allowed=()=>scenario==='missing-capability'?['readRole','readAssignments','readOptions']:actions.filter(x=>x!=='readAudit');
  const ctx=()=>({identityLabel:'Fictional administrator',tenant:'mock-hc',environment:'mock-test',policyVersion:policy,assuranceState:scenario==='step-up'?'mock-step-up-required':'mock-current',allowedNavigation:['roles','employees','changes'],allowedActions:allowed(),now});
  const target=(type,id)=>type==='role'?(roles.has(id)?{role:clone(roles.get(id)),allowedActions:allowed()}:null):(employees.has(id)?{...clone(employees.get(id)),allowedActions:allowed()}:null);
@@ -50,8 +50,10 @@ export function createMock02(scenario='normal'){
   if(method==='previewChange'){
    const i=args.intent,t=i.targetId===null?{allowedActions:allowed()}:target(i.targetType,i.targetId),o=opts(i.targetType,i.targetId);
    if(!t||!allowed().includes('previewChange')||!intentMatchesOptions(i,o,ctx(),t))return denied(req);
+   if(uncertainTargets.has(JSON.stringify([i.targetType,i.targetId])))return response(req,'stale');
+   if(i.kind==='membership.add'&&t.memberships.some(x=>x.roleId===i.change.roleId&&x.status==='active'))return response(req,'invalid');
    if(scenario==='denied')return denied(req);
-   const p={previewId:next('preview'),intent:clone(i),expiresAt:now+60000,impact:{summary:'Scripted change',gained:[],lost:[],conflicts:[]},requiredAssurance:scenario==='step-up'?'step-up':'current',requiredApproval:scenario==='approval'?'independent':'none',confirmationAllowed:!['step-up','approval'].includes(scenario),allowedActions:['confirmChange']};
+   const p={previewId:next('preview'),intent:clone(i),expiresAt:now+60000,impact:{summary:'Scripted change',gained:i.kind==='membership.add'?['Scripted role membership addition']:[],lost:i.kind==='role.retire'?['Scripted role retirement impact']:[],conflicts:[]},requiredAssurance:scenario==='step-up'?'step-up':'current',requiredApproval:scenario==='approval'?'independent':'none',confirmationAllowed:!['step-up','approval'].includes(scenario),allowedActions:['confirmChange']};
    previews.set(p.previewId,{preview:clone(p),policy,used:false});
    if(scenario==='expired-preview')now=p.expiresAt;
    return response(req,'ok',p);
@@ -67,9 +69,9 @@ export function createMock02(scenario='normal'){
    if(scenario==='policy-change'){policy=next('policy');return response(req,'stale')}
    entry.used=true;
    let status='ok',data;
-   if(scenario==='pending-approval')data=noncommit(i,'pending-approval');
+   if(scenario==='pending-approval'){data=noncommit(i,'pending-approval');uncertainTargets.add(JSON.stringify([i.targetType,i.targetId]))}
    else if(['unknown','unknown-no-ref','throw','malformed'].includes(scenario)){
-    const r=noncommit(i,'unknown');results.set(r.changeId,r);status='unknown';data=scenario==='unknown-no-ref'?null:{changeId:r.changeId,targetType:r.targetType,targetId:r.targetId};
+    const r=noncommit(i,'unknown');uncertainTargets.add(JSON.stringify([i.targetType,i.targetId]));results.set(r.changeId,r);status='unknown';data=scenario==='unknown-no-ref'?null:{changeId:r.changeId,targetType:r.targetType,targetId:r.targetId};
    }else data=apply(i);
    if(status==='ok')results.set(data.changeId,data);
    keys.set(args.idempotencyKey,{args:clone(args),status,data:clone(data),policy});
