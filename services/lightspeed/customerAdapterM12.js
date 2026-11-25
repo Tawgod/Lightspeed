@@ -2,7 +2,7 @@
 import {createLocalDomainAdapterM10} from './domainAdapterM10.js';
 import {prepareExecutionM7} from './localTransactionM7.js';
 import {fingerprintLightspeedPayload as hash} from './idempotency.js';
-import {prepareCustomerEvidenceM11,nextCustomerEvidenceM11,deriveCustomerScopeM11} from './customerSalesM11.js';
+import {prepareCustomerEvidenceM11,nextCustomerEvidenceM11} from './customerSalesM11.js';
 const fail=()=>{throw Error('Invalid customer evidence intent')};
 const id=x=>typeof x==='string'&&/^[A-Za-z0-9_.:-]{1,150}$/.test(x)&&x!=='unknown';
 const exact=(x,keys)=>x&&typeof x==='object'&&!Array.isArray(x)&&Object.keys(x).length===keys.length&&keys.every(k=>Object.hasOwn(x,k));
@@ -23,7 +23,7 @@ export function customerTargetsM12({tenant,event,source,allocation}){
  const occurrence=target('customer.event',[...ns,event.eventId]);
  if(!financial(event))return {sale,claim,occurrence};
  const group=target('customer.allocation',[...ns,allocation.groupId]);
- const original=target('customer.original',[...ns,source.system,source.account,source.transactionId,allocation.originalType,allocation.kind]);
+ const original=target('customer.original',[...ns,source.system,source.account,source.transactionId,allocation.kind]);
  return {sale,claim,occurrence,group,original};
 }
 function validate(intent){
@@ -49,12 +49,12 @@ export function prepareCustomerM12({intent,actor,key:requestKey}){
   const originalRows=({payment:r.payments,deposit:r.deposits,credit:r.credits})[a.originalType];
   const orig=originalRows.find(x=>x.id===a.originalId);
   const localBucket=r.buckets.find(x=>x.id===local[0]?.bucketId);
-  if(local.length!==1||!orig||!localBucket||orig.currency!==a.currency||units(orig.amount)!==units(a.originalAmount)||localBucket.currency!==a.currency||localBucket.kind!==a.kind)fail();
+  if(local.length!==1||!orig||!localBucket||orig.currency!==a.currency||units(orig.amount)!==units(a.originalAmount)||localBucket.currency!==a.currency||localBucket.kind!==a.kind||localBucket.id!==a.groupId||units(localBucket.amount)!==units(a.amount))fail();
   // Shared bucket and original transaction capacity must exist independently
   // before recording. No creation of financial capacity from caller evidence.
   for(const [t,identity,limit] of [
    [ts.group,{groupId:a.groupId,kind:a.kind,currency:a.currency},a.amount],
-   [ts.original,{system:i.source.system,account:i.source.account,transactionId:i.source.transactionId,originalType:a.originalType,kind:a.kind,currency:a.currency},a.originalAmount]
+   [ts.original,{system:i.source.system,account:i.source.account,transactionId:i.source.transactionId,kind:a.kind,currency:a.currency},a.originalAmount]
   ]){
    const prior=row(t),r=prior?.record;
    if(!prior||!exact(r,['tenant','identity','limit','used'])||r.tenant!==i.tenant||!same(r.identity,identity)||units(r.limit)!==units(limit))fail();
