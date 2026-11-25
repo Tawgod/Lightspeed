@@ -21,26 +21,33 @@ export function navigation(context){return validContext(context)?pages.filter(p=
 export function canExplain(context){return navigation(context).includes('access')&&context.allowedActions.includes('explainAccess')}
 export function latestOnly(){let generation=0;return {start:()=>++generation,current:g=>g===generation,invalidate:()=>++generation}}
 
- // Local fixture transport only. Neither the snapshot nor the request ID is backend authority.
-const snapshot=(method,args)=>JSON.stringify([method,args]);
+// Local synthetic invocation metadata only; no backend authority.
+const snapshot=(method,args,generation,policy)=>JSON.stringify([method,args,generation,policy]);
 let fixtureSequence=0;
 export function fixtureTransport(adapter,alter=reply=>reply){
- return async (method,args,id)=>{
-  const binding=snapshot(method,args);
-  const envelope=await adapter[method](args);
-  return alter({binding,envelope:{...envelope,requestId:id}},method);
- };
+ return async request=>alter(await adapter.invoke(request),request.method);
 }
-export async function readBound(transport,method,args,validate,policy){
+const surfaces={searchEmployees:'employees',getEmployee:'employees',getAssignments:'employees',listRoles:'roles',getRole:'roles',listOperations:'registry',explainAccess:'access'};
+export function canInvoke(context,method){
+ if(method==='getAdminContext')return true;
+ return Object.hasOwn(surfaces,method)&&navigation(context).includes(surfaces[method])&&(method!=='explainAccess'||canExplain(context));
+}
+function freeze(value){if(value&&typeof value==='object'){Object.values(value).forEach(freeze);Object.freeze(value)}return value}
+export async function readBound(transport,method,args,validate,policy,options={}){
  try{
-  const copy=JSON.parse(JSON.stringify(args??{})),binding=snapshot(method,copy);
+  const {generation=0,current=()=>true,context}=options;
+  if(!current(generation))return {state:'superseded'};
+  if(method!=='getAdminContext'&&(!canInvoke(context,method)||!str(policy)||context.policyVersion!==policy))return {state:'denied'};
+  const copy=freeze(JSON.parse(JSON.stringify(args??{}))),binding=snapshot(method,copy,generation,policy);
   if(method==='explainAccess'&&![copy.employeeId,copy.operationId,copy.scope?.location,copy.scope?.resource].every(x=>str(x)&&x.trim()))return {state:'invalid'};
   const id='local-fixture-'+(++fixtureSequence);
-  const reply=await transport(method,copy,id);
+  let reply;
+  try{reply=await transport(Object.freeze({method,args:copy,id,generation,policy}))}catch{return {state:current(generation)?'error':'superseded'}}
+  if(!current(generation))return {state:'superseded'};
   if(!reply||reply.binding!==binding||reply.envelope?.requestId!==id)return {state:'invalid'};
   const r=decode(reply.envelope,validate);
   if(r.state!=='ok')return r;
-  if(policy!==undefined&&reply.envelope.policyVersion!==policy)return {state:'stale'};
+  if(method!=='getAdminContext'&&reply.envelope.policyVersion!==policy)return {state:'stale'};
   if(method==='getAdminContext'&&reply.envelope.policyVersion!==r.data.policyVersion)return {state:'stale'};
   if((method==='getEmployee'&&r.data.id!==copy.employeeId)||(method==='getRole'&&r.data.id!==copy.roleId))return {state:'invalid'};
   return r;
