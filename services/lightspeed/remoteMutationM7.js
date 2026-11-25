@@ -26,7 +26,7 @@ function normalizeKeys(keys,target,predecessor){
  if(set.size!==normalized.length||!set.has(tuple(['target',target.productId,target.variantId]))||(predecessor!==null&&!set.has(tuple(['revision',target.productId,target.variantId,predecessor]))))throw TypeError('Missing or duplicate reservation key');
  return normalized;
 }
-function effects(v,target){
+export function normalizeRemoteEffectsM7(v,target){
  if(!Array.isArray(v)||!v.length)throw TypeError('Exact effects required');
  const list=v.map(e=>{
   if(!exact(e,['operation','target','location','field','supplierId'])||!literal(e.operation)||hash(e.target)!==hash(target)||!literal(e.location)||!literal(e.field)||!(e.supplierId===null||literal(e.supplierId)))throw TypeError('Invalid effect');
@@ -35,10 +35,19 @@ function effects(v,target){
  if(new Set(list.map(hash)).size!==list.length)throw TypeError('Duplicate effect');
  return list;
 }
+// Shared causal readback validation; malformed/non-JSON evidence is never success.
+export function validatedRemoteReceiptM7(command,digest,eventId,evidence){
+ try{
+  if(!literal(eventId))return null;
+  const e=copy(evidence);
+  if(!e||e.complete!==true||e.eventId!==eventId||e.digest!==digest||e.predecessor!==command.predecessor||!literal(e.revision)||e.revision===command.predecessor||hash(e.target??null)!==hash(command.target)||hash(e.values??null)!==hash(command.values))return null;
+  return freeze({eventId,revision:e.revision});
+ }catch{return null;}
+}
 export function prepareRemoteExecutionM7(input){
  const c=copy(input);
  if(!exact(c,['tenant','key','actor','target','predecessor','values','effects','reservationKeys'])||!literal(c.tenant)||!literal(c.key)||c.key.length<8||!exact(c.actor,['id','realm','tenant'])||c.actor.realm!=='employee'||c.actor.tenant!==c.tenant||!literal(c.actor.id)||!exact(c.target,['productId','variantId'])||!literal(c.target.productId)||!(c.target.variantId===null||literal(c.target.variantId))||!(c.predecessor===null||literal(c.predecessor))||(c.predecessor===null&&c.target.variantId!==null)||!c.values||typeof c.values!=='object'||Array.isArray(c.values)||!Object.keys(c.values).length)throw TypeError('Invalid synthetic remote execution');
- return freeze({...c,environment:'test',version:'core.remote.v7',effects:effects(c.effects,c.target),reservationKeys:normalizeKeys(c.reservationKeys,c.target,c.predecessor)});
+ return freeze({...c,environment:'test',version:'core.remote.v7',effects:normalizeRemoteEffectsM7(c.effects,c.target),reservationKeys:normalizeKeys(c.reservationKeys,c.target,c.predecessor)});
 }
 // All callbacks trusted synthetic fixtures. Store operations are short local transactions;
 // dispatch and observation always occur after store calls return.
@@ -56,7 +65,7 @@ export function createRemoteMutationM7({tenant,store,authorizeExecution,verifyAp
   return allow(verifyApproval,{...b,stage});
  };
  const access=async(b,stage,kind,requested)=>{
-  let list;try{list=effects(copy(requested),b.command.target);}catch{return false;}
+  let list;try{list=normalizeRemoteEffectsM7(copy(requested),b.command.target);}catch{return false;}
   for(const effect of list)if(!await allow(authorizeAccess,{...b,stage,kind,effect}))return false;
   return true;
  };
@@ -77,10 +86,9 @@ export function createRemoteMutationM7({tenant,store,authorizeExecution,verifyAp
   if(!matches(row,b)||!['dispatching','unknown','verified'].includes(row.state))return unknown();
   if(row.state==='verified')return project(b,row,readEffects);
   let evidence;try{evidence=await observe({command:b.command,digest:b.digest,eventId:row.eventId});}catch{return unknown();}
-  const c=b.command;
-  if(!evidence||evidence.complete!==true||evidence.eventId!==row.eventId||evidence.digest!==b.digest||evidence.predecessor!==c.predecessor||!literal(evidence.revision)||evidence.revision===c.predecessor||hash(evidence.target??null)!==hash(c.target)||hash(evidence.values??null)!==hash(c.values))return unknown();
+  const receipt=validatedRemoteReceiptM7(b.command,b.digest,row.eventId,evidence);
+  if(!receipt)return unknown();
   if(!await check(b,'afterReadback')||!await access(b,'afterReadback','inspect',inspectEffects))return denied();
-  const receipt={eventId:row.eventId,revision:evidence.revision};
   try{await store.mark({...b.meta,state:'verified',receipt});}catch{return unknown();}
   return project(b,{...row,state:'verified',receipt},readEffects);
  }
