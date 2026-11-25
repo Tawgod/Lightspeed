@@ -18,7 +18,7 @@ jobs:
           persist-credentials: false
       - run: |
           git rev-parse HEAD
-          echo 'Corrected nonempty impact validation and confirmation projection regression'
+          echo 'Owner usability revision: visible catalog and exact scope regression'
           node --version
           for f in ui/security-operations/so02/*.js; do node --check "$f" || exit 1; done
           node --test tests/security-operations/consumer.test.js tests/security-operations/so02.test.js
