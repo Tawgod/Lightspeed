@@ -1,7 +1,7 @@
 import {VERSION,pages} from './mock.js';
 const states=new Set(['denied','authentication_required','step_up_required','stale','approval_required','unsupported','unavailable','invalid']);
 export const messages={loading:'Loading…',empty:'No matching records.',denied:'Access denied.',authentication_required:'Authentication required through Security.',step_up_required:'Recent strong authentication required through Security.',stale:'Data is stale. Reload before continuing.',approval_required:'Independent approval required.',unsupported:'Unsupported contract or response.',unavailable:'Service unavailable.',invalid:'Invalid response.',error:'Unable to load data.'};
-const str=x=>typeof x==='string'&&x.length>0;
+const str=x=>typeof x==='string'&&x.trim().length>0;
 const strings=x=>Array.isArray(x)&&x.every(str);
 export const validContext=d=>d&&['identityLabel','environment','policyVersion','assuranceState'].every(k=>str(d[k]))&&strings(d.allowedNavigation)&&strings(d.allowedActions);
 export const validEmployee=d=>d&&['id','name','status','location'].every(k=>str(d[k]));
