@@ -7,7 +7,7 @@ let adapter,transport,context,current,query='',cursor=null;
 const guard=C.latestOnly();
 const scenario=$('scenario'),nav=$('nav'),content=$('content'),status=$('status');
 const methods=['searchEmployees','getEmployee','getAssignments','listRoles','getRole','listOperations','explainAccess'];
-for(const s of [...scenarios,'delayed',...methods.flatMap(m=>['denied','stale','unavailable','malformed'].map(x=>'request:'+m+':'+x))]){const o=node('option',s);o.value=s;scenario.append(o)}
+for(const s of [...scenarios,'no-explain','delayed',...methods.flatMap(m=>['denied','stale','unavailable','malformed'].map(x=>'request:'+m+':'+x))]){const o=node('option',s);o.value=s;scenario.append(o)}
 function state(s){status.textContent=C.messages[s]??''}
 function button(label,fn){const b=node('button',label);b.type='button';b.addEventListener('click',fn);return b}
 function detail(data,fields){const dl=node('dl');for(const [key,label] of fields){dl.append(node('dt',label),node('dd',Array.isArray(data[key])?data[key].join(', ')||'None':data[key]))}return dl}
