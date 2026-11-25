@@ -35,7 +35,7 @@ function distinct(input){
 }
 import * as security from '../.security-source/tests/fixtures/hc-secure-s25h-contract.mjs';
 function fixture(f){
- let now=at,deny=()=>false,lose=false,missing=false,epoch='v1',seen=[],approvalChanged=false;
+ let now=at,deny=()=>false,lose=false,missing=false,epoch='v1',seen=[],approvalChanged=false,revoked=false,reversal=null;
  const inputs=new Map([['I1',evidence()],['I2',evidence('I2')]]);for(const input of inputs.values())multi(input);distinct(inputs.get('I2'));
  const context={actor:{type:'employee',realm:'employee',tenant:'shop',id:'a',delegation:{kind:'none'}}};
  const read=t=>f.transaction(tx=>tx.lockDomain(t),{targets:[t]});
@@ -46,16 +46,17 @@ function fixture(f){
  const actor={realm:'employee',id:'a',tenant:'shop',environment:'test',jobId:null,jobRevision:null,delegationId:null,audience:null};
  const clock=()=>Date.parse(now);
  const narrow=({operation,tenant,environment,location,resourceType,resourceId,field})=>({operation,tenant,environment,location,resourceType,resourceId,field});
- const registry=['purchasing.invoice.review','purchasing.invoice.approve','purchasing.invoice.read','purchasing.invoice.receipt.inspect'].map((operation,i)=>({operation,mode:i<2?'execute':i===2?'read':'inspect',required:['revision','relationships','purpose','audience'],approvalRequired:i<2,assurance:'business'}));
+ const registry=['purchasing.invoice.review','purchasing.invoice.approve','purchasing.invoice.credit.review','purchasing.invoice.read','purchasing.invoice.receipt.inspect'].map((operation,i)=>({operation,mode:i<3?'execute':i===3?'read':'inspect',required:['revision','relationships','purpose','audience'],approvalRequired:i<3,assurance:'business'}));
  const evaluator=security.createOfflineAuthorization({registry,readPolicyVersion:()=>epoch,clock,decisionMaxMs:50,readTrustedState:q=>{
   const state=structuredClone(states.get(q.approvalId));
   if(missing)state.admittedScopes.shift();
   if(approvalChanged)state.approval.id='replacement';
+  if(revoked)state.session.revoked=true;
   return state;
  }});
  const api=createInvoicePersistenceM8({...f,tenant:'shop',security,readPolicyVersion:()=>epoch,resolveEvidenceRef:()=> 'ev1',
   transaction:async(...args)=>{const r=await f.transaction(...args);if(lose)throw Object.assign(Error('lost'),{code:'CORE_COMMIT_UNKNOWN'});return r;},
-  resolveActor:c=>c.actor,loadEvidence:id=>structuredClone(inputs.get(id)),readTrustedRow:read,
+  loadReversal:()=>reversal,resolveActor:c=>c.actor,loadEvidence:id=>structuredClone(inputs.get(id)),readTrustedRow:read,
   issueProof:({execution,facts})=>{
    const proof={reference:'proof-'+fp(execution),executionDigest:fp(execution),reviewerId:'b',expiresAt:clock()+120000};
    const all=[...facts.executionEffects,...facts.readEffects,...facts.inspectEffects];
@@ -68,7 +69,7 @@ function fixture(f){
    return proof;
   },decide:async q=>{seen.push(q);if(deny(q))return {allowed:false};return evaluator(q);},clock:()=>new Date(now)});
  const prepare=(action,extra={})=>api.prepare({context,invoiceId:'I1',requestId:'review-1',action,...extra});
- return {inputs,prepare,current,ledger,history,seen,time:v=>now=v,deny:v=>deny=v,lost:v=>lose=v,missing:v=>missing=v,changed:v=>approvalChanged=v,epoch:v=>epoch=v};
+ return {inputs,prepare,current,ledger,history,seen,time:v=>now=v,deny:v=>deny=v,lost:v=>lose=v,missing:v=>missing=v,changed:v=>approvalChanged=v,epoch:v=>epoch=v,revoke:v=>revoked=v,reversal:v=>reversal=v};
 }
 const pg=(name,fn)=>test(name,()=>withDisposableCorePg(f=>fn(f,fixture(f))));
 const denied=p=>assert.rejects(p,{code:'CORE_FORBIDDEN',outcome:'undisclosed'});
@@ -121,4 +122,28 @@ pg('P11 lost acknowledgement denied inspection retains commit',async(f,x)=>{
 });
 pg('P11 changed source evidence fails closed',async(f,x)=>{
  const a=await x.prepare('review');x.inputs.get('I1').poVersion='P1-v2';await denied(a.submit());assert.equal((await f.counts()).commands,0);
+});
+
+pg('P11 reversal links immutable original approval and retains capacity hold',async(f,x)=>{
+ await (await x.prepare('review')).submit();
+ x.time('2026-11-24T15:01:00.000Z');await (await x.prepare('approve',{requestId:'a1'})).submit();
+ const row=(await x.current()).record,before=await x.history('I1',1,'approve'),ledger=await x.ledger();
+ x.reversal({reference:'rev1',reasonCode:'document-dispute',invoiceId:'I1',supplierId:'S1',outletId:'O1',revision:1,fingerprint:row.revision.fingerprint,approvalRef:row.approval.approvalRef});
+ x.time('2026-11-24T15:02:00.000Z');const a=await x.prepare('reverse',{requestId:'reverse1'});
+ await a.submit();assert.equal((await x.current()).record.approval,null);
+ assert.equal((await x.history('I1',1,'reverse')).record.reversal.originalApproval.approvalRef,row.approval.approvalRef);
+ assert.deepEqual(await x.history('I1',1,'approve'),before);assert.deepEqual(await x.ledger(),ledger);
+ assert.deepEqual(await a.submit(),{replayed:true,result:{}});
+ await assert.rejects(x.prepare('reverse',{requestId:'reverse2'}),{code:'INVOICE_REVERSAL_REQUIRES_RECONCILIATION'});
+});
+pg('P11 revoked session at precommit rolls back',async(f,x)=>{
+ const a=await x.prepare('review');x.deny(q=>{if(q.stage==='precommit')x.revoke(true);return false;});
+ await denied(a.submit());assert.equal((await f.counts()).commands,0);
+});
+pg('P11 duplicate document and approval rejected',async(f,x)=>{
+ x.inputs.get('I2').header.invoiceNumber='0001';
+ const a=await x.prepare('review'),b=await x.prepare('review',{invoiceId:'I2',requestId:'r2'});
+ await a.submit();await assert.rejects(b.submit(),{code:'CORE_REVISION_CONFLICT'});
+ x.time('2026-11-24T15:01:00.000Z');await (await x.prepare('approve',{requestId:'a1'})).submit();
+ await assert.rejects(x.prepare('approve',{requestId:'a2'}),{code:'INVOICE_APPROVAL_CONFLICT'});
 });
