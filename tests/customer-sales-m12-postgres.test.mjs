@@ -107,7 +107,7 @@ pg('M12 key-only request and trusted actor binding reject caller authority',asyn
  const h=make(f,await intent(f,a));assert.deepEqual(await h.run({key:h.original.key,approval:h.approval}),denied);assert.deepEqual(await h.run({key:'alternate-key'}),denied);assert.deepEqual(await h.run({key:h.original.key},{actor:{...actor,id:'other'}}),denied);assert.deepEqual(await h.run({key:h.original.key},{actor:{...actor,tenant:'other'}}),denied);assert.equal((await f.counts()).commands,0);
 });
 pg('M12 whole-set missing grant and rich scope mismatch reject before writes',async f=>{
- const i=await intent(f,a),h=make(f,i,{before:(q,s)=>{s.policy.roles[0].rules=s.policy.roles[0].rules.filter(r=>r.effect.resourceType!=='customer.original')}});
+ const i=await intent(f,a),h=make(f,i,undefined,{before:(q,s)=>{s.policy.roles[0].rules=s.policy.roles[0].rules.filter(r=>r.effect.resourceType!=='customer.original')}});
  assert.deepEqual(await h.run(),denied);const j=make(f,i);j.state.admittedScopes=j.state.admittedScopes.filter(e=>e.resourceType!=='customer.allocation');assert.deepEqual(await j.run(),denied);assert.equal((await f.counts()).commands,0);
 });
 pg('M12 precommit revocation rolls back all sale, source and capacity writes',async f=>{
