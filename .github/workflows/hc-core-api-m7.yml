@@ -4,6 +4,9 @@ on:
     branches: ['test/hc-foundation-combined-v6-20261124']
     paths:
       - 'services/lightspeed/localTransactionM7.js'
+      - 'services/lightspeed/remoteMutationM7.js'
+      - 'tests/fixtures/coreRemoteM7Pg.mjs'
+      - 'tests/core-api-m7-remote-postgres.test.mjs'
       - 'tests/fixtures/coreDisposablePg.mjs'
       - 'tests/core-api-m7-postgres.test.mjs'
       - '.github/workflows/hc-core-api-m7.yml'
@@ -37,4 +40,4 @@ jobs:
         with:
           node-version: '22'
       - run: npm install --ignore-scripts --no-audit --no-fund --package-lock=false
-      - run: node --test tests/core-api-m7-postgres.test.mjs tests/core-api-m6-postgres.test.mjs tests/core-api-m5-postgres.test.mjs tests/core-api-m4-postgres.test.mjs tests/core-api-m4-capabilities.test.mjs tests/shared-lightspeed-postgres.test.mjs
+      - run: node --test tests/core-api-m7-remote-postgres.test.mjs tests/core-api-m7-postgres.test.mjs tests/core-api-m6-postgres.test.mjs tests/core-api-m5-postgres.test.mjs tests/core-api-m4-postgres.test.mjs tests/core-api-m4-capabilities.test.mjs tests/shared-lightspeed-postgres.test.mjs
