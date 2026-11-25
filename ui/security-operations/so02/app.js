@@ -6,7 +6,7 @@ const content=$('content'),status=$('status'),nav=$('nav'),scenario=$('scenario'
 let controller,adapter,epoch=0,draftRules=[],formVersion=0,currentPanel,editorPanel;
 const changeLabels={'role.create':'Create role','role.update':'Edit role permissions','role.retire':'Retire role','membership.add':'Assign another role','membership.revoke':'Remove role membership','individual.add':'Add individual permission or restriction','individual.revoke':'Revoke individual assignment'};
 // Presentation-only labels for exact fictional tuples; never synthesize authority.
-const friendlyScope=s=>[s.location==='mock-north'?'North example store':s.location==='mock-south'?'South example store':s.location,s.resourceType==='product'?'Product':s.resourceType,s.resourceId==='mock-p1'?'Sample product 1':s.resourceId==='mock-p2'?'Sample product 2':s.resourceId,s.field==='cost'?'Cost information':s.field].join(' · ');
+const friendlyScope=s=>[s.location==='mock-north'?'North example store':s.location==='mock-south'?'South example store':s.location,s.resourceType==='product'?'Product':s.resourceType,s.resourceId==='mock-p1'?'Sample product 1':s.resourceId==='mock-p2'?'Sample product 2':s.resourceId,s.field==='cost'?'Cost information':s.field==='description'?'Product description':s.field].join(' · ');
 const roleLabel=(id,s)=>s.options?.roles.find(r=>r.id===id)?.label??id;
 const operationLabel=(id,s)=>s.options?.operations.find(r=>r.id===id)?.label??id;
 const labels={idle:'Choose a fictional target.',loading:'Loading…',editing:'Review current access and prepare a change.',preview:'Review the supplied preview.',confirming:'Confirmation submitted; outcome not yet known.',verified:'Committed synthetic change — independently verified.', 'readback-unverified':'Committed reported; readback unverified. Do not repeat.',unknown:'Outcome unknown. Do not repeat. Inspect status if available.', 'pending-approval':'Pending independent approval. Not committed.',denied:'Access denied.',stale:'Stale or expired request. No automatic retry.',invalid:'Invalid response.',unavailable:'Service unavailable.',unsupported:'Unsupported contract.',authentication_required:'Authentication required through Security.',step_up_required:'Strong authentication required through Security.',approval_required:'Independent approval required.'};
@@ -26,7 +26,7 @@ function paint(){
   const allowed=entries.filter(([,type])=>!s.context||s.context.allowedNavigation.includes(type==='role'?'roles':'employees'));if(!allowed.length)continue;const h=node('p',heading);h.className='nav-heading';nav.append(h);
   for(const [label,type,id] of allowed){const b=button(label,()=>open(type,id));if(s.selection?.type===type&&s.selection.id===id)b.setAttribute('aria-current','page');nav.append(b)}
  }
- if(s.selection?.id&&s.selection.type==='role'&&!['mock-r1','mock-r2'].includes(s.selection.id))nav.append(button('Current fictional role',()=>open('role',s.selection.id)))
+ if(s.context?.allowedNavigation.includes('roles')&&s.selection?.id&&s.selection.type==='role'&&!['mock-r1','mock-r2'].includes(s.selection.id))nav.append(button('Current fictional role',()=>open('role',s.selection.id)))
  }
  if(s.ref&&s.locked&&s.phase!=='loading'&&(!s.context||(s.context.allowedNavigation.includes('changes')&&s.context.allowedActions.includes('getChangeStatus'))))nav.append(button('Inspect change status',async()=>{const e=epoch;const p=controller.inspect();paint();await p;if(e===epoch)paint()}));
  scenario.disabled=s.locked;
