@@ -1,0 +1,152 @@
+import {prepareExecutionM7} from './localTransactionM7.js';
+import {createAuthorizationM8,createLocalTransactionM8} from './authorizationM8.js';
+import {fingerprintLightspeedPayload as fp} from './idempotency.js';
+import {identityTargets,proposalFor} from './invoicePersistenceM6.js';
+import {PURCHASING_FIXTURE_OPERATIONS as O} from './purchasingReviewWorkflow.js';
+import {inspectApprovalBinding,inspectCumulativeInvoiceQuantities} from './invoiceReviewContract.js';
+
+// Isolated evidence ledger only. No vendor, stock, payment or remote effects.
+const fail=code=>Object.assign(Error('P11 fixture refused'),{code});
+const copy=x=>{fp(x);return JSON.parse(JSON.stringify(x));};
+const same=(a,b)=>fp(a)===fp(b);
+const exact=x=>typeof x==='string'&&x.length>0&&x.length<=256&&x.trim()===x&&!/[\x00-\x1f\x7f]/.test(x);
+const target=(type,id)=>({type,id}), key=t=>JSON.stringify([t.type,t.id]);
+const invoiceTarget=id=>target('purchasing.invoice',id);
+const historyTarget=(id,rev,action)=>target('purchasing.invoice.'+action,fp([id,rev]));
+const lineTarget=(p,l)=>target('purchasing.po.billed-line',fp([p.supplierId,p.outletId,p.targetPoId,l.poLineId]));
+function linesFor(built){
+ const p=built.evidence.proposal;
+ if(p.mode!=='update_open')return [];
+ const q=built.evidence.quantityEvidence;
+ const totals=inspectCumulativeInvoiceQuantities({proposal:p,priorLines:q.priorLines,coverageComplete:q.coverageComplete});
+ if(totals.state!=='candidate')throw fail('INVOICE_EVIDENCE_UNRESOLVED');
+ return p.lines.map(l=>{
+  const prior=q.priorLines.filter(r=>r.poLineId===l.poLineId);
+  const t=totals.totals.find(r=>r.poLineId===l.poLineId);
+  return {target:lineTarget(p,l),scope:{supplierId:p.supplierId,outletId:p.outletId,poId:p.targetPoId,poLineId:l.poLineId,
+   productId:l.productId,variantId:null,orderedQty:l.orderedQty,poVersion:built.evidence.poVersion,
+   historyVersion:built.evidence.historyVersion,priorDigest:fp(prior),priorQty:t.priorInvoicedQty},quantity:l.invoicedQty,
+   priorInvoiceIds:[...new Set(prior.map(r=>r.invoiceId))]};
+ });
+}
+function nextLine(line,prior,invoiceId,revision,action,current){
+ const record=prior?.record??null;
+ if(record&&!same(record.scope,line.scope))throw fail('INVOICE_BILLED_BASELINE_CHANGED');
+ const reservations=record?.reservations??[];
+ if(!Array.isArray(reservations)||reservations.some(r=>!exact(r.invoiceId)||!Number.isSafeInteger(r.quantity)||r.quantity<=0||
+  !Number.isSafeInteger(r.revision)||r.revision<=0)||new Set(reservations.map(r=>r.invoiceId)).size!==reservations.length||
+  reservations.some(r=>line.priorInvoiceIds.includes(r.invoiceId)))throw fail('INVOICE_BILLED_BASELINE_CHANGED');
+ const old=reservations.find(r=>r.invoiceId===invoiceId);
+ if(current?(!old||old.revision!==current.revision.revision):Boolean(old))throw fail('INVOICE_BILLED_REVISION_CONFLICT');
+ if(action==='approve'&&old.quantity!==line.quantity)throw fail('INVOICE_BILLED_REVISION_CONFLICT');
+ const next=reservations.filter(r=>r.invoiceId!==invoiceId).concat({invoiceId,revision,quantity:line.quantity});
+ const sum=next.reduce((n,r)=>n+r.quantity,line.scope.priorQty);
+ if(!Number.isSafeInteger(sum)||sum>line.scope.orderedQty)throw fail('INVOICE_BILLED_CAPACITY');
+ return {scope:line.scope,reservations:next};
+}
+export function createInvoicePersistenceM8({tenant,transaction,security,decide,readPolicyVersion,resolveEvidenceRef,auditDenied,inspectCommitted,
+ resolveActor,loadEvidence,loadReversal,readTrustedRow,issueProof,clock=()=>new Date(),maxAgeMs=120000}={}){
+ if(![resolveActor,loadEvidence,readTrustedRow,issueProof,decide,readPolicyVersion,resolveEvidenceRef].every(f=>typeof f==='function')||
+ !Number.isSafeInteger(maxAgeMs)||maxAgeMs<=0)throw TypeError('Trusted fixture adapters required');
+ return Object.freeze({async prepare({context,invoiceId,requestId,action}={}){
+  if(!exact(invoiceId)||!exact(requestId)||!['review','approve','reverse'].includes(action))throw fail('INVOICE_REQUEST_INVALID');
+  const actor=copy(await resolveActor(context));
+  if(actor.type!=='employee'||actor.realm!=='employee'||actor.tenant!==tenant||actor.delegation?.kind!=='none')throw fail('CORE_FORBIDDEN');
+  const at=clock().toISOString(),invoice=invoiceTarget(invoiceId),currentRow=await readTrustedRow(invoice),current=currentRow?.record??null;
+  if(current&&(current.version!=='p11.m8'||current.revision.invoiceId!==invoiceId))throw fail('INVOICE_VERSION_CONFLICT');
+  if(current?.reversal)throw fail('INVOICE_REVERSAL_REQUIRES_RECONCILIATION');
+  if(action==='reverse'&&(!current?.approval||typeof loadReversal!=='function'))throw fail('INVOICE_REVERSAL_UNRESOLVED');
+  if(action==='approve'&&(!current||current.approval!==null))throw fail('INVOICE_APPROVAL_CONFLICT');
+  const input=copy(await loadEvidence(invoiceId));
+  if(input.header?.invoiceId!==invoiceId)throw fail('INVOICE_SCOPE_CONFLICT');
+  const proposalAction=action==='reverse'?'approve':action;
+  const built=proposalFor(input,current,proposalAction,at);
+  if(built.state!=='review_required')throw fail('INVOICE_EVIDENCE_UNRESOLVED');
+  const p=built.evidence.proposal,ids=identityTargets(input,p),lines=linesFor(built);
+  // P11 bounded OPEN PO line evidence only; unmapped variants and new PO proposals remain legacy review candidates.
+  if(p.mode!=='update_open'||!lines.length)throw fail('INVOICE_SCOPE_UNRESOLVED');
+  if(current&&(!same(current.identityTargets,ids)||!same(current.lineTargets,lines.map(l=>l.target))||
+   current.revision.supplierId!==p.supplierId||current.revision.outletId!==p.outletId))throw fail('INVOICE_IDENTITY_CHANGED');
+  if(action!=='review'&&built.revision.fingerprint!==current.revision.fingerprint)throw fail('INVOICE_EVIDENCE_CHANGED');
+  const revision=action==='review'?built.revision:current.revision,history=historyTarget(invoiceId,revision.revision,action);
+  // Bounded reversal of local approval evidence only. Keep billed reservations held;
+  // a credit document, payment reversal or release requires separate reconciliation.
+  const reversal=action==='reverse'?copy(await loadReversal(invoiceId)):null;
+  if(reversal&&(!exact(reversal.reference)||!exact(reversal.reasonCode)||reversal.invoiceId!==invoiceId||reversal.supplierId!==p.supplierId||reversal.outletId!==p.outletId||reversal.revision!==revision.revision||reversal.fingerprint!==revision.fingerprint||reversal.approvalRef!==current.approval.approvalRef))throw fail('INVOICE_REVERSAL_UNRESOLVED');
+  if(action==='reverse'&&!reversal)throw fail('INVOICE_REVERSAL_UNRESOLVED');
+  const reversalIdentity=reversal?target('purchasing.invoice.reversal-reference',fp([p.supplierId,reversal.reference])):null;
+  const targets=[invoice,...ids,history,...lines.map(l=>l.target),...(reversalIdentity?[reversalIdentity]:[])];
+  const rows=new Map([[key(invoice),currentRow??null],[key(history),null]]);
+  if(reversalIdentity){const prior=await readTrustedRow(reversalIdentity);if(prior)throw fail('INVOICE_DUPLICATE');rows.set(key(reversalIdentity),null);}
+  for(const t of ids)rows.set(key(t),await readTrustedRow(t)??null);
+  for(const l of lines)rows.set(key(l.target),await readTrustedRow(l.target)??null);
+  for(const t of ids){const r=rows.get(key(t));if(current?r?.record?.invoiceId!==invoiceId:r!==null)throw fail('INVOICE_DUPLICATE');}
+  const planned=lines.map(l=>nextLine(l,rows.get(key(l.target)),invoiceId,revision.revision,proposalAction,current));
+  const effect=(operation,t,fields)=>({operation,target:t,location:p.outletId,fields});
+  const operations=action==='review'?[O.review]:action==='approve'?[O.review,O.approve]:[O.review,'purchasing.invoice.credit.review'];
+  const effects=operations.flatMap(op=>targets.map(t=>effect(op,t,[t.type==='purchasing.po.billed-line'?'billed-quantity':'evidence'])));
+  const execution=prepareExecutionM7({tenant,scope:'test.purchasing.invoice',key:'invoice-'+fp([invoiceId,requestId]),actor,targets,effects,
+   expectedRevisions:targets.map(t=>({target:t,revision:rows.get(key(t))?.revision??null})),
+   payload:{invoiceId,action,supplierId:p.supplierId,outletId:p.outletId,revision:revision.revision,fingerprint:revision.fingerprint,
+    prior:fp(current),recordedAt:at,documentHash:p.documentHash,invoiceNumber:p.invoiceNumber,reviewRef:revision.reviewRef,originalApproval:current?.approval?.approvalRef??null,reversal,proposalLines:p.lines,lines:lines.map(l=>({scope:l.scope,quantity:l.quantity})),identities:ids}});
+  const readEffects=[effect(O.read,invoice,['receipt'])];
+  const reconcileEffects=[effect('purchasing.invoice.receipt.inspect',invoice,['receipt'])];
+  const relation=(type,id)=>({type,id});
+  const decimal=s=>{const [i,f='']=s.split('.');const fraction=f.replace(/0+$/,'');return String(BigInt(i))+(fraction?'.'+fraction:'');};
+  const map=es=>es.flatMap(e=>e.fields.map(field=>{
+    const l=lines.find(l=>key(l.target)===key(e.target));
+    const line=l?p.lines.find(x=>x.poLineId===l.scope.poLineId):null;
+    const relationships=[relation('supplier',p.supplierId),relation('invoice',invoiceId),relation('invoice-number',p.invoiceNumber),
+      relation('document',p.documentHash),relation('review',revision.reviewRef),relation('review-fingerprint',revision.fingerprint),
+      relation('history-version',built.evidence.historyVersion),relation('catalog-version',built.evidence.catalogVersion)];
+    if(current?.approval)relationships.push(relation('original-approval',current.approval.approvalRef));
+    if(reversal)relationships.push(relation('reversal',reversal.reference),relation('reversal-reason',reversal.reasonCode));
+    if(p.targetPoId)relationships.push(relation('po',p.targetPoId),relation('po-version',built.evidence.poVersion));
+    if(line)relationships.push(relation('po-line',line.poLineId),relation('invoice-line',line.invoiceLineId),relation('product',line.productId),relation('catalog-evidence',line.catalogEvidenceRef),relation('supplier-sku',line.supplierSku),relation('ordered-quantity',String(line.orderedQty)),relation('received-quantity','not-observed'));
+    return {operation:e.operation,tenant,environment:'test',location:e.location,resourceType:e.target.type,resourceId:e.target.id,field,
+      revision:String(revision.revision),relationships,quantity:line?String(line.invoicedQty):null,
+      amount:line?decimal(line.unitCost):null,currency:line?line.currency:null,purpose:'invoice-evidence',audience:'purchasing'};
+  }));
+  const evidenceRef=await resolveEvidenceRef(context);
+  const facts=copy({evidenceRef,executionEffects:map(execution.effects),readEffects:map(readEffects),inspectEffects:map(reconcileEffects)});
+  const proof=copy(await issueProof({context,execution,revision:copy(revision),facts:copy(facts)}));
+  const approval=action==='approve'?{invoiceId,revision:revision.revision,fingerprint:revision.fingerprint,approvalRef:proof.reference,
+   recordedAt:at,actor:actor.id,reviewerId:proof.reviewerId,executionDigest:fp(execution)}:null;
+  const authorization=createAuthorizationM8({security,readPolicyVersion,clock:()=>clock().getTime(),
+    deriveScope:()=>facts,decide:async q=>{
+      if(!same(await resolveActor(context),actor)||await resolveEvidenceRef(context)!==evidenceRef||clock().getTime()>=proof.expiresAt||clock().getTime()-Date.parse(at)>maxAgeMs)return {allowed:false};
+      return decide(q);
+    }});
+  const run=createLocalTransactionM8({tenant,transaction,auditDenied,inspectCommitted,authorization,
+   receiptSchema:{version:'purchasing.receipt.v1',fields:['invoiceId','revision','outcome']},projectResult:()=>({})});
+  return Object.freeze({submit:()=>run({execution,approval:proof,readEffects,reconcileEffects,
+   verifyExecution:async({evidence})=>{
+    const row=t=>evidence.find(x=>key(x.target)===key(t))?.row??null;
+    if(targets.some(t=>!same(row(t),rows.get(key(t)))))return false;
+    const fresh=copy(await loadEvidence(invoiceId)),again=proposalFor(fresh,current,proposalAction,at);
+    if(reversal&&!same(await loadReversal(invoiceId),reversal))return false;
+    if(again.state!=='review_required'||!same(again,built)||!same(identityTargets(fresh,again.evidence.proposal),ids)||!same(linesFor(again),lines))return false;
+    if(approval&&inspectApprovalBinding({revision,approval,currentEvidence:again.evidence,now:clock().toISOString(),maxAgeMs}).state!=='binding_matches')return false;
+    return lines.every((l,i)=>same(nextLine(l,row(l.target),invoiceId,revision.revision,proposalAction,current),planned[i]));
+   },
+   apply:async tx=>{
+    if(!current)for(const t of ids)await tx.insertDomain({...t,record:{invoiceId}});
+    const record=action==='review'?{version:'p11.m8',revision:built.revision,evidence:built.evidence,reviewActor:actor.id,
+     previousRevision:current?.revision??null,correctionOf:current?{revision:current.revision.revision,fingerprint:current.revision.fingerprint,approvalRef:current.approval?.approvalRef??null}:null,approval:null,identityTargets:ids,lineTargets:lines.map(l=>l.target)}:action==='approve'?{...current,approval}:{...current,approval:null,reversal:{...reversal,recordedAt:at,actor:actor.id,proofRef:proof.reference,originalApproval:current.approval,reservationState:'held'}};
+    for(let i=0;i<lines.length;i++){
+     const t=lines[i].target,old=rows.get(key(t));
+     if(action==='review'){
+      if(old)await tx.replaceDomain({...t,expectedRevision:old.revision,record:planned[i]});
+      else await tx.insertDomain({...t,record:planned[i]});
+     }
+    }
+    if(reversalIdentity)await tx.insertDomain({...reversalIdentity,record:{invoiceId,reference:reversal.reference}});
+    await tx.insertDomain({...history,record:action==='review'?record:action==='approve'?{invoiceId,approval}:{invoiceId,reversal:record.reversal}});
+    if(current)await tx.replaceDomain({...invoice,expectedRevision:currentRow.revision,record});
+    else await tx.insertDomain({...invoice,record});
+    if(approval)await tx.enqueueCanonical({id:fp([tenant,invoiceId,revision.revision,'approval-recorded']),
+     record:{kind:'invoice-review-approved',invoiceId,revision:revision.revision,fingerprint:revision.fingerprint,approvalRef:approval.approvalRef,executable:false}});
+    return {invoiceId,revision:revision.revision,outcome:action==='review'?'review_recorded':action==='approve'?'approval_recorded':'reversal_recorded'};
+   }})});
+ }});
+}

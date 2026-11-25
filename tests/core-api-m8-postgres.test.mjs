@@ -80,3 +80,24 @@ test('M8 remote denied inspection cannot observe or disclose',()=>withRemoteM7Pg
  assert.equal((await r.engine.run(remoteRequest)).state,'denied');assert.equal(r.writes,1);
  assert.equal((await r.engine.reconcile(remoteRequest)).state,'denied');assert.equal(r.writes,1);
 }));
+
+test('M9 malformed remote evidence during reconciliation remains unknown and retains reservation',()=>withRemoteM7Pg(async f=>{
+ const h=harness(remoteRequest);
+ let malformed=false;
+ const r=remoteEngine(f,h,{observe:()=>{if(!malformed)return null;const values={};values.self=values;return {complete:true,eventId:'invalid',values};}});
+ assert.equal((await r.engine.run(remoteRequest)).state,'unknown');
+ malformed=true;
+ assert.deepEqual(await r.engine.reconcile(remoteRequest),{state:'unknown',retryAllowed:false});
+ assert.equal((await r.engine.run(remoteRequest)).state,'unknown');
+ assert.equal(r.writes,1);
+ assert.equal((await f.counts()).reservations,1);
+}));
+test('M9 causal receipt rejects malformed values even with exact event binding',async()=>{
+ const {validatedRemoteReceiptM7}=await import('../services/lightspeed/remoteMutationM7.js');
+ const e={complete:true,eventId:'ev',digest:hash(remote),predecessor:null,revision:'v2',target:remote.target,values:remote.values};
+ assert.deepEqual(validatedRemoteReceiptM7(remote,hash(remote),'ev',e),{eventId:'ev',revision:'v2'});
+ const cyclic={};cyclic.self=cyclic;
+ assert.equal(validatedRemoteReceiptM7(remote,hash(remote),'ev',{...e,values:cyclic}),null);
+ assert.equal(validatedRemoteReceiptM7(remote,hash(remote),null,{...e,eventId:null}),null);
+ assert.equal(validatedRemoteReceiptM7(remote,hash(remote),'ev',{...e,revision:null}),null);
+});

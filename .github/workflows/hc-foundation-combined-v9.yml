@@ -1,0 +1,76 @@
+name: Combined foundation V9 regression
+on:
+  push:
+    branches: ['test/hc-foundation-combined-v9-20261125']
+permissions:
+  contents: read
+jobs:
+  combined:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: hc_test
+          POSTGRES_PASSWORD: disposable_ci_only
+          POSTGRES_DB: hc_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U hc_test -d hc_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      HC_TEST_DATABASE_URL: postgresql://hc_test:disposable_ci_only@127.0.0.1:5432/hc_test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: ee4e417fcfc1ae4358b0e256ccd8a8dee9073ecd
+          path: .security-source
+          persist-credentials: false
+      - name: Verify exact Security source
+        run: |
+          test "$(git -C .security-source rev-parse HEAD)" = "ee4e417fcfc1ae4358b0e256ccd8a8dee9073ecd"
+          test "$(git -C .security-source hash-object tests/fixtures/hc-secure-s25h-contract.mjs)" = "d04a6db6995e982371c2f7ea25a43faf64090279"
+          test "$(git -C .security-source hash-object tests/fixtures/hc-secure-s25e-role-policy.mjs)" = "79c99f79252f0cc391d0a5c6be7d73f21dd60ff9"
+          test "$(git -C .security-source hash-object tests/fixtures/hc-secure-s25g-lifecycle.mjs)" = "e82a630c567294df0b58d0efc8bac32d3c3a0d73"
+          git rev-parse HEAD
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --ignore-scripts --no-audit --no-fund --package-lock=false
+      - name: Verify syntax and gateway isolation
+        run: |
+          for f in services/lightspeed/*.js routes/sharedLightspeedRead.js; do node --check "$f" || exit 1; done
+          node --check server.js
+          if grep -Eq 'createSharedLightspeedReadRouter|sharedLightspeedRead' server.js; then exit 1; fi
+      - name: Verify exact workstream blobs
+        run: |
+          test "$(git hash-object '.github/workflows/hc-core-api-m9.yml')" = "0503a009b56cef333c62251259ab092f5796d066"
+          test "$(git hash-object 'docs/CORE_API_M9_ADOPTION.md')" = "d12303df6e3b92e97624bab1841b61a5df070349"
+          test "$(git hash-object 'docs/HC_DRAFT_WORKSPACE_0_1.md')" = "a49a8dcb0689a73b07d7a9916c7447127106b5d0"
+          test "$(git hash-object 'tests/core-api-m8-postgres.test.mjs')" = "7f86e825eb50ab4cbbdafe80f07f977faa3dbc0c"
+          test "$(git hash-object 'services/lightspeed/localTransactionM7.js')" = "a6ba8cfcd6d43b8c777a877703ef16b611631797"
+          test "$(git hash-object 'services/lightspeed/localTransactionM8Internal.js')" = "22acfb89f28581fcc28c3f05b9af89a3f30038c2"
+          test "$(git hash-object 'services/lightspeed/remoteMutationM7.js')" = "b84bbd68fef175c3314ce32b276499baed0ecf15"
+          test "$(git hash-object 'services/lightspeed/remoteMutationM8Internal.js')" = "40302dd3c0db309200f0d3525275294e28ebdd41"
+          test "$(git hash-object '.github/workflows/hc-customer-sales-m11.yml')" = "655eb1ddd592a539010d169789a9f5a7bb9ca463"
+          test "$(git hash-object 'docs/CUSTOMER_SALES_M11.md')" = "49cb25d958040e95607c1c9024c85f11cb2cc420"
+          test "$(git hash-object 'services/lightspeed/customerSalesM11.js')" = "a1140ea8ec571c63dca31d07377952ea0e73c28e"
+          test "$(git hash-object 'tests/customer-sales-m11-postgres.test.mjs')" = "1b4585fb5ba8ff012e2e174d1ae2d2401c258fbc"
+          test "$(git hash-object '.github/workflows/hc-catalog-v8-m11.yml')" = "01ecde69d8266620b2da3dfc8008e4858ffdf4ec"
+          test "$(git hash-object 'docs/PRODUCT_CATALOG_V8_M11.md')" = "994113e1a1fd836afb939005da741bec04fad025"
+          test "$(git hash-object 'tests/product-catalog-v8-m11.test.mjs')" = "fab881eb44f1c2c00390b0e5c802230d666ca6cf"
+          test "$(git hash-object '.github/workflows/hc-inventory-m11.yml')" = "9f0791738d8eb711e6cce78ee84efa5168192e87"
+          test "$(git hash-object 'docs/INVENTORY_M11_ADOPTION.md')" = "667466b18d257b6db5f1c066f6337a60727aa2fb"
+          test "$(git hash-object 'tests/inventory-m11-postgres.test.mjs')" = "355bbd1d3ef274ff600997c763212d57b7914c09"
+          test "$(git hash-object '.github/workflows/hc-purchasing-p11-v8.yml')" = "508a96bc2740808674227db08487812038ace9fe"
+          test "$(git hash-object 'docs/PURCHASING_P11_V8.md')" = "2e386b669072ed54d4e38c18f0b7dfc988762593"
+          test "$(git hash-object 'services/lightspeed/invoicePersistenceM8.js')" = "ea1fa4f85cb3d391d5858342f5bfe5eb28999ee2"
+          test "$(git hash-object 'tests/purchasing-foundation-m11-postgres.test.mjs')" = "45708ccc712f2ba5d8147369393b7f43cf937c1c"
+      - name: Run combined foundation regression
+        run: node --test tests/core-api-m1.test.mjs tests/core-api-m3-integration.test.mjs tests/core-api-m4-capabilities.test.mjs tests/core-api-m4-postgres.test.mjs tests/core-ops-auth-session.test.mjs tests/core-ops-navigation.test.mjs tests/customer-identity-m5.test.mjs tests/customer-sales-evidence.test.mjs tests/customer-sales-m6.test.mjs tests/inventory-foundation-m1.test.mjs tests/inventory-locations.test.mjs tests/inventory-m6-transaction.test.mjs tests/inventory-persistence.test.mjs tests/product-catalog-m1.test.mjs tests/product-catalog-m2.test.mjs tests/product-catalog-m3.test.mjs tests/product-catalog-m4.test.mjs tests/product-catalog-m5.test.mjs tests/product-catalog-v2-shadow.test.mjs tests/product-catalog-v3-m6.test.mjs tests/purchasing-foundation-m1.test.mjs tests/purchasing-foundation-m2.test.mjs tests/purchasing-foundation-m3.test.mjs tests/purchasing-foundation-m4.test.mjs tests/purchasing-foundation-m5.test.mjs tests/purchasing-foundation-m6.test.mjs tests/shared-lightspeed-adapters.test.mjs tests/shared-lightspeed-foundation.test.mjs tests/shared-lightspeed-postgres.test.mjs tests/shared-lightspeed-reads.test.mjs tests/inventory-m7-postgres.test.mjs tests/core-api-m5-postgres.test.mjs tests/purchasing-foundation-m7-postgres.test.mjs tests/product-catalog-v4-m7.test.mjs tests/customer-sales-m7.test.mjs tests/core-api-m6-postgres.test.mjs tests/product-catalog-v5-m8.test.mjs tests/inventory-m8-postgres.test.mjs tests/customer-sales-m8.test.mjs tests/purchasing-foundation-m8-postgres.test.mjs tests/core-api-m7-postgres.test.mjs tests/core-api-m7-remote-postgres.test.mjs tests/product-catalog-v6-m9.test.mjs tests/customer-sales-m9.test.mjs tests/purchasing-foundation-m9-postgres.test.mjs tests/inventory-m9-postgres.test.mjs tests/core-api-m8-postgres.test.mjs tests/product-catalog-v7-m10.test.mjs tests/customer-sales-m10-postgres.test.mjs tests/customer-sales-m10-source.test.mjs tests/purchasing-foundation-m10-postgres.test.mjs tests/inventory-m10-postgres.test.mjs tests/customer-sales-m11-postgres.test.mjs tests/product-catalog-v8-m11.test.mjs tests/inventory-m11-postgres.test.mjs tests/purchasing-foundation-m11-postgres.test.mjs
