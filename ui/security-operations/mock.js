@@ -35,11 +35,11 @@ export function createMock(scenario='normal'){
   if(scenario==='error')throw new Error('synthetic internal failure');
   if(scenario==='unsupported')return {...envelope('ok',{}),contractVersion:'9.0.0'};
   if(scenario==='missing')return envelope('ok',{});
-  if(!['normal','empty'].includes(scenario))return envelope(scenarios.includes(scenario)?scenario:'unsupported');
+  if(!['normal','empty','no-explain'].includes(scenario))return envelope(scenarios.includes(scenario)?scenario:'unsupported');
   return fn();
  }
  const methods={
-  getAdminContext:()=>run(()=>envelope('ok',{identityLabel:'Fictional administrator',environment:'Synthetic offline',policyVersion:'mock-policy-1',allowedNavigation:[...pages],allowedActions:['explainAccess'],assuranceState:'Synthetic only'})),
+  getAdminContext:()=>run(()=>envelope('ok',{identityLabel:'Fictional administrator',environment:'Synthetic offline',policyVersion:'mock-policy-1',allowedNavigation:[...pages],allowedActions:scenario==='no-explain'?[]:['explainAccess'],assuranceState:'Synthetic only'})),
   searchEmployees:q=>run(()=>page(scenario==='empty'?[]:employees,q)),
   getEmployee:({employeeId})=>run(()=>{const e=employees.find(x=>x.id===employeeId);return e?envelope('ok',e):envelope('denied')}),
   listRoles:q=>run(()=>page(scenario==='empty'?[]:roles,q)),
