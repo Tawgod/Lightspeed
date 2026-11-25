@@ -20,3 +20,29 @@ export async function read(method,validate){try{return decode(await method(),val
 export function navigation(context){return validContext(context)?pages.filter(p=>context.allowedNavigation.includes(p)):[]}
 export function canExplain(context){return navigation(context).includes('access')&&context.allowedActions.includes('explainAccess')}
 export function latestOnly(){let generation=0;return {start:()=>++generation,current:g=>g===generation,invalidate:()=>++generation}}
+
+ // Local fixture transport only. Neither the snapshot nor the request ID is backend authority.
+const snapshot=(method,args)=>JSON.stringify([method,args]);
+let fixtureSequence=0;
+export function fixtureTransport(adapter,alter=reply=>reply){
+ return async (method,args,id)=>{
+  const binding=snapshot(method,args);
+  const envelope=await adapter[method](args);
+  return alter({binding,envelope:{...envelope,requestId:id}},method);
+ };
+}
+export async function readBound(transport,method,args,validate,policy){
+ try{
+  const copy=JSON.parse(JSON.stringify(args??{})),binding=snapshot(method,copy);
+  if(method==='explainAccess'&&![copy.employeeId,copy.operationId,copy.scope?.location,copy.scope?.resource].every(x=>str(x)&&x.trim()))return {state:'invalid'};
+  const id='local-fixture-'+(++fixtureSequence);
+  const reply=await transport(method,copy,id);
+  if(!reply||reply.binding!==binding||reply.envelope?.requestId!==id)return {state:'invalid'};
+  const r=decode(reply.envelope,validate);
+  if(r.state!=='ok')return r;
+  if(policy!==undefined&&reply.envelope.policyVersion!==policy)return {state:'stale'};
+  if(method==='getAdminContext'&&reply.envelope.policyVersion!==r.data.policyVersion)return {state:'stale'};
+  if((method==='getEmployee'&&r.data.id!==copy.employeeId)||(method==='getRole'&&r.data.id!==copy.roleId))return {state:'invalid'};
+  return r;
+ }catch{return {state:'error'}}
+}
