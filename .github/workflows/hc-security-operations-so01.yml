@@ -13,4 +13,4 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - run: node --check ui/security-operations/app.js && node --test tests/security-operations/consumer.test.js
+      - run: node --check ui/security-operations/app.js && node --check ui/security-operations/consumer.js && node --check ui/security-operations/mock.js && node --test tests/security-operations/consumer.test.js
