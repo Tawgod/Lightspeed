@@ -253,3 +253,16 @@ test('first-page consumer remains usable when later paginated page fails',async(
  await assert.rejects(readers.search('Jane'),/later page unavailable/);
  assert.equal(calls.length,3);
 });
+
+test('M10 Special Orders actual route retains leading-zero IDs and optional local profile fields without changing vendor rows',async()=>{
+ const body={data:[{id:'0007',first_name:'Jane',last_name:'Doe',email:'fixture@example.test'},{id:'007',first_name:'Jane'}]};
+ const local=[{lightspeed_customer_id:'0007',id:'local-0007',discord_handle:'fixture',facebook_messenger_id:'fixture-fb',whatsapp_number:'fixture-wa',phone:'5550100',notes:'fixture note'}];
+ const before=structuredClone(body);
+ const actual=await runCustomerRoute({q:'Jane',body,local});
+ const candidate=await runCustomerRoute({candidate:true,q:'Jane',body,local});
+ assert.deepEqual(candidate,actual);
+ assert.deepEqual(candidate.result.map(x=>x.id),['0007','007']);
+ assert.equal(candidate.result[0].local_customer_id,'local-0007');
+ assert.equal(candidate.result[0].special_orders_notes,'fixture note');
+ assert.deepEqual(candidate.result[1],body.data[1]);assert.deepEqual(body,before);
+});
