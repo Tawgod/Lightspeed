@@ -9,12 +9,13 @@ export function createController(adapter){
  function edit(){generation++;preview=null;phase=locked?'unknown':'editing'}
  async function call(method,args,g){return invoke(adapter,method,args,{context,target,options,preview,generation:g,current})}
  async function bootstrap(g){const r=await call('getAdminContext',{},g);if(!current(g))return false;if(r.state!=='ok'){clear();phase=r.state;return false}context=r.data;return true}
+ async function initialize(){if(locked)return snapshot();const g=++generation;clear();selection=null;phase='loading';if(await bootstrap(g)&&current(g))phase='idle';return snapshot()}
  async function open(type,id){
   if(locked)return snapshot();const g=++generation;clear();selection={type,id};phase='loading';
   if(!await bootstrap(g)||!current(g))return snapshot();
   if(id===null&&type==='role')target={allowedActions:[...context.allowedActions]};
   else{const r=await call(type==='role'?'getRole':'getAssignments',type==='role'?{roleId:id}:{employeeId:id},g);if(!current(g))return snapshot();if(r.state!=='ok'){clear();phase=r.state;return snapshot()}target=r.data}
-  const o=await call('getEditOptions',{targetType:type,targetId:id},g);if(!current(g))return snapshot();if(o.state!=='ok'){clear();phase=o.state;return snapshot()}options=o.data;phase=locked?'unknown':'editing';return snapshot()
+  const o=await call('getEditOptions',{targetType:type,targetId:id},g);if(!current(g))return snapshot();if(o.state!=='ok'){clear();phase=o.state;return snapshot()}options=o.data;if(type==='role'&&id!==null&&target.role.rules.some(r=>!options.operations.some(op=>op.id===r.operationId&&op.scopes.some(s=>equal(s,r.scope)))))options={...options,allowedChanges:options.allowedChanges.filter(k=>k!=='role.update')};phase=locked?'unknown':'editing';return snapshot()
  }
  async function requestPreview(intent){
   if(locked||!context||!target||!options)return snapshot();
@@ -50,15 +51,16 @@ export function createController(adapter){
  async function inspect(){
   if(!changeRef(ref))return snapshot();
   const g=++generation;clear();phase='loading';
-  if(!await bootstrap(g)||!current(g))return snapshot();
+  if(!await bootstrap(g)||!current(g)){if(current(g)&&reported?.outcome==='committed')phase='readback-unverified';return snapshot()}
   const r=await call('getChangeStatus',{changeId:ref.changeId},g);
   if(!current(g))return snapshot();
   if(r.state!=='ok'){clear();phase=reported?.outcome==='committed'?'readback-unverified':r.state;return snapshot()}
   const d=r.data;
-  if(d.targetType!==ref.targetType||(ref.targetId!==null&&d.targetId!==ref.targetId)){clear();phase='invalid';return snapshot()}
+  if(d.targetType!==ref.targetType||(ref.targetId!==null&&d.targetId!==ref.targetId)){clear();phase=reported?.outcome==='committed'?'readback-unverified':'invalid';return snapshot()}
+  if(reported?.outcome==='committed'&&d.outcome!=='committed'){clear();phase='readback-unverified';locked=true;return snapshot()}
   if(d.outcome==='committed')await readback(d,g);
   else{clear();phase=d.outcome;locked=d.outcome!=='denied'}
   return snapshot()
  }
- return {snapshot,open,edit,invalidate,requestPreview,confirm,inspect}
+ return {snapshot,initialize,open,edit,invalidate,requestPreview,confirm,inspect}
 }
