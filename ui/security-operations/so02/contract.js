@@ -10,7 +10,7 @@ const one=(...a)=>v=>a.includes(v), nullable=f=>v=>v===null||f(v);
 const obj=(v,s)=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===Object.keys(s).length&&Object.entries(s).every(([k,f])=>Object.hasOwn(v,k)&&f(v[k]));
 export const canonical=v=>JSON.stringify(v,undefined,0);
 export const equal=(a,b)=>{if(a===b)return true;if(!a||!b||typeof a!=='object'||typeof b!=='object'||Array.isArray(a)!==Array.isArray(b))return false;return Object.keys(a).length===Object.keys(b).length&&Object.keys(a).every(k=>Object.hasOwn(b,k)&&equal(a[k],b[k]))};
-const arr=(f,key=v=>v)=>v=>Array.isArray(v)&&v.length<=100&&v.every(f)&&v.every((x,i)=>!v.slice(0,i).some(y=>equal(key(x),key(y))));
+const arr=(f,key=v=>v)=>v=>Array.isArray(v)&&v.length<=100&&v.every(x=>f(x))&&v.every((x,i)=>!v.slice(0,i).some(y=>equal(key(x),key(y))));
 const labels=arr(text), acts=arr(one(...actions)), env=one('mock-test'), target=one('role','employee');
 export const scope=v=>obj(v,{tenant:id,environment:env,location:id,resourceType:id,resourceId:id,field:id});
 export const rule=v=>obj(v,{operationId:id,scope,kind:one('grant','restrict'),expiresAt:nullable(time)});
