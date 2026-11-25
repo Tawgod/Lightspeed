@@ -12,3 +12,29 @@ test('unknown state and malformed records',()=>{assert.equal(C.decode({contractV
 test('non-ok payload discarded',()=>{assert.deepEqual(C.decode({contractVersion:'0.1.0',requestId:'x',status:'denied',data:{secret:'x'}},()=>true),{state:'denied'})});
 test('late response invalidation',()=>{const g=C.latestOnly(),a=g.start(),b=g.start();assert.equal(g.current(a),false);assert.equal(g.current(b),true);g.invalidate();assert.equal(g.current(b),false)});
 test('static browser safety and accessible structure',()=>{const root=new URL('../../ui/security-operations/',import.meta.url);const html=readFileSync(new URL('index.html',root),'utf8'),app=readFileSync(new URL('app.js',root),'utf8'),css=readFileSync(new URL('styles.css',root),'utf8');assert.match(html,/connect-src 'none'/);assert.match(html,/form-action 'none'/);assert.match(html,/aria-live="polite"/);assert.match(html,/lang="en"/);assert.match(app,/textContent/);assert.doesNotMatch(app,/innerHTML|insertAdjacentHTML|fetch\s*\(|XMLHttpRequest/);assert.match(css,/@media/);assert.match(css,/:focus-visible/)});
+
+const args={employeeId:'mock-e1',operationId:'mock-o1',scope:{location:'Mock North',resource:'mock-resource-1'}};
+const policy='mock-policy-1';
+const cases=[['searchEmployees',{},C.validPage(C.validEmployee)],['getEmployee',{employeeId:'mock-e1'},C.validEmployee],['listRoles',{},C.validPage(C.validRole)],['getRole',{roleId:'mock-r1'},C.validRole],['listOperations',{},C.validPage(C.validOperation)],['getAssignments',{employeeId:'mock-e1'},C.validAssignments],['explainAccess',args,C.validExplanation]];
+for(const [method,input,validator] of cases)test('bound request-specific failures '+method,async()=>{
+ const ctx=await C.readBound(C.fixtureTransport(mock),'getAdminContext',{},C.validContext);
+ assert.equal(ctx.state,'ok');
+ assert.equal((await C.readBound(C.fixtureTransport(mock),method,input,validator,policy)).state,'ok');
+ for(const status of ['denied','stale','unavailable','authentication_required','step_up_required','approval_required','invalid']){
+  const t=C.fixtureTransport(mock,r=>({...r,envelope:{...r.envelope,status,data:{secret:'hidden'}}}));
+  assert.deepEqual(await C.readBound(t,method,input,validator,policy),{state:status});
+ }
+ const malformed=C.fixtureTransport(mock,r=>({...r,envelope:{...r.envelope,data:{}}}));
+ assert.deepEqual(await C.readBound(malformed,method,input,validator,policy),{state:'invalid'});
+});
+test('unique synthetic request identifiers',async()=>{assert.notEqual((await mock.getAdminContext()).requestId,(await mock.getAdminContext()).requestId);const seen=[];const t=C.fixtureTransport(mock,r=>{seen.push(r.envelope.requestId);return r});await C.readBound(t,'getAdminContext',{},C.validContext);await C.readBound(t,'getAdminContext',{},C.validContext);assert.notEqual(...seen)});
+test('local fixture binding mismatch or omission fails closed',async()=>{
+ for(const alter of [r=>({...r,binding:undefined}),r=>({...r,binding:'[]'}),r=>({...r,binding:r.binding.replace('mock-e1','mock-e2')}),r=>({...r,binding:r.binding.replace('mock-o1','mock-o2')}),r=>({...r,binding:r.binding.replace('Mock North','Mock South')}),r=>({...r,envelope:{...r.envelope,requestId:'wrong'}}),r=>({...r,envelope:{...r.envelope,requestId:undefined}})]){
+ assert.deepEqual(await C.readBound(C.fixtureTransport(mock,alter),'explainAccess',args,C.validExplanation,policy),{state:'invalid'});
+ }
+});
+test('wrong detail subject fails closed',async()=>{for(const [method,input,validator] of cases.filter(x=>['getEmployee','getRole'].includes(x[0]))){const t=C.fixtureTransport(mock,r=>({...r,envelope:{...r.envelope,data:{...r.envelope.data,id:'wrong'}}}));assert.deepEqual(await C.readBound(t,method,input,validator,policy),{state:'invalid'})}});
+test('policy mismatch and absence fail closed in fixture profile',async()=>{for(const policyVersion of [undefined,'wrong']){const t=C.fixtureTransport(mock,r=>({...r,envelope:{...r.envelope,policyVersion}}));assert.deepEqual(await C.readBound(t,'explainAccess',args,C.validExplanation,policy),{state:'stale'})}});
+test('partial explanation scope rejected before invocation',async()=>{for(const scope of [{location:'Mock North'},{resource:'mock-resource-1'},{location:' ',resource:'x'}]){assert.deepEqual(await C.readBound(()=>assert.fail('must not call'),'explainAccess',{...args,scope},C.validExplanation,policy),{state:'invalid'})}});
+test('missing capabilities suppress navigation and explanations',async()=>{const r=await C.readBound(C.fixtureTransport(mock,r=>({...r,envelope:{...r.envelope,data:{...r.envelope.data,allowedActions:undefined}}})),'getAdminContext',{},C.validContext);assert.deepEqual(r,{state:'invalid'});assert.deepEqual(C.navigation(r.data),[]);assert.equal(C.canExplain(r.data),false)});
+test('out-of-order fixture replies discarded by generation guard',async()=>{const guard=C.latestOnly(),pending=[];const t=C.fixtureTransport(mock);const delayed=(...a)=>new Promise(resolve=>pending.push(()=>resolve(t(...a))));const first=guard.start(),a=C.readBound(delayed,'explainAccess',args,C.validExplanation,policy);const second=guard.start(),b=C.readBound(delayed,'explainAccess',{...args,scope:{...args.scope,location:'Mock South'}},C.validExplanation,policy);pending[1]();assert.equal((await b).data.decision,'denied');assert.equal(guard.current(second),true);pending[0]();assert.equal((await a).data.decision,'allowed');assert.equal(guard.current(first),false);guard.invalidate();assert.equal(guard.current(second),false)});
