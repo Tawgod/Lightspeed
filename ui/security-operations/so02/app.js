@@ -1,6 +1,7 @@
 import {createMock02,scenarios} from './mock.js';
 import {createController} from './controller.js';
-import {intent as validIntent,admitted} from './contract.js';
+import {intent as validIntent,admitted,equal} from './contract.js';
+import {createPermissionDraft} from './permissionDraft.js';
 const $=id=>document.getElementById(id),node=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;return n};
 const content=$('content'),status=$('status'),nav=$('nav'),scenario=$('scenario');
 let controller,adapter,epoch=0,draftRules=[],formVersion=0,currentPanel,editorPanel;
@@ -54,7 +55,23 @@ function paint(){
   if(k==='membership.add'){role=select(fields,'Role',o.roles.map(r=>[r.id,r.label+' · '+r.id]));expires=makeExpiry(fields,'Membership expiration (local time)')}
   if(k==='membership.revoke')member=select(fields,'Membership',s.target.memberships.map(m=>[m.id,roleLabel(m.roleId,s)+' · '+m.status+' ['+m.id+']']));
   if(k==='individual.revoke')individual=select(fields,'Individual assignment',s.target.individual.map(i=>[i.id,ruleText(i.rule,s)+' · '+i.status+' ['+i.id+']']));
-  if(['role.create','role.update','individual.add'].includes(k)){
+  if(['role.create','role.update'].includes(k)){
+   const draft=node('section');draft.append(node('h3','Permissions in proposed role'));const rows=node('div');rows.className='draft-list';
+   const render=()=>{rows.replaceChildren();for(const r of draftRules){const row=node('div');row.className='draft-row';row.append(node('p',ruleText(r,s)));rows.append(row)}if(!draftRules.length)rows.append(node('p','No proposed permissions.'))};
+   const launch=button('Manage permissions',()=>{
+    const e=epoch,v=formVersion, model=createPermissionDraft(draftRules,o.operations);
+    const dialog=node('dialog');dialog.className='permission-dialog';dialog.setAttribute('aria-labelledby','permission-dialog-title');const title=node('h2','Manage role permissions');title.id='permission-dialog-title';
+    dialog.append(title,node('p','Check permissions to add, uncheck to remove. Changes remain a draft until you review and explicitly confirm. Only supplied exact scope combinations are available.'));
+    const search=input(dialog,'Search available permissions');const list=node('div');list.className='picker-list';dialog.append(list);
+    const count=node('p');count.className='muted';dialog.append(count);const updateCount=()=>{count.textContent=model.rules().length+' proposed rules'};
+    const renderPicker=()=>{list.replaceChildren();for(const op of o.operations.filter(x=>(x.label+' '+x.id).toLowerCase().includes(search.value.toLowerCase()))){const group=node('fieldset');group.append(node('legend',op.label));for(const scope of op.scopes){const card=node('div');card.className='picker-scope';card.append(node('p',friendlyScope(scope)));for(const kind of ['grant','restrict']){const label=node('label');label.className='picker-check';const box=node('input');box.type='checkbox';box.checked=model.has(op.id,scope,kind);const caption=node('span',kind==='grant'?'Grant':'Restriction');label.append(box,caption);card.append(label);const exp=input(card,(kind==='grant'?'Grant':'Restriction')+' expiry (local time; blank = none)','','datetime-local');exp.step='0.001';const old=model.find(op.id,scope,kind);if(old?.expiresAt!==null&&old?.expiresAt!==undefined){const d=new Date(old.expiresAt);if(Number.isFinite(d.getTime()))exp.value=new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,-1)}exp.disabled=!box.checked;
+     box.addEventListener('change',()=>{model.toggle(op.id,scope,kind,box.checked);exp.disabled=!box.checked;if(!box.checked)exp.value='';updateCount()});exp.addEventListener('input',()=>{model.setExpiry(op.id,scope,kind,exp.value?new Date(exp.value).getTime():null);updateCount()})}group.append(card)}list.append(group)}if(!list.children.length)list.append(node('p','No matching permissions.'));updateCount()};
+    search.addEventListener('input',renderPicker);renderPicker();
+    if(model.unoffered().length){const warning=node('p','Some existing rules are not in the supplied catalog. They are preserved unchanged; this editor cannot remove or alter them.');warning.className='scope-help';dialog.append(warning)}
+    const actions=node('div');actions.className='action-row';const apply=button('Apply to draft',()=>{if(e!==epoch||v!==formVersion||controller.snapshot().locked){dialog.close();return}draftRules=model.rules();formVersion++;controller.edit();status.textContent=labels.editing;render();dialog.close()});apply.className='primary';actions.append(apply,button('Cancel',()=>dialog.close()));dialog.append(actions);dialog.addEventListener('close',()=>{dialog.remove();if(launch.isConnected)launch.focus()});document.body.append(dialog);dialog.showModal();search.focus()
+   });draft.append(rows,launch);fields.append(draft);render()
+  }
+  if(k==='individual.add'){
    const catalog=node('section');catalog.append(node('h3','Available permissions'),node('p','Choose a permission from the supplied fictional catalog. This list is not a production permission registry.'));
    fields.append(catalog);const search=input(catalog,'Search permissions by name or ID');const list=node('div');list.className='permission-list';list.setAttribute('role','group');list.setAttribute('aria-label','Available permissions');catalog.append(list);
    let selectedOp=null;scope=select(fields,'Where and what may this permission cover?',[['','Choose a permission first']]);scope.disabled=true;
@@ -68,7 +85,6 @@ function paint(){
    search.addEventListener('input',()=>{if(selectedOp&&!o.operations.some(x=>x.id===selectedOp&&(x.label+' '+x.id).toLowerCase().includes(search.value.toLowerCase()))){selectedOp=null;refreshScope()}renderCatalog()});renderCatalog();
    ruleKind=select(fields,'Access decision',[['grant','Grant — allow this permission'],['restrict','Restriction — explicitly deny this permission']]);ruleExpiry=makeExpiry(fields,'Permission expiration (local time; blank = no scripted expiry)');
    const getRule=()=>({operationId:selectedOp,scope:scope.value===''?undefined:o.operations.find(x=>x.id===selectedOp)?.scopes[Number(scope.value)],kind:ruleKind.value,expiresAt:readExpiry(ruleExpiry)});
-   if(k!=='individual.add'){const draft=node('section');draft.append(node('h3','Permissions in proposed role'));const rows=node('div');rows.className='draft-list';const render=()=>{rows.replaceChildren();draftRules.forEach((r,i)=>{const row=node('div');row.className='draft-row';row.append(node('p',ruleText(r,s)),button('Remove proposed rule '+(i+1),()=>{draftRules.splice(i,1);markEdit();render()}));rows.append(row)});if(!draftRules.length)rows.append(node('p','No proposed permissions.'))};const add=button('Add selected permission to role',()=>{const r=getRule();if(!r.scope){status.textContent='Choose a permission and exact scope first.';return}if(draftRules.some(x=>x.operationId===r.operationId&&x.kind===r.kind&&JSON.stringify(x.scope)===JSON.stringify(r.scope))){status.textContent='This permission and scope are already in the proposed role.';return}draftRules.push(r);markEdit();render()});draft.append(rows,add);fields.append(draft);render()}
    if(k==='individual.add')fields.getRule=getRule;
   }
   fields.makeIntent=()=>{
