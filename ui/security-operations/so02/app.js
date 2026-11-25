@@ -10,7 +10,7 @@ function field(parent,label,control){const l=node('label',label);l.className='fi
 function select(parent,label,values){const s=node('select');for(const [v,l] of values){const o=node('option',l);o.value=v;s.append(o)}return field(parent,label,s)}
 function input(parent,label,value='',type='text'){const n=node('input');n.type=type;n.value=value;return field(parent,label,n)}
 function renderRows(title,rows){const a=node('article');a.append(node('h3',title));for(const line of rows)a.append(node('p',line));if(!rows.length)a.append(node('p','None supplied'));content.append(a)}
-const expiry=v=>v===null?'No scripted expiry':new Date(v).toISOString();
+const expiry=v=>v===null?'No scripted expiry':Number.isFinite(new Date(v).getTime())?new Date(v).toISOString():'Outside displayable date range';
 const scopeText=r=>[r.scope.location,r.scope.resourceType,r.scope.resourceId,r.scope.field].join(' / ');
 const ruleText=r=>r.kind+' · '+r.operationId+' · '+scopeText(r)+' · '+expiry(r.expiresAt);
 function paint(){
@@ -23,12 +23,12 @@ function paint(){
  }
  if(s.selection?.id&&s.selection.type==='role'&&!['mock-r1','mock-r2'].includes(s.selection.id))nav.append(button('Current fictional role',()=>open('role',s.selection.id)))
  }
- if(s.ref&&s.locked)nav.append(button('Inspect change status',async()=>{const e=epoch;const p=controller.inspect();paint();await p;if(e===epoch)paint()}));
+ if(s.ref&&s.locked&&(!s.context||(s.context.allowedNavigation.includes('changes')&&s.context.allowedActions.includes('getChangeStatus'))))nav.append(button('Inspect change status',async()=>{const e=epoch;const p=controller.inspect();paint();await p;if(e===epoch)paint()}));
  scenario.disabled=s.locked;
  if(!s.context||!s.target)return;
  if(s.target.role){const r=s.target.role;renderRows('Current role',[r.label+' · '+r.id,r.status+' · '+expiry(r.expiresAt),...r.rules.map(ruleText)])}
  if(s.target.memberships){renderRows('Role memberships',s.target.memberships.map(m=>m.roleId+' · '+m.status+' · '+expiry(m.expiresAt)));renderRows('Direct grants',s.target.individual.filter(i=>i.rule.kind==='grant').map(i=>i.status+' · '+ruleText(i.rule)));renderRows('Overriding restrictions',s.target.individual.filter(i=>i.rule.kind==='restrict').map(i=>i.status+' · '+ruleText(i.rule)))}
- if(s.preview){const p=s.preview;renderRows('Proposed change — supplied preview',[p.impact.summary,'Gained: '+(p.impact.gained.join('; ')||'None supplied'),'Lost: '+(p.impact.lost.join('; ')||'None supplied'),'Conflicts: '+(p.impact.conflicts.join('; ')||'None supplied'),'Assurance: '+p.requiredAssurance,'Approval: '+p.requiredApproval,'Expires: '+expiry(p.expiresAt)]);
+ if(s.preview){const p=s.preview;const change=p.intent.change;renderRows('Proposed intent',[p.intent.kind,'Reason: '+p.intent.reason,...(change.label?['Role label: '+change.label]:[]),...(change.roleId?['Role: '+change.roleId]:[]),...(change.membershipId?['Membership: '+change.membershipId]:[]),...(change.individualId?['Assignment: '+change.individualId]:[]),...(change.rules??(change.rule?[change.rule]:[])).map(ruleText),...(Object.hasOwn(change,'expiresAt')?['Expiration: '+expiry(change.expiresAt)]:[])]);renderRows('Proposed change — supplied preview',[p.impact.summary,'Gained: '+(p.impact.gained.join('; ')||'None supplied'),'Lost: '+(p.impact.lost.join('; ')||'None supplied'),'Conflicts: '+(p.impact.conflicts.join('; ')||'None supplied'),'Assurance: '+p.requiredAssurance,'Approval: '+p.requiredApproval,'Expires: '+expiry(p.expiresAt)]);
  const confirm=button('Explicitly confirm synthetic change',async()=>{const e=epoch;const task=controller.confirm();paint();await task;if(e===epoch)paint()});confirm.disabled=!admitted('confirmChange',{previewId:p.previewId,expectedRevision:p.intent.expectedRevision},s.context,s.target,p,s.options);content.append(confirm,button('Discard preview',()=>{controller.edit();paint()}));return}
  if(!s.options||s.locked||s.phase==='verified')return;
  const o=s.options;if(!o.allowedChanges.length||!s.context.allowedActions.includes('previewChange')||!s.target.allowedActions.includes('previewChange'))return;
@@ -46,7 +46,7 @@ function paint(){
   if(k==='membership.revoke')member=select(fields,'Membership',s.target.memberships.map(m=>[m.id,m.roleId+' · '+m.status+' · '+m.id]));
   if(k==='individual.revoke')individual=select(fields,'Individual assignment',s.target.individual.map(i=>[i.id,i.rule.kind+' · '+i.status+' · '+i.id]));
   if(['role.create','role.update','individual.add'].includes(k)){
-   const search=input(fields,'Find permission by operation label or ID');op=select(fields,'Permission',o.operations.map(x=>[x.id,x.label+' · '+x.id]));scope=select(fields,'Exact location / resource / field',[]);
+   const search=input(fields,'Find permission by supplied operation label or ID');op=select(fields,'Permission',o.operations.map(x=>[x.id,x.label+' · '+x.id]));scope=select(fields,'Exact location / resource / field',[]);
    const refresh=()=>{scope.replaceChildren();const x=o.operations.find(x=>x.id===op.value);for(const [i,t] of (x?.scopes??[]).entries()){const option=node('option',[t.location,t.resourceType,t.resourceId,t.field].join(' / '));option.value=String(i);scope.append(option)}};
    search.addEventListener('input',()=>{op.replaceChildren();for(const x of o.operations.filter(x=>(x.label+' '+x.id).toLowerCase().includes(search.value.toLowerCase()))){const n=node('option',x.label+' · '+x.id);n.value=x.id;op.append(n)}refresh()});op.addEventListener('change',refresh);refresh();
    ruleKind=select(fields,'Assignment kind',[['grant','Grant'],['restrict','Overriding restriction']]);ruleExpiry=makeExpiry(fields,'Rule expiration (local time)');
