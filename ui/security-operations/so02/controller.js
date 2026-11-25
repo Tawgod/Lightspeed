@@ -43,7 +43,7 @@ export function createController(adapter){
    const d=r.data;ref={changeId:d.changeId,targetType:d.targetType,targetId:d.targetId};
    if(d.outcome==='committed')await readback(d,g);
    else{clear();phase=d.outcome;locked=d.outcome!=='denied'}
-  }else{ref=r.ref??null;clear();phase=r.state;locked=true}
+  }else{ref=r.ref??null;clear();phase=r.state;locked=!['stale','denied','authentication_required','step_up_required','approval_required'].includes(r.state)}
   return snapshot()
  }
  async function inspect(){
