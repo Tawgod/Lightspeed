@@ -23,7 +23,7 @@ function paint(){
  }
  if(s.selection?.id&&s.selection.type==='role'&&!['mock-r1','mock-r2'].includes(s.selection.id))nav.append(button('Current fictional role',()=>open('role',s.selection.id)))
  }
- if(s.ref&&s.locked&&(!s.context||(s.context.allowedNavigation.includes('changes')&&s.context.allowedActions.includes('getChangeStatus'))))nav.append(button('Inspect change status',async()=>{const e=epoch;const p=controller.inspect();paint();await p;if(e===epoch)paint()}));
+ if(s.ref&&s.locked&&s.phase!=='loading'&&(!s.context||(s.context.allowedNavigation.includes('changes')&&s.context.allowedActions.includes('getChangeStatus'))))nav.append(button('Inspect change status',async()=>{const e=epoch;const p=controller.inspect();paint();await p;if(e===epoch)paint()}));
  scenario.disabled=s.locked;
  if(!s.context||!s.target)return;
  if(s.target.role){const r=s.target.role;renderRows('Current role',[r.label+' · '+r.id,r.status+' · '+expiry(r.expiresAt),...r.rules.map(ruleText)])}
