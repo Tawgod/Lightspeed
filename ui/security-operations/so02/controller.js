@@ -10,7 +10,7 @@ export function createController(adapter){
  async function call(method,args,g){return invoke(adapter,method,args,{context,target,options,preview,generation:g,current})}
  async function bootstrap(g){const r=await call('getAdminContext',{},g);if(!current(g))return false;if(r.state!=='ok'){clear();phase=r.state;return false}context=r.data;return true}
  async function open(type,id){
-  const g=++generation;clear();selection={type,id};phase='loading';
+  if(locked)return snapshot();const g=++generation;clear();selection={type,id};phase='loading';
   if(!await bootstrap(g)||!current(g))return snapshot();
   if(id===null&&type==='role')target={allowedActions:[...context.allowedActions]};
   else{const r=await call(type==='role'?'getRole':'getAssignments',type==='role'?{roleId:id}:{employeeId:id},g);if(!current(g))return snapshot();if(r.state!=='ok'){clear();phase=r.state;return snapshot()}target=r.data}
@@ -52,7 +52,7 @@ export function createController(adapter){
   if(!await bootstrap(g)||!current(g))return snapshot();
   const r=await call('getChangeStatus',{changeId:ref.changeId},g);
   if(!current(g))return snapshot();
-  if(r.state!=='ok'){clear();phase=r.state;return snapshot()}
+  if(r.state!=='ok'){clear();phase=reported?.outcome==='committed'?'readback-unverified':r.state;return snapshot()}
   const d=r.data;
   if(d.targetType!==ref.targetType||(ref.targetId!==null&&d.targetId!==ref.targetId)){clear();phase='invalid';return snapshot()}
   if(d.outcome==='committed')await readback(d,g);
