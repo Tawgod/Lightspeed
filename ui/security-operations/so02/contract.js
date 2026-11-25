@@ -55,6 +55,7 @@ export function intentMatchesOptions(i,o,c,t){
  if(!intent(i)||!options(o)||!context(c)||i.targetType!==o.targetType||i.targetId!==o.targetId||!o.allowedChanges.includes(i.kind))return false;
  const rev=i.targetType==='role'?t?.role?.revision:t?.revision;
  if(i.kind!=='role.create'&&i.expectedRevision!==rev)return false;
+ if(i.kind==='role.update'&&!t?.role?.rules.every(r=>o.operations.some(op=>op.id===r.operationId&&op.scopes.some(s=>equal(s,r.scope)))))return false;
  const rr=i.change.rules??(i.change.rule?[i.change.rule]:[]);
  if(!rr.every(r=>r.scope.tenant===c.tenant&&r.scope.environment===c.environment&&o.operations.some(op=>op.id===r.operationId&&op.scopes.some(s=>equal(s,r.scope)))))return false;
  if(i.kind==='membership.add'&&!o.roles.some(r=>r.id===i.change.roleId))return false;
@@ -87,7 +88,7 @@ export async function invoke(adapter,method,args,{context:c=null,target:t=null,p
   if(method==='getAssignments'&&(d.employeeId!==req.args.employeeId||[...d.memberships,...d.individual].some(x=>x.employeeId!==d.employeeId)||d.individual.some(x=>x.rule.scope.tenant!==c.tenant||x.rule.scope.environment!==c.environment)))return {state:'invalid'};
   if(method==='getEditOptions'&&(d.targetType!==req.args.targetType||d.targetId!==req.args.targetId||d.operations.some(op=>op.scopes.some(s=>s.tenant!==c.tenant||s.environment!==c.environment))))return {state:'invalid'};
   if(method==='previewChange'&&(!equal(d.intent,req.args.intent)||d.expiresAt<=c.now))return {state:'invalid'};
-  if(method==='getChangeStatus'&&(d.changeId!==req.args.changeId||(d.outcome!=='committed'&&![null,expected].includes(d.policyVersion))))return {state:'invalid'};
+  if(method==='getChangeStatus'&&d.changeId!==req.args.changeId)return {state:'invalid'};
   if(method==='confirmChange'&&(d.outcome==='unknown'||!p||d.targetType!==p.intent.targetType||(p.intent.kind!=='role.create'&&d.targetId!==p.intent.targetId)||(d.outcome==='committed'?e.policyVersion!==d.policyVersion:![null,expected].includes(d.policyVersion))))return uncertain();
   if(['confirmChange','getChangeStatus'].includes(method)&&d.audit&&(!contains(c.allowedActions,'readAudit')||(method==='confirmChange'&&d.audit.kind!==p.intent.kind)))return uncertain();
   return {state:'ok',data:d};
