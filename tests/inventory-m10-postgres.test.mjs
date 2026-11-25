@@ -84,7 +84,16 @@ pg('M10 M7 three-line restock and multi-target disclosure guard',async f=>{
  await seed(f);const c=restock(),cmd=convert(c),run=make(f,c.receiptFields);
  assert.deepEqual(await run(cmd),{replayed:false,result:{}});
  const b=(await inspect(f,target('batch','B1'))).record;assert.equal(b.lines.length,3);assert.equal(b.totalInventoryDelta,0);assert.equal((await f.counts()).outbox,2);
- await denied(make(f,c.receiptFields,{projectResult:r=>({taskId:r.taskId})})({...cmd,readEffects:[ef('inventory.restock.read',tk(tasks[0]),'01',['taskId'])]}));
+ assert.ok(cmd.execution.targets.length>1);
+ let projections=0,projectedValue;
+ const projectResult=r=>{projections++;projectedValue=r.outcome;return {outcome:r.outcome};};
+ // Malformed camelCase effect fields must still fail before projection.
+ await assert.rejects(make(f,c.receiptFields,{projectResult})({...cmd,readEffects:[ef('inventory.restock.read',tk(tasks[0]),'01',['taskId'])]}),{name:'TypeError',message:'Invalid effect scope'});
+ assert.equal(projections,0);
+ // A valid field matching an unchanged receipt value reaches the multi-target guard.
+ await denied(make(f,c.receiptFields,{projectResult})({...cmd,readEffects:[ef('inventory.restock.read',tk(tasks[0]),'01',['outcome'])],apply:()=>assert.fail('reapplied')}));
+ assert.equal(projections,1);assert.equal(projectedValue,'recorded');
+ assert.equal((await f.counts()).commands,1);assert.equal((await f.counts()).outbox,2);
  assert.deepEqual(await run({...cmd,apply:()=>assert.fail('reapplied')}),{replayed:true,result:{}});
 });
 pg('M10 M7 competing tasks and batch replay',async f=>{
