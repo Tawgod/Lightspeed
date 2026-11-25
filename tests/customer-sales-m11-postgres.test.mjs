@@ -161,3 +161,11 @@ test('M11 explicit payload schema rejects raw credentials and unknown amounts',(
  assert.throws(()=>prep({...p,rawPaymentCredential:'not-allowed'}));
  assert.throws(()=>prep({...p,amount:null}));
 });
+
+pg('M11 related-target projection and unavailable authorization fail closed',async f=>{
+ await denied(make(f,prep(p),{derive:x=>({...x,readEffects:x.readEffects.map(e=>({...e,resourceId:'other-sale'}))})}).run());
+ await denied(make(f,prep(p),{before:()=>{throw Error('unavailable')}}).run());
+ assert.equal((await f.counts()).commands,0);
+ await denied(make(f,prep(p),{derive:x=>({...x,readEffects:x.readEffects.map(e=>({...e,relationships:e.relationships.map(r=>r.type==='customer'?{...r,id:'other'}:r)}))})}).run());
+ assert.equal((await current(f)).record.events.length,1);
+});
