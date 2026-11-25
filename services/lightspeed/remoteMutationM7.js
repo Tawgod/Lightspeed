@@ -68,6 +68,7 @@ export function createRemoteMutationM7({tenant,store,authorizeExecution,verifyAp
   const receipt=row.receipt;
   if(!exact(receipt,['eventId','revision'])||!literal(receipt.eventId)||!literal(receipt.revision))return unknown();
   const result={};for(const field of ['eventId','revision'])if(readEffects.some(e=>e.field===field))result[field]=receipt[field];
+  if(!Object.keys(result).length)return denied();
   if(!await check(b,'afterProjection')||!await access(b,'afterProjection','read',readEffects))return denied();
   return {state:'verified',retryAllowed:false,result};
  }
@@ -91,6 +92,7 @@ export function createRemoteMutationM7({tenant,store,authorizeExecution,verifyAp
    if(claim.state==='conflict')return conflict();
    if(claim.state!=='claimed'){
     if(!matches(claim,b))return denied();
+    if(claim.state!=='verified')return unknown();
     return project(b,claim,readEffects);
    }
    try{
