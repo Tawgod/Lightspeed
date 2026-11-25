@@ -69,3 +69,16 @@ test('M7 remote exact typed identity retains zeros and rejects malformed scope',
  assert.throws(()=>command('request-002',target,{reservationKeys:[['target','P1',null],['supplierSku','0009']]}),TypeError);
  assert.throws(()=>command('request-002',target,{reservationKeys:[['target','P1',null],['sku',' 0007']]}),TypeError);
 });
+
+pg('M7 remote update holds original and changed identity across revision changes',async f=>{
+ const a=command('request-001',target,{predecessor:'v1',reservationKeys:[['target','P1',null],['revision','P1',null,'v1'],['sku','0007'],['sku','0008']]});
+ const b=command('request-002',target,{predecessor:'v2',reservationKeys:[['target','P1',null],['revision','P1',null,'v2'],['sku','0008'],['sku','0009']]});
+ const h=harness(f);h.lose();assert.equal((await h.engine.run(request(a))).state,'unknown');assert.equal((await h.engine.run(request(b))).state,'conflict');assert.equal(h.writes,1);
+});
+pg('M7 remote different actor and replacement approval cannot retrieve receipt',async f=>{
+ const h=harness(f),a=request();await h.engine.run(a);
+ const b=request(command('request-001',target,{actor:{id:'other',realm:'employee',tenant:'shop'}}));
+ for(const q of [b,{...a,approval:{...a.approval,reference:'other'}}]){
+ const r=await h.engine.run(q);assert.ok(['conflict','denied'].includes(r.state));assert.equal(Object.hasOwn(r,'result'),false);}
+ assert.equal(h.writes,1);
+});
