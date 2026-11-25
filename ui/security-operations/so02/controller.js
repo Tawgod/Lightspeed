@@ -36,7 +36,8 @@ export function createController(adapter){
   const args={previewId:preview.previewId,expectedRevision:preview.intent.expectedRevision,idempotencyKey:'so02-key-'+(++serial),confirmed:true};
   if(!admitted('confirmChange',args,context,target,preview,options))return snapshot();
   const g=++generation;locked=true;phase='confirming';ref=null;reported=null;
-  const r=await call('confirmChange',args,g);
+  const pending=call('confirmChange',args,g);clear();
+  const r=await pending;
   if(!current(g))return snapshot();
   preview=null;
   if(r.state==='ok'){
