@@ -13,12 +13,12 @@ const key=x=>typeof x==='string'&&/^[A-Za-z0-9_-]{1,80}$/.test(x);
 const exact=(x,ks)=>x&&Object.getPrototypeOf(x)===Object.prototype&&Object.keys(x).length===ks.length&&ks.every(k=>Object.hasOwn(x,k));
 const one=async(c,q,p=[])=>{const r=await c.query(q,p);return r.rowCount===1?r.rows[0]:null};
 export async function createPgRuntime({pool,secret,clock=Date.now,testOnly=false}={}){
- if(testOnly!==true||process.env.NODE_ENV!=='test'||!pool?.connect)throw deny();
+ if(testOnly!==true||process.env.NODE_ENV!=='test'||!pool?.connect||pool.options?.host!=='127.0.0.1'||pool.options?.port!==5432||pool.options?.database!=='hc_s25m_disposable'||pool.options?.user!=='hc_s25m_runtime'||pool.options?.connectionString)throw deny();
  const tokens=createScannerSessions({secret,ttlSeconds:900,now:clock});
  const client=await pool.connect();
  try{
- const p=await one(client,`SELECT current_database() db,current_user role,inet_server_addr()::text addr,rolsuper,rolcreatedb,rolcreaterole,rolbypassrls,rolreplication,has_schema_privilege(current_user,'hc_s25m','CREATE') AS ddl FROM pg_roles WHERE rolname=current_user`);
- if(p?.db!=='hc_s25m_disposable'||p.role!=='hc_s25m_runtime'||!['127.0.0.1','::1'].includes(p.addr)||['rolsuper','rolcreatedb','rolcreaterole','rolbypassrls','rolreplication','ddl'].some(k=>p[k]!==false))throw deny();
+ const p=await one(client,`SELECT current_database() db,current_user role,host(inet_server_addr()) addr,rolsuper,rolcreatedb,rolcreaterole,rolbypassrls,rolreplication,has_schema_privilege(current_user,'hc_s25m','CREATE') AS ddl FROM pg_roles WHERE rolname=current_user`);
+ if(p?.db!=='hc_s25m_disposable'||p.role!=='hc_s25m_runtime'||!(p.addr==='127.0.0.1'||/^172\.(1[6-9]|2[0-9]|3[01])\.[0-9]{1,3}\.[0-9]{1,3}$/.test(p.addr))||['rolsuper','rolcreatedb','rolcreaterole','rolbypassrls','rolreplication','ddl'].some(k=>p[k]!==false))throw deny();
  for(const table of ['authority','employee','session','approval','note','receipt','audit']){
  const row=await one(client,`SELECT has_table_privilege(current_user,$1,'SELECT') r,has_table_privilege(current_user,$1,'DELETE') d,has_table_privilege(current_user,$1,'TRUNCATE') t,has_table_privilege(current_user,$1,'UPDATE') u,has_table_privilege(current_user,$1,'INSERT') i`,['hc_s25m.'+table]);
  if(!row||row.r!==true||row.d||row.t||row.u!==['authority','note'].includes(table)||row.i!==['receipt','audit'].includes(table))throw deny();
