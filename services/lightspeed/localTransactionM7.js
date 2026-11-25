@@ -8,7 +8,7 @@ const type=v=>typeof v==='string'&&/^[a-z][a-z0-9_.-]{0,95}$/.test(v);
 const exact=(v,keys)=>v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(key=>Object.hasOwn(v,key));
 const targetKey=t=>JSON.stringify([t.type,t.id]);
 const ordered=(a,b)=>a<b?-1:a>b?1:0;
-function normalizeEffects(effects,targets){
+export function normalizeLocalEffectsM7(effects,targets){
   if(!Array.isArray(effects)||!effects.length)throw TypeError('Exact effects required');
   const normalized=effects.map(e=>{
     if(!exact(e,['operation','target','location','fields'])||!type(e.operation)||!exact(e.target,['type','id'])||!targets.some(t=>targetKey(t)===targetKey(e.target))||!id(e.location)||!Array.isArray(e.fields)||!e.fields.length||e.fields.some(f=>!type(f))||new Set(e.fields).size!==e.fields.length)throw TypeError('Invalid effect scope');
@@ -26,7 +26,7 @@ export function prepareExecutionM7({tenant,scope,key,actor,targets,effects,paylo
   const ts=snap(targets);
   if(!Array.isArray(ts)||!ts.length||ts.some(t=>!exact(t,['type','id'])||!type(t.type)||!id(t.id))||new Set(ts.map(targetKey)).size!==ts.length)throw TypeError('Invalid targets');
   ts.sort((a,b)=>ordered(targetKey(a),targetKey(b)));
-  const es=normalizeEffects(snap(effects),ts);
+  const es=normalizeLocalEffectsM7(snap(effects),ts);
   const revisions=snap(expectedRevisions);
   if(!Array.isArray(revisions)||revisions.length!==ts.length||revisions.some(r=>!exact(r,['target','revision'])||!exact(r.target,['type','id'])||!ts.some(t=>targetKey(t)===targetKey(r.target))||!(r.revision===null||Number.isSafeInteger(r.revision)&&r.revision>0))||new Set(revisions.map(r=>targetKey(r.target))).size!==ts.length)throw TypeError('Exact revisions required');
   revisions.sort((a,b)=>ordered(targetKey(a.target),targetKey(b.target)));
@@ -41,7 +41,7 @@ export function createLocalTransactionM7({tenant,transaction,authorizeExecution,
     if(execution.tenant!==tenant||fp(execution)!==fp(command)||typeof verifyExecution!=='function'||typeof apply!=='function')throw TypeError('Prepared exact execution required');
     const digest=fp(command),proof=freeze(snap(approval));
     if(!exact(proof,['reference','executionDigest','reviewerId','expiresAt'])||!id(proof.reference)||proof.executionDigest!==digest||!id(proof.reviewerId)||!Number.isSafeInteger(proof.expiresAt))throw fail('CORE_FORBIDDEN','undisclosed');
-    const reads=freeze(normalizeEffects(snap(readEffects),command.targets)),inspects=freeze(normalizeEffects(snap(reconcileEffects),command.targets));
+    const reads=freeze(normalizeLocalEffectsM7(snap(readEffects),command.targets)),inspects=freeze(normalizeLocalEffectsM7(snap(reconcileEffects),command.targets));
     const meta={scope:JSON.stringify(['core.execution.v7',tenant,command.scope]),key:command.key,fingerprint:digest,actor:command.actor,correlationId:randomUUID()};
     let stage='beforeClaim',state='unconfirmed',evidence=null;
     const deny=()=>fail('CORE_FORBIDDEN','undisclosed');
