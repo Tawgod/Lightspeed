@@ -65,3 +65,15 @@ test('superseded successes, denied responses and throws never escape guard',asyn
  const p=C.readBound(transport,'explainAccess',args,C.validExplanation,policy,{...opts,generation,current:g.current});g.invalidate();release();assert.deepEqual(await p,{state:'superseded'});
  }
 });
+
+test('bootstrap rejects blank, whitespace and mismatched policy versions',async()=>{
+ for(const [envelopePolicy,dataPolicy,state] of [['','','invalid'],['   ','   ','invalid'],['wrong',policy,'stale'],[undefined,policy,'stale']]){
+  const transport=C.fixtureTransport(mock,r=>({...r,envelope:{...r.envelope,policyVersion:envelopePolicy,data:{...r.envelope.data,policyVersion:dataPolicy}}}));
+  assert.deepEqual(await C.readBound(transport,'getAdminContext',{},C.validContext),{state});
+ }
+});
+test('blank policy or missing explanation capability prevents invocation',async()=>{
+ for(const context of [{...opts.context,policyVersion:' '},{...opts.context,allowedActions:[]}]){
+  let calls=0;assert.deepEqual(await C.readBound(()=>{calls++},'explainAccess',args,C.validExplanation,context.policyVersion,{...opts,context}),{state:'denied'});assert.equal(calls,0);
+ }
+});
