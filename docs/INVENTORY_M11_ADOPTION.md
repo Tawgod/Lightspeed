@@ -1,0 +1,9 @@
+# Inventory M11 isolated evidence adoption
+V8 8848f47b71286e177fd483feb94af37b795fead7; Core M9 48689e0084646c42df6e3533f49257d740773ba2 exact four service blobs (supplemental, Manager includes once):
+- localTransactionM7.js: a6ba8cfcd6d43b8c777a877703ef16b611631797
+- localTransactionM8Internal.js: 22acfb89f28581fcc28c3f05b9af89a3f30038c2
+- remoteMutationM7.js: b84bbd68fef175c3314ce32b276499baed0ecf15
+- remoteMutationM8Internal.js: 40302dd3c0db309200f0d3525275294e28ebdd41
+Security #121 exact separate checkout and three fixture hashes per workflow. No other Core delta.
+Inventory-owned tests exercise M8/M9 whole-set local composition against disposable PostgreSQL; independent trusted synthetic admission and approval, exact typed targets, revisions and rich original/business/line/product/variant/location relationships. Original evidence immutable, separate capacity counters, no authoritative stock. Both transfer outlets require authorization. Access only same target; empty multi-target projection.
+Cross-domain coordination requested #119 comment 7170706614 and #120 comment 7170707154 (verify exact associations in PR). Business records alone cannot prove physical event. Receipt/dispatch independent physical source; receive original dispatch; release original allocation; return original physical fulfillment; adjustment verified discrepancy; count session and restock task evidence distinct. No invoice/payment/refund/deposit/credit/sale inference, no duplicate writer. Lightspeed sole authoritative total stock, Store Map independent. Prior domain plans/permissions retained; no registry alias activation. Fixture names are provisional, not final registry IDs. All counters and physical events synthetic, seeded original records do not prove full cross-workflow real linkage. Restock/count cases are evidence-level only; full M8 plan adoption and complete count/reason lifecycle remain pending. No production data, live effects, migrations or deployment.
