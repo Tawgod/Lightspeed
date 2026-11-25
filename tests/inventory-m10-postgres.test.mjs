@@ -106,3 +106,59 @@ pg('M10 M7 disclosure and inspection independently denied; no blind repeat',asyn
  await denied(make(f,c.receiptFields,{authorizeAccess:()=>false})(cmd));
  assert.equal((await make(f,c.receiptFields)({...cmd,apply:()=>assert.fail('reapplied')})).replayed,true);assert.equal((await f.counts()).commands,1);
 });
+
+ // Synthetic quantity evidence only. These counters are not on-hand stock.
+ const kinds={
+ receipt:{op:'inventory.receipt.confirm',source:'physical-receipt',limit:6},
+ allocation:{op:'inventory.allocation.create',source:'order-allocation',limit:6},
+ release:{op:'inventory.allocation.release',source:'original-allocation',limit:6},
+ dispatch:{op:'inventory.transfer.dispatch',source:'physical-dispatch',limit:6},
+ receive:{op:'inventory.transfer.receive',source:'original-dispatch',limit:6},
+ adjustment:{op:'inventory.adjustment.execute',source:'verified-discrepancy',limit:6},
+ returned:{op:'inventory.receipt.confirm',source:'original-physical-sale',limit:6}
+ };
+ const capacity=k=>target('evidence-capacity',k,'source-01','line-01','0001','01');
+ const eventKey=id=>target('physical-event',id);
+ async function seedCapacity(f,k){const t=capacity(k),record={kind:k,source:kinds[k].source,sourceId:'source-01',lineId:'line-01',productId:'0001',variantId:null,outletId:'01',destinationOutletId:k==='dispatch'||k==='receive'?'02':null,limit:kinds[k].limit,used:0};await f.transaction(async tx=>{await tx.lockDomain(t);await tx.insertDomain({...t,record});},{targets:[t]});}
+ function physical(k,id,quantity,revision=1,source=kinds[k].source){
+ const primary=capacity(k),event=eventKey(id),product=target('product','01','0001',null),transfer=k==='dispatch'||k==='receive',destination=target('product','02','0001',null);
+ const targets=[primary,event,product,...(transfer?[destination]:[])];
+ const effects=targets.map(t=>ef(kinds[k].op,t,same(t,destination)?'02':'01',['quantity-evidence']));
+ const payload={kind:k,eventId:id,source,sourceId:'source-01',lineId:'line-01',productId:'0001',variantId:null,outletId:'01',destinationOutletId:transfer?'02':null,quantity,occurredAt:before};
+ const derive=(command,evidence)=>{
+ const p=command.payload,r=row(evidence,primary)?.record;
+ return !!r&&r.kind===k&&p.kind===r.kind&&p.source===r.source&&p.sourceId===r.sourceId&&p.lineId===r.lineId&&p.productId===r.productId&&p.variantId===r.variantId&&p.outletId===r.outletId&&p.destinationOutletId===r.destinationOutletId&&p.eventId===id&&p.occurredAt===before&&Number.isSafeInteger(p.quantity)&&p.quantity>0&&p.quantity<=r.limit-r.used&&matching(command.effects,effects)&&stable(command.targets.map(key).sort())===stable(targets.map(key).sort());
+ };
+ return convert({scope:'test.inventory.physical.'+k,key:'fixture-'+id,actor,targets,effects,payload,expectedRevisions:targets.map(target=>({target,revision:same(target,primary)?revision:null})),readEffects:[ef('inventory.evidence.read',primary,'01',['id'])],reconcileEffects:[ef('transactions.reconcile',primary,'01',['id'])],verifyLocked:({command,evidence})=>derive(command,evidence),apply:async(tx,c,e)=>{
+ assert.ok(derive(c,e));const r=row(e,primary).record;
+ await tx.insertDomain({...event,record:{...c.payload,actorId:c.actor.id,recordedAt:now,executable:false,stockWrite:false}});
+ const rev=await tx.replaceDomain({...primary,expectedRevision:revision,record:{...r,used:r.used+c.payload.quantity}});
+ return {id,revision:rev,outcome:'evidence-recorded'};
+ }});
+ }
+ const evidenceFields=['id','revision','outcome'];
+ for(const k of Object.keys(kinds))pg('M10 '+k+' competing quantity protection and explicit fresh reprepare',async f=>{
+ await seedCapacity(f,k);const run=make(f,evidenceFields);
+ const a=physical(k,'event-A',4),b=physical(k,'event-B',4);
+ const results=await Promise.allSettled([run(a),run(b)]);
+ assert.equal(results.filter(x=>x.status==='fulfilled').length,1);assert.equal(results.find(x=>x.status==='rejected').reason.code,'CORE_REVISION_CONFLICT');
+ await denied(run(physical(k,'event-C',3,2)));
+ await run(physical(k,'event-D',2,2));assert.equal((await inspect(f,capacity(k))).record.used,6);
+ assert.equal((await f.counts()).commands,2);assert.equal((await inspect(f,eventKey('event-D'))).record.stockWrite,false);
+ });
+ pg('M10 financial evidence cannot substitute for physical source',async f=>{
+ for(const k of ['receipt','returned','adjustment']){await seedCapacity(f,k);await denied(make(f,evidenceFields)(physical(k,'event-'+k,1,1,'financial-approval')));assert.equal((await inspect(f,capacity(k))).record.used,0);}
+ assert.equal((await f.counts()).commands,0);
+ });
+ pg('M10 transfer requires both outlet scopes and rollback preserves capacity',async f=>{
+ await seedCapacity(f,'receive');const c=physical('receive','event-A',3);
+ await denied(make(f,evidenceFields,{authorizeExecution:({effect})=>effect.location!=='02'})(c));
+ await denied(make(f,evidenceFields,{verifyApproval:({stage})=>stage!=='beforeCommit'})(c));
+ assert.equal((await inspect(f,capacity('receive'))).record.used,0);assert.equal(await inspect(f,eventKey('event-A')),null);
+ await make(f,evidenceFields)(c);
+ assert.equal((await inspect(f,capacity('receive'))).record.used,3);
+ });
+ pg('M10 original physical event identity cannot be reused across workflows',async f=>{
+ await seedCapacity(f,'receipt');await seedCapacity(f,'returned');const run=make(f,evidenceFields);
+ await run(physical('receipt','event-A',2));await reject(run(physical('returned','event-A',2)),'CORE_REVISION_CONFLICT');assert.equal((await inspect(f,capacity('returned'))).record.used,0);
+ });
