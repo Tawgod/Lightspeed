@@ -1,0 +1,27 @@
+name: HC Secure S2.5J offline
+on:
+  pull_request:
+    branches: [feature/hc-secure-s25i-settings-lifetime-20261125]
+    paths:
+      - 'tests/hc-secure-s25j-lifetime.test.mjs'
+      - 'tests/fixtures/hc-secure-s25j-lifetime.mjs'
+      - '.github/workflows/hc-secure-s25j-offline.yml'
+permissions:
+  contents: read
+jobs:
+  offline:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'feature/hc-secure-s25j-evidence-lifetime-20261125'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: |
+          git rev-parse HEAD
+          node --check tests/fixtures/hc-secure-s25j-lifetime.mjs
+          node --test tests/hc-secure-s25{b,c,d,e,f,g,h,i,j}-*.test.mjs
