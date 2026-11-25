@@ -83,11 +83,11 @@ export async function invoke(adapter,method,args,{context:c=null,target:t=null,p
   if(!validators[method](d))return uncertain();
   if(method==='getAdminContext'&&e.policyVersion!==d.policyVersion)return {state:'invalid'};
   if(method!=='getAdminContext'&&!(method==='confirmChange'&&d.outcome==='committed')&&e.policyVersion!==expected)return uncertain();
-  if(method==='getRole'&&d.role.id!==req.args.roleId)return {state:'invalid'};
-  if(method==='getAssignments'&&(d.employeeId!==req.args.employeeId||[...d.memberships,...d.individual].some(x=>x.employeeId!==d.employeeId)))return {state:'invalid'};
+  if(method==='getRole'&&(d.role.id!==req.args.roleId||d.role.rules.some(r=>r.scope.tenant!==c.tenant||r.scope.environment!==c.environment)))return {state:'invalid'};
+  if(method==='getAssignments'&&(d.employeeId!==req.args.employeeId||[...d.memberships,...d.individual].some(x=>x.employeeId!==d.employeeId)||d.individual.some(x=>x.rule.scope.tenant!==c.tenant||x.rule.scope.environment!==c.environment)))return {state:'invalid'};
   if(method==='getEditOptions'&&(d.targetType!==req.args.targetType||d.targetId!==req.args.targetId||d.operations.some(op=>op.scopes.some(s=>s.tenant!==c.tenant||s.environment!==c.environment))))return {state:'invalid'};
   if(method==='previewChange'&&(!equal(d.intent,req.args.intent)||d.expiresAt<=c.now))return {state:'invalid'};
-  if(method==='getChangeStatus'&&d.changeId!==req.args.changeId)return {state:'invalid'};
+  if(method==='getChangeStatus'&&(d.changeId!==req.args.changeId||(d.outcome!=='committed'&&![null,expected].includes(d.policyVersion))))return {state:'invalid'};
   if(method==='confirmChange'&&(d.outcome==='unknown'||!p||d.targetType!==p.intent.targetType||(p.intent.kind!=='role.create'&&d.targetId!==p.intent.targetId)||(d.outcome==='committed'?e.policyVersion!==d.policyVersion:![null,expected].includes(d.policyVersion))))return uncertain();
   if(['confirmChange','getChangeStatus'].includes(method)&&d.audit&&(!contains(c.allowedActions,'readAudit')||(method==='confirmChange'&&d.audit.kind!==p.intent.kind)))return uncertain();
   return {state:'ok',data:d};
