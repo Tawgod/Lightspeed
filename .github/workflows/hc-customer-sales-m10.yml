@@ -1,0 +1,38 @@
+name: Customer Sales M10 targeted disposable regression
+on:
+  pull_request:
+    branches: ['test/hc-foundation-combined-v7-20261125']
+    paths: ['services/lightspeed/customerSourceM10.js','tests/customer-sales-m10-*.test.mjs','tests/customer-sales-evidence.test.mjs','.github/workflows/hc-customer-sales-m10.yml']
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: hc_test
+          POSTGRES_PASSWORD: disposable_ci_only
+          POSTGRES_DB: hc_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U hc_test -d hc_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      HC_TEST_DATABASE_URL: postgresql://hc_test:disposable_ci_only@127.0.0.1:5432/hc_test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --ignore-scripts --no-audit --no-fund --package-lock=false
+      - run: |
+          node --check services/lightspeed/customerSourceM10.js
+          node --test tests/customer-sales-*.test.mjs tests/customer-identity-m5.test.mjs
