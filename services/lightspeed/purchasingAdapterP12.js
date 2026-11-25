@@ -6,7 +6,7 @@ import {projectSupplierDocument,inspectDocumentReplay,resolveDocumentSupplier,in
 import {reconcileInvoice} from './invoiceReconciliation.js';
 import {prepareInvoiceReviewRevision} from './invoiceReviewContract.js';
 import {PURCHASING_FIXTURE_OPERATIONS as O} from './purchasingReviewWorkflow.js';
-import {inspectApprovalBinding,inspectCumulativeInvoiceQuantities} from './invoiceReviewContract.js';
+import {inspectCumulativeInvoiceQuantities} from './invoiceReviewContract.js';
 
 // Isolated evidence ledger only. No vendor, stock, payment or remote effects.
 const fail=code=>Object.assign(Error('P12 fixture refused'),{code});
@@ -100,7 +100,7 @@ export async function derivePurchasingIntentP12({tenant,actor,invoiceId,requestI
   const built=proposalFor(input,current,proposalAction,at);
   if(built.state!=='review_required')throw fail('INVOICE_EVIDENCE_UNRESOLVED');
   const p=built.evidence.proposal,ids=identityTargets(input,p),lines=linesFor(built);
-  // P11 bounded OPEN PO line evidence only; unmapped variants and new PO proposals remain legacy review candidates.
+  // Exact variant-aware OPEN PO evidence only; new PO proposals remain gated.
   if(p.mode!=='update_open'||!lines.length)throw fail('INVOICE_SCOPE_UNRESOLVED');
   if(current&&(!same(current.identityTargets,ids)||!same(current.lineTargets,lines.map(l=>l.target))||
    current.revision.supplierId!==p.supplierId||current.revision.outletId!==p.outletId))throw fail('INVOICE_IDENTITY_CHANGED');
@@ -109,7 +109,7 @@ export async function derivePurchasingIntentP12({tenant,actor,invoiceId,requestI
   // Bounded reversal of local approval evidence only. Keep billed reservations held;
   // a credit document, payment reversal or release requires separate reconciliation.
   const reversal=action==='reverse'?copy(originalReversal):null;
-  if(reversal&&(!exact(reversal.reference)||!exact(reversal.reasonCode)||reversal.invoiceId!==invoiceId||reversal.supplierId!==p.supplierId||reversal.outletId!==p.outletId||reversal.revision!==revision.revision||reversal.fingerprint!==revision.fingerprint||reversal.approvalRef!==current.approval.approvalRef))throw fail('INVOICE_REVERSAL_UNRESOLVED');
+  if(reversal&&(reversal.documentHash!==p.documentHash||reversal.sourceDigest!==built.evidence.sourceDigest||!exact(reversal.reference)||!exact(reversal.reasonCode)||reversal.invoiceId!==invoiceId||reversal.supplierId!==p.supplierId||reversal.outletId!==p.outletId||reversal.revision!==revision.revision||reversal.fingerprint!==revision.fingerprint||reversal.approvalRef!==current.approval.approvalRef))throw fail('INVOICE_REVERSAL_UNRESOLVED');
   if(action==='reverse'&&!reversal)throw fail('INVOICE_REVERSAL_UNRESOLVED');
   const reversalIdentity=reversal?target('purchasing.invoice.reversal-reference',fp([p.supplierId,reversal.reference])):null;
   const originalApprovalTarget=reversal?historyTarget(invoiceId,revision.revision,'approve'):null;
@@ -141,7 +141,7 @@ export async function derivePurchasingIntentP12({tenant,actor,invoiceId,requestI
     if(current?.approval)relationships.push(relation('original-approval',current.approval.approvalRef));
     if(reversal)relationships.push(relation('reversal',reversal.reference),relation('reversal-reason',reversal.reasonCode));
     if(p.targetPoId)relationships.push(relation('po',p.targetPoId),relation('po-version',built.evidence.poVersion));
-    if(line)relationships.push(relation('po-line',line.poLineId),relation('invoice-line',line.invoiceLineId),relation('product',line.productId),relation('variant',line.variantId===null?'verified-nonvariant':line.variantId),relation('variant-revision',line.variantRevision),relation('supplier-item',line.supplierItemId),relation('supplier-item-revision',line.supplierItemRevision),relation('po-line-revision',line.poLineRevision),relation('catalog-evidence',line.catalogEvidenceRef),relation('supplier-sku',line.supplierSku),relation('ordered-quantity',String(line.orderedQty)),relation('received-quantity','not-observed'));
+    if(line)relationships.push(relation('po-line',line.poLineId),relation('invoice-line',line.invoiceLineId),relation('product',line.productId),relation('variant-kind',line.variantId===null?'nonvariant':'variant'),...(line.variantId===null?[]:[relation('variant',line.variantId)]),relation('variant-revision',line.variantRevision),relation('supplier-item',line.supplierItemId),relation('supplier-item-revision',line.supplierItemRevision),relation('po-line-revision',line.poLineRevision),relation('catalog-evidence',line.catalogEvidenceRef),relation('supplier-sku',line.supplierSku),relation('ordered-quantity',String(line.orderedQty)),relation('received-quantity','not-observed'));
     return {operation:e.operation,tenant,environment:'test',location:e.location,resourceType:e.target.type,resourceId:e.target.id,field,
       revision:String(revision.revision),relationships,quantity:line?String(line.invoicedQty):null,
       amount:line?decimal(line.unitCost):null,currency:line?line.currency:null,purpose:'invoice-evidence',audience:'purchasing'};
@@ -158,10 +158,11 @@ export function createPurchasingDomainAdapterP12({tenant,resolveActor,readOrigin
    const actor=copy(await resolveActor(context));
    original=copy(await readOriginal(context,request.requestId));
    if(original.requestId!==request.requestId||!same(original.actor,actor)||original.evidenceRef!==await resolveEvidenceRef(context)||!Number.isFinite(Date.parse(original.at)))throw fail('INVOICE_SCOPE_CONFLICT');
+   if(!Array.isArray(original.rows)||new Set(original.rows.map(r=>r[0])).size!==original.rows.length)throw fail('INVOICE_SCOPE_CONFLICT');
    const stored=new Map(original.rows);
    plan=await derivePurchasingIntentP12({...original,tenant,readTrustedRow:t=>stored.get(key(t))??null});
    proof=copy(original.approval);
-   if(proof.executionDigest!==fp(plan.execution)||!exact(proof.reference)||!Number.isSafeInteger(proof.expiresAt)||!exact(proof.reviewerId)||proof.reviewerId===actor.id||clock()>=proof.expiresAt)throw fail('CORE_FORBIDDEN');
+   if(!same(original.rows,plan.rows)||proof.executionDigest!==fp(plan.execution)||!exact(proof.reference)||!Number.isSafeInteger(proof.expiresAt)||!exact(proof.reviewerId)||proof.reviewerId===actor.id||clock()>=proof.expiresAt)throw fail('CORE_FORBIDDEN');
   }catch{return {state:'undisclosed',retryAllowed:false};}
   const {execution,readEffects,reconcileEffects,facts,rows,planned,targets,ids,history,lines,invoice,current,currentRow,revision,built,reversal,reversalIdentity,action,at,actor,invoiceId}=plan;
   const rowMap=new Map(rows);
@@ -179,7 +180,7 @@ export function createPurchasingDomainAdapterP12({tenant,resolveActor,readOrigin
    apply:async tx=>{
     if(!current)for(const t of ids)await tx.insertDomain({...t,record:{invoiceId}});
     const record=action==='review'?{version:'p12.m10',revision:built.revision,evidence:built.evidence,reviewActor:actor.id,
-     previousRevision:current?.revision??null,correctionOf:current?{revision:current.revision.revision,fingerprint:current.revision.fingerprint,approvalRef:current.approval?.approvalRef??null}:null,approval:null,identityTargets:ids,lineTargets:lines.map(l=>l.target)}:action==='approve'?{...current,approval}:{...current,approval:null,reversal:{...reversal,recordedAt:at,actor:actor.id,proofRef:proof.reference,originalApproval:current.approval,reservationState:'held'}};
+     previousRevision:current?.revision??null,sourceEvidence:original.input,correctionOf:current?{revision:current.revision.revision,fingerprint:current.revision.fingerprint,approvalRef:current.approval?.approvalRef??null}:null,approval:null,identityTargets:ids,lineTargets:lines.map(l=>l.target)}:action==='approve'?{...current,approval}:{...current,approval:null,reversal:{...reversal,recordedAt:at,actor:actor.id,proofRef:proof.reference,originalApproval:current.approval,reservationState:'held'}};
     if(action==='review')for(let i=0;i<lines.length;i++){
      const t=lines[i].target,old=rowMap.get(key(t));
      if(old)await tx.replaceDomain({...t,expectedRevision:old.revision,record:planned[i]});
