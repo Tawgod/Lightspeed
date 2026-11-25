@@ -38,7 +38,7 @@ export function createMock(scenario='normal'){
   if(!['normal','empty'].includes(scenario))return envelope(scenarios.includes(scenario)?scenario:'unsupported');
   return fn();
  }
- return {
+ const methods={
   getAdminContext:()=>run(()=>envelope('ok',{identityLabel:'Fictional administrator',environment:'Synthetic offline',policyVersion:'mock-policy-1',allowedNavigation:[...pages],allowedActions:['explainAccess'],assuranceState:'Synthetic only'})),
   searchEmployees:q=>run(()=>page(scenario==='empty'?[]:employees,q)),
   getEmployee:({employeeId})=>run(()=>{const e=employees.find(x=>x.id===employeeId);return e?envelope('ok',e):envelope('denied')}),
@@ -56,4 +56,11 @@ export function createMock(scenario='normal'){
    return envelope('ok',scripts[key]??{decision:'unknown',explanation:'No scripted explanation for this exact scope.',sources:[]});
   })
  };
+ return {...methods,async invoke(request){
+  // Mock adapter originates the response metadata; no actual HTTP contract.
+  const {method,args,id,generation,policy}=request;
+  const binding=JSON.stringify([method,args,generation,policy]);
+  const result=await methods[method](args);
+  return {binding,envelope:{...result,requestId:id}};
+ }};
 }
