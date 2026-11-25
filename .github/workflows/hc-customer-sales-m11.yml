@@ -1,0 +1,60 @@
+name: Customer Sales M11 targeted disposable regression
+on:
+  pull_request:
+    branches: [test/hc-foundation-combined-v8-20261125]
+    paths:
+      - 'services/lightspeed/customerSalesM11.js'
+      - 'tests/customer-sales-m11-postgres.test.mjs'
+      - '.github/workflows/hc-customer-sales-m11.yml'
+permissions:
+  contents: read
+jobs:
+  isolated:
+    if: github.head_ref == 'feature/hc-customer-sales-m11-v8-20261125'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: hc_test
+          POSTGRES_PASSWORD: disposable_ci_only
+          POSTGRES_DB: hc_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hc_test" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      HC_TEST_DATABASE_URL: postgres://hc_test:disposable_ci_only@localhost:5432/hc_test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: ee4e417fcfc1ae4358b0e256ccd8a8dee9073ecd
+          path: .security-source
+          persist-credentials: false
+      - name: Verify exact Security source
+        run: |
+          test "$(git -C .security-source rev-parse HEAD)" = "ee4e417fcfc1ae4358b0e256ccd8a8dee9073ecd"
+          test "$(git -C .security-source hash-object tests/fixtures/hc-secure-s25h-contract.mjs)" = "d04a6db6995e982371c2f7ea25a43faf64090279"
+          test "$(git -C .security-source hash-object tests/fixtures/hc-secure-s25e-role-policy.mjs)" = "79c99f79252f0cc391d0a5c6be7d73f21dd60ff9"
+          test "$(git -C .security-source hash-object tests/fixtures/hc-secure-s25g-lifecycle.mjs)" = "e82a630c567294df0b58d0efc8bac32d3c3a0d73"
+          git rev-parse HEAD
+      - name: Verify exact supplemental Core dependency
+        run: |
+          test "$(git hash-object services/lightspeed/localTransactionM7.js)" = "a6ba8cfcd6d43b8c777a877703ef16b611631797"
+          test "$(git hash-object services/lightspeed/localTransactionM8Internal.js)" = "22acfb89f28581fcc28c3f05b9af89a3f30038c2"
+          test "$(git hash-object services/lightspeed/remoteMutationM7.js)" = "b84bbd68fef175c3314ce32b276499baed0ecf15"
+          test "$(git hash-object services/lightspeed/remoteMutationM8Internal.js)" = "40302dd3c0db309200f0d3525275294e28ebdd41"
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --ignore-scripts --no-audit --no-fund --package-lock=false
+      - run: |
+          node --check services/lightspeed/customerSalesM11.js
+          node --check tests/customer-sales-m11-postgres.test.mjs
+          node --test tests/customer-sales-*.test.mjs tests/customer-identity-m5.test.mjs
