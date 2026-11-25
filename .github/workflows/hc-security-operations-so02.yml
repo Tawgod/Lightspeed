@@ -1,0 +1,23 @@
+name: HC Security Operations SO-02 offline
+on:
+  pull_request:
+    branches: [feature/hc-security-operations-so01-20261125]
+    paths: ['.github/workflows/hc-security-operations-so02.yml']
+    types: [synchronize]
+permissions:
+  contents: read
+jobs:
+  offline:
+    if: github.head_ref == 'feature/hc-security-operations-so02-20261125'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - run: |
+          git rev-parse HEAD
+          node --version
+          for f in ui/security-operations/so02/*.js; do node --check "$f" || exit 1; done
+          node --test tests/security-operations/consumer.test.js tests/security-operations/so02.test.js
