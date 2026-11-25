@@ -28,8 +28,9 @@ function harness(req,options={}){
  state=makeState();
  const clock=()=>time,readPolicyVersion=async()=>epoch;
  const evaluator=security.createOfflineAuthorization({registry,readTrustedState:async()=>state,readPolicyVersion,clock,decisionMaxMs:50});
- const authorization=createAuthorizationM8({security,readPolicyVersion,clock,timeoutMs:options.timeoutMs??1000,deriveScope:facts,decide:async q=>{requests.push(q);if(options.before)await options.before(q,state);const r=await evaluator(q);return options.after?options.after(q,r,{advance:()=>time++,epoch:()=>{epoch='v2'}}):r;}});
- return {authorization,requests,get state(){return state},changeScope(){amount='13';state=makeState();}};
+ const authOptions={security,readPolicyVersion,clock,timeoutMs:options.timeoutMs??1000,deriveScope:facts,decide:async q=>{requests.push(q);if(options.before)await options.before(q,state);const r=await evaluator(q);return options.after?options.after(q,r,{advance:()=>time++,epoch:()=>{epoch='v2'}}):r;}};
+ const authorization=createAuthorizationM8(authOptions);
+ return {authorization,options:authOptions,requests,get state(){return state},changeScope(){amount='13';state=makeState();}};
 }
 const local=(f,h,extra={})=>createLocalTransactionM8({...f,tenant,authorization:h.authorization,receiptSchema:{version:'receipt.v1',fields:['id','revision']},projectResult:r=>({id:r.id}),...extra});
 const denied=p=>assert.rejects(p,e=>e.code==='CORE_FORBIDDEN'&&e.outcome==='undisclosed');
@@ -101,3 +102,42 @@ test('M9 causal receipt rejects malformed values even with exact event binding',
  assert.equal(validatedRemoteReceiptM7(remote,hash(remote),null,{...e,eventId:null}),null);
  assert.equal(validatedRemoteReceiptM7(remote,hash(remote),'ev',{...e,revision:null}),null);
 });
+
+import {createLocalDomainAdapterM10,createRemoteDomainAdapterM10} from '../services/lightspeed/domainAdapterM10.js';
+// Reuse the exact Security harness, expose only its constructor-owned adapter for M10 tests.
+const localBundle=()=>({execution:exec,approval:approval(exec),readEffects:localRequest.readEffects,reconcileEffects:localRequest.reconcileEffects});
+const remoteBundle=()=>({...remoteRequest});
+const localM10=(f,h,extra={})=>createLocalDomainAdapterM10({...f,tenant,authorizationOptions:h.options,resolveActor:()=>exec.actor,resolvePrepared:localBundle,verifyExecution:localRequest.verifyExecution,apply:localRequest.apply,receiptSchema:{version:'receipt.v1',fields:['id','revision']},projectResult:r=>({id:r.id}),...extra});
+test('M10 reusable local adapter retains exact durable replay and safe receipt',()=>withDisposableCorePg(async f=>{
+ const h=harness(localRequest),a=localM10(f,h);
+ assert.deepEqual(await a.run({context:{},request:{key:'fixture-001'}}),{state:'verified',retryAllowed:false,replayed:false,result:{id:'p1'}});
+ assert.equal((await a.run({context:{},request:{key:'fixture-001'}})).replayed,true);
+ assert.equal((await f.counts()).commands,1);
+}));
+test('M10 rejects prepared actor mismatch before claim',()=>withDisposableCorePg(async f=>{
+ const h=harness(localRequest),a=localM10(f,h,{resolveActor:()=>({...exec.actor,id:'different'})});
+ assert.deepEqual(await a.run({request:{}}),{state:'undisclosed',retryAllowed:false});assert.equal((await f.counts()).commands,0);
+}));
+test('M10 local postcommit denial is undisclosed, not rollback',()=>withDisposableCorePg(async f=>{
+ const h=harness(localRequest,{before:(q,s)=>{if(q.stage==='projection')s.session.revoked=true}}),a=localM10(f,h);
+ assert.deepEqual(await a.run({request:{}}),{state:'undisclosed',retryAllowed:false});assert.equal((await f.counts()).commands,1);
+}));
+test('M10 local malformed trusted preparation denied without leaking error',()=>withDisposableCorePg(async f=>{
+ const h=harness(localRequest),a=localM10(f,h,{resolvePrepared:()=>{throw Error('private detail')}});
+ assert.deepEqual(await a.run({request:{}}),{state:'undisclosed',retryAllowed:false});assert.equal((await f.counts()).commands,0);
+}));
+test('M10 remote unknown inspection retains original command and no retry',()=>withRemoteM7Pg(async f=>{
+ const h=harness(remoteRequest);let writes=0,event,available=false;
+ const a=createRemoteDomainAdapterM10({tenant,authorizationOptions:h.options,store:f.store,resolveActor:()=>remote.actor,resolvePrepared:remoteBundle,deriveFresh:c=>c,dispatch:({command,digest,eventId})=>{writes++;event={complete:true,eventId,digest,predecessor:command.predecessor,revision:'v2',target:command.target,values:command.values}},observe:()=>available?event:null});
+ assert.deepEqual(await a.run({request:{}}),{state:'unknown',retryAllowed:false});
+ assert.deepEqual(await a.run({request:{}}),{state:'unknown',retryAllowed:false});
+ available=true;
+ assert.deepEqual(await a.reconcile({request:{}}),{state:'verified',retryAllowed:false,result:{eventId:event.eventId}});
+ assert.equal(writes,1);assert.equal((await f.counts()).reservations,1);
+}));
+test('M10 remote revoked original actor cannot reconcile or observe',()=>withRemoteM7Pg(async f=>{
+ const h=harness(remoteRequest);let writes=0,observed=0;
+ const a=createRemoteDomainAdapterM10({tenant,authorizationOptions:h.options,store:f.store,resolveActor:()=>remote.actor,resolvePrepared:remoteBundle,deriveFresh:c=>c,dispatch:()=>{writes++},observe:()=>{observed++;return null}});
+ assert.equal((await a.run({request:{}})).state,'unknown');h.state.session.revoked=true;
+ assert.deepEqual(await a.reconcile({request:{}}),{state:'undisclosed',retryAllowed:false});assert.equal(writes,1);assert.equal(observed,1);
+}));
