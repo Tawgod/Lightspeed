@@ -24,9 +24,12 @@ function next(command,evidence){
  const row=evidence[0]?.row, e=command.payload.event;
  if(!row||command.payload.customerId!==customerId||command.payload.location!==location||row.record.customerId!==customerId||row.record.saleId!==saleId||!Object.hasOwn(operations,e.kind))throw Error('Wrong scope');
  if(fp(command.effects)!==fp([effect(operations[e.kind],['evidence'])]))throw Error('Wrong effect');
+ if(e.saleId!==saleId||e.customerId!==customerId)throw Error('Wrong association');
+ if(e.kind.endsWith('-reversal')&&e.kind!=='pickup-reversal'&&e.originalEventId!==undefined)throw Error('Use exact original transaction target, not alternate event reference');
  const revision=String(row.revision);
  if(row.record.revision!==revision)throw Error('Stale evidence');
  const prior=row.record.events;
+ if(prior.some(p=>p.eventId===e.eventId))throw Error('Duplicate evidence event');
  const candidate={...row.record,events:[...prior,{...e,sequence:prior.length+1}]};
  // Explicit completeness is a trusted disposable fixture fact only.
  assessCumulativeEvidence({...candidate,coverage:{...common,revision,complete:true}});
