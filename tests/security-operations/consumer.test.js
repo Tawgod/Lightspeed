@@ -15,26 +15,53 @@ test('static browser safety and accessible structure',()=>{const root=new URL('.
 
 const args={employeeId:'mock-e1',operationId:'mock-o1',scope:{location:'Mock North',resource:'mock-resource-1'}};
 const policy='mock-policy-1';
+const opts={context:await mock.getAdminContext().then(r=>r.data),generation:1};
 const cases=[['searchEmployees',{},C.validPage(C.validEmployee)],['getEmployee',{employeeId:'mock-e1'},C.validEmployee],['listRoles',{},C.validPage(C.validRole)],['getRole',{roleId:'mock-r1'},C.validRole],['listOperations',{},C.validPage(C.validOperation)],['getAssignments',{employeeId:'mock-e1'},C.validAssignments],['explainAccess',args,C.validExplanation]];
 for(const [method,input,validator] of cases)test('bound request-specific failures '+method,async()=>{
  const ctx=await C.readBound(C.fixtureTransport(mock),'getAdminContext',{},C.validContext);
  assert.equal(ctx.state,'ok');
- assert.equal((await C.readBound(C.fixtureTransport(mock),method,input,validator,policy)).state,'ok');
+ assert.equal((await C.readBound(C.fixtureTransport(mock),method,input,validator,policy,opts)).state,'ok');
  for(const status of ['denied','stale','unavailable','authentication_required','step_up_required','approval_required','invalid']){
   const t=C.fixtureTransport(mock,r=>({...r,envelope:{...r.envelope,status,data:{secret:'hidden'}}}));
-  assert.deepEqual(await C.readBound(t,method,input,validator,policy),{state:status});
+  assert.deepEqual(await C.readBound(t,method,input,validator,policy,opts),{state:status});
  }
  const malformed=C.fixtureTransport(mock,r=>({...r,envelope:{...r.envelope,data:{}}}));
- assert.deepEqual(await C.readBound(malformed,method,input,validator,policy),{state:'invalid'});
+ assert.deepEqual(await C.readBound(malformed,method,input,validator,policy,opts),{state:'invalid'});
 });
 test('unique synthetic request identifiers',async()=>{assert.notEqual((await mock.getAdminContext()).requestId,(await mock.getAdminContext()).requestId);const seen=[];const t=C.fixtureTransport(mock,r=>{seen.push(r.envelope.requestId);return r});await C.readBound(t,'getAdminContext',{},C.validContext);await C.readBound(t,'getAdminContext',{},C.validContext);assert.notEqual(...seen)});
 test('local fixture binding mismatch or omission fails closed',async()=>{
  for(const alter of [r=>({...r,binding:undefined}),r=>({...r,binding:'[]'}),r=>({...r,binding:r.binding.replace('mock-e1','mock-e2')}),r=>({...r,binding:r.binding.replace('mock-o1','mock-o2')}),r=>({...r,binding:r.binding.replace('Mock North','Mock South')}),r=>({...r,envelope:{...r.envelope,requestId:'wrong'}}),r=>({...r,envelope:{...r.envelope,requestId:undefined}})]){
- assert.deepEqual(await C.readBound(C.fixtureTransport(mock,alter),'explainAccess',args,C.validExplanation,policy),{state:'invalid'});
+ assert.deepEqual(await C.readBound(C.fixtureTransport(mock,alter),'explainAccess',args,C.validExplanation,policy,opts),{state:'invalid'});
  }
 });
-test('wrong detail subject fails closed',async()=>{for(const [method,input,validator] of cases.filter(x=>['getEmployee','getRole'].includes(x[0]))){const t=C.fixtureTransport(mock,r=>({...r,envelope:{...r.envelope,data:{...r.envelope.data,id:'wrong'}}}));assert.deepEqual(await C.readBound(t,method,input,validator,policy),{state:'invalid'})}});
-test('policy mismatch and absence fail closed in fixture profile',async()=>{for(const policyVersion of [undefined,'wrong']){const t=C.fixtureTransport(mock,r=>({...r,envelope:{...r.envelope,policyVersion}}));assert.deepEqual(await C.readBound(t,'explainAccess',args,C.validExplanation,policy),{state:'stale'})}});
-test('partial explanation scope rejected before invocation',async()=>{for(const scope of [{location:'Mock North'},{resource:'mock-resource-1'},{location:' ',resource:'x'}]){assert.deepEqual(await C.readBound(()=>assert.fail('must not call'),'explainAccess',{...args,scope},C.validExplanation,policy),{state:'invalid'})}});
+test('wrong detail subject fails closed',async()=>{for(const [method,input,validator] of cases.filter(x=>['getEmployee','getRole'].includes(x[0]))){const t=C.fixtureTransport(mock,r=>({...r,envelope:{...r.envelope,data:{...r.envelope.data,id:'wrong'}}}));assert.deepEqual(await C.readBound(t,method,input,validator,policy,opts),{state:'invalid'})}});
+test('policy mismatch and absence fail closed in fixture profile',async()=>{for(const policyVersion of [undefined,'wrong']){const t=C.fixtureTransport(mock,r=>({...r,envelope:{...r.envelope,policyVersion}}));assert.deepEqual(await C.readBound(t,'explainAccess',args,C.validExplanation,policy,opts),{state:'stale'})}});
+test('partial explanation scope rejected before invocation',async()=>{for(const scope of [{location:'Mock North'},{resource:'mock-resource-1'},{location:' ',resource:'x'}]){assert.deepEqual(await C.readBound(()=>assert.fail('must not call'),'explainAccess',{...args,scope},C.validExplanation,policy,opts),{state:'invalid'})}});
 test('missing capabilities suppress navigation and explanations',async()=>{const r=await C.readBound(C.fixtureTransport(mock,r=>({...r,envelope:{...r.envelope,data:{...r.envelope.data,allowedActions:undefined}}})),'getAdminContext',{},C.validContext);assert.deepEqual(r,{state:'invalid'});assert.deepEqual(C.navigation(r.data),[]);assert.equal(C.canExplain(r.data),false)});
-test('out-of-order fixture replies discarded by generation guard',async()=>{const guard=C.latestOnly(),pending=[];const t=C.fixtureTransport(mock);const delayed=(...a)=>new Promise(resolve=>pending.push(()=>resolve(t(...a))));const first=guard.start(),a=C.readBound(delayed,'explainAccess',args,C.validExplanation,policy);const second=guard.start(),b=C.readBound(delayed,'explainAccess',{...args,scope:{...args.scope,location:'Mock South'}},C.validExplanation,policy);pending[1]();assert.equal((await b).data.decision,'denied');assert.equal(guard.current(second),true);pending[0]();assert.equal((await a).data.decision,'allowed');assert.equal(guard.current(first),false);guard.invalidate();assert.equal(guard.current(second),false)});
+test('out-of-order fixture replies discarded by generation guard',async()=>{const guard=C.latestOnly(),pending=[];const t=C.fixtureTransport(mock);const delayed=(...a)=>new Promise(resolve=>pending.push(()=>resolve(t(...a))));const first=guard.start(),a=C.readBound(delayed,'explainAccess',args,C.validExplanation,policy,opts);const second=guard.start(),b=C.readBound(delayed,'explainAccess',{...args,scope:{...args.scope,location:'Mock South'}},C.validExplanation,policy,opts);pending[1]();assert.equal((await b).data.decision,'denied');assert.equal(guard.current(second),true);pending[0]();assert.equal((await a).data.decision,'allowed');assert.equal(guard.current(first),false);guard.invalidate();assert.equal(guard.current(second),false)});
+
+test('adapter originates immutable invocation binding',async()=>{
+ const request=Object.freeze({method:'getAssignments',args:Object.freeze({employeeId:'mock-e1'}),id:'local-test',generation:42,policy});
+ const r=await mock.invoke(request);assert.equal(r.binding,JSON.stringify([request.method,request.args,42,policy]));assert.equal(r.envelope.requestId,request.id);
+ const arbitrary={invoke:async()=>({envelope:{contractVersion:'0.1.0',requestId:'wrong',status:'ok',policyVersion:policy,data:{}}})};
+ assert.deepEqual(await C.readBound(C.fixtureTransport(arbitrary),'getAssignments',request.args,C.validAssignments,policy,opts),{state:'invalid'});
+});
+test('missing capabilities prevent all downstream invocation',async()=>{
+ for(const [method,input,validator] of cases){
+  const context={...opts.context,allowedNavigation:[],allowedActions:[]};let calls=0;
+  assert.deepEqual(await C.readBound(()=>{calls++},method,input,validator,policy,{...opts,context}),{state:'denied'});assert.equal(calls,0);
+ }
+ let calls=0;assert.deepEqual(await C.readBound(()=>{calls++},'explainAccess',args,C.validExplanation,policy,{...opts,context:{...opts.context,allowedActions:[]}}),{state:'denied'});assert.equal(calls,0);
+});
+test('generation and expected policy binding mismatch',async()=>{
+ for(const change of [r=>({...r,binding:JSON.stringify(['getAssignments',{employeeId:'mock-e1'},99,policy])}),r=>({...r,binding:JSON.stringify(['getAssignments',{employeeId:'mock-e1'},1,'wrong'])}),r=>({...r,binding:r.binding.replace('mock-e1','mock-e2')})]){
+ assert.deepEqual(await C.readBound(C.fixtureTransport(mock,change),'getAssignments',{employeeId:'mock-e1'},C.validAssignments,policy,opts),{state:'invalid'});
+ }
+});
+test('superseded successes, denied responses and throws never escape guard',async()=>{
+ for(const outcome of ['ok','denied','throw']){
+ const g=C.latestOnly(),generation=g.start();let release;const wait=new Promise(resolve=>{release=resolve});
+ const transport=async req=>{await wait;if(outcome==='throw')throw Error('hidden');const r=await mock.invoke(req);return outcome==='denied'?{...r,envelope:{...r.envelope,status:'denied',data:{secret:'hidden'}}}:r};
+ const p=C.readBound(transport,'explainAccess',args,C.validExplanation,policy,{...opts,generation,current:g.current});g.invalidate();release();assert.deepEqual(await p,{state:'superseded'});
+ }
+});
