@@ -1,0 +1,3 @@
+# Current January Product Manager candidate
+
+The original PR #28 root `index.html` and feature tests remain recovered historical source. The Owner's newer interface is archived byte-for-byte under `owner-reference/`. The current isolated test candidate is `fixture/index.html`; build the self-contained Owner HTML using `node fixture/build-standalone.mjs Product_Manager_January_Fixture.html`. See [run/test instructions](fixture/README.md) and [complete feature inventory](fixture/FEATURE_INVENTORY.md). No server mount, actual login, live providers, production mutations, CI or deployment. Shared service integration remains separately gated.
