@@ -1,0 +1,47 @@
+name: HC Secure S2.5N operational PostgreSQL
+on:
+  pull_request:
+    branches: [feature/hc-secure-s25m-postgres-20261125]
+    paths:
+      - 'services/security/**'
+      - 'db/hc_security_operational.sql'
+      - 'tests/hc-secure-s25n-operational.test.mjs'
+      - 'tests/security-runtime/**'
+      - 'tests/hc-secure-s25m-postgres.test.mjs'
+      - '.github/workflows/hc-secure-s25n-operational.yml'
+permissions:
+  contents: read
+jobs:
+  disposable:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'feature/hc-secure-s25n-operational-20261127'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      NODE_ENV: test
+      HC_S25M_DISPOSABLE: 'yes'
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: disposable-only
+          POSTGRES_DB: hc_s25m_disposable
+        ports:
+          - 5432:5432
+        options: --health-cmd "pg_isready -U postgres -d hc_s25m_disposable" --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: |
+          git rev-parse HEAD
+          npm install --no-save --ignore-scripts --no-audit --no-fund pg@8.13.1
+          node --check tests/security-runtime/s25mPgRuntime.mjs
+          node --check services/security/operationalRead.js
+          node --check services/security/operationalPrivileges.js
+          node --check services/security/authorityFence.js
+          node --test tests/hc-secure-s25{b,c,d,e,f,g,h,i,j,k,l,m,n}-*.test.mjs
