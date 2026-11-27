@@ -2233,83 +2233,66 @@ export function createSpecialOrdersRouter({
         return res.status(404).json({ error:'Preorder product not found.' });
       }
 
-      const available = Math.max(0, Number(req.body?.available_quantity ?? product.received_quantity) - Number(product.reserved_floor_quantity || 0));
-      const method = String(req.body?.method || product.allocation_method || 'QUEUE').toUpperCase();
-      if (!['QUEUE','FAIR_SHARE','MANUAL'].includes(method)) {
+      const received = verifiedReceivedQuantity({received_quantity:product.received_quantity});
+      const requested = verifiedReceivedQuantity({received_quantity:req.body?.available_quantity ?? product.received_quantity});
+      const floor = verifiedReceivedQuantity({received_quantity:product.reserved_floor_quantity ?? 0});
+      if (received === null || requested === null || floor === null || requested > received) {
         await client.query('ROLLBACK');
-        return res.status(400).json({ error:'Allocation method must be QUEUE, FAIR_SHARE, or MANUAL.' });
+        return res.status(409).json({error:'Allocation requires a valid received quantity limit.'});
       }
-
-      const existingAlloc = await client.query(`
-        SELECT COALESCE(sum(quantity),0)::int AS qty
-        FROM preorder_allocations pa
-        JOIN preorder_requests pr ON pr.id=pa.preorder_request_id
+      const available = Math.max(0, requested - floor);
+      const method = String(req.body?.method || product.allocation_method || 'QUEUE').toUpperCase();
+      if (!['QUEUE','FAIR_SHARE','MANUAL'].includes(method)) throw new Error('Invalid allocation method.');
+      const existing = await client.query(`
+        SELECT COALESCE(sum(pa.quantity),0)::int AS qty
+        FROM preorder_allocations pa JOIN preorder_requests pr ON pr.id=pa.preorder_request_id
         WHERE pr.preorder_product_id=$1 AND pa.status IN ('ALLOCATED','READY','PICKED_UP')
-      `, [req.params.id]);
-      let remaining = Math.max(0, available - Number(existingAlloc.rows[0].qty || 0));
-
+      `,[req.params.id]);
+      let remaining = Math.max(0, available - Number(existing.rows[0].qty));
       const requests = await client.query(`
-        SELECT pr.*, c.name AS customer_name
-        FROM preorder_requests pr
-        JOIN customers c ON c.id=pr.customer_id
-        LEFT JOIN preorder_allocations pa ON pa.preorder_request_id=pr.id
+        SELECT pr.*,COALESCE(pa.quantity,0)::int AS already_allocated
+        FROM preorder_requests pr LEFT JOIN preorder_allocations pa ON pa.preorder_request_id=pr.id
         WHERE pr.preorder_product_id=$1
-          AND pr.status='REQUESTED'
-          AND pa.id IS NULL
-        ORDER BY COALESCE(pr.queue_position,2147483647), pr.requested_at
+          AND ((pr.status='REQUESTED' AND pa.id IS NULL) OR (pr.status='ALLOCATED' AND pa.status='ALLOCATED'))
+          AND pr.requested_quantity > COALESCE(pa.quantity,0)
+        ORDER BY COALESCE(pr.queue_position,2147483647),pr.requested_at,pr.id
         FOR UPDATE OF pr
-      `, [req.params.id]);
-
+      `,[req.params.id]);
       const created = [];
+      const need = requests.rows.map(r=>({...r,left:Number(r.requested_quantity)-Number(r.already_allocated),give:0}));
       if (method === 'MANUAL') {
-        const manual = Array.isArray(req.body?.allocations) ? req.body.allocations : [];
-        for (const a of manual) {
-          const request = requests.rows.find(r => String(r.id) === String(a.request_id));
-          const qty = Math.min(Number(a.quantity || 0), Number(request?.requested_quantity || 0), remaining);
-          if (!request || qty <= 0) continue;
-          const r = await client.query(
-            'INSERT INTO preorder_allocations (preorder_request_id,quantity) VALUES ($1,$2) RETURNING *',
-            [request.id, qty]
-          );
-          await client.query('UPDATE preorder_requests SET status=$1 WHERE id=$2', ['ALLOCATED',request.id]);
-          created.push(r.rows[0]); remaining -= qty;
+        const seen = new Set();
+        for (const a of Array.isArray(req.body?.allocations)?req.body.allocations:[]) {
+          const r=need.find(x=>String(x.id)===String(a.request_id));
+          const qty=verifiedReceivedQuantity({received_quantity:a.quantity});
+          if (!r || !qty || seen.has(String(r.id)) || qty>r.left || qty>remaining) throw new Error('Invalid manual allocation.');
+          seen.add(String(r.id)); r.give=qty; remaining-=qty;
         }
       } else if (method === 'FAIR_SHARE') {
-        // One each in queue order, then another pass, until stock is exhausted.
-        const need = requests.rows.map(r => ({...r, left:Number(r.requested_quantity)}));
-        while (remaining > 0 && need.some(r => r.left > 0)) {
+        while (remaining>0 && need.some(r=>r.left>0)) {
           for (const r of need) {
-            if (remaining <= 0) break;
-            if (r.left <= 0) continue;
-            r.left--; remaining--;
-            const found = created.find(x => String(x.preorder_request_id)===String(r.id));
-            if (found) {
-              found.quantity++;
-              await client.query('UPDATE preorder_allocations SET quantity=quantity+1 WHERE id=$1',[found.id]);
-            } else {
-              const ins = await client.query(
-                'INSERT INTO preorder_allocations (preorder_request_id,quantity) VALUES ($1,1) RETURNING *',[r.id]
-              );
-              created.push(ins.rows[0]);
-              await client.query('UPDATE preorder_requests SET status=$1 WHERE id=$2',['ALLOCATED',r.id]);
-            }
+            if (remaining<=0) break;
+            if (r.left<=0) continue;
+            r.left--; r.give++; remaining--;
           }
         }
       } else {
-        for (const r of requests.rows) {
-          if (remaining <= 0) break;
-          const qty = Math.min(Number(r.requested_quantity), remaining);
-          const ins = await client.query(
-            'INSERT INTO preorder_allocations (preorder_request_id,quantity) VALUES ($1,$2) RETURNING *',[r.id,qty]
-          );
-          created.push(ins.rows[0]);
-          await client.query('UPDATE preorder_requests SET status=$1 WHERE id=$2',['ALLOCATED',r.id]);
-          remaining -= qty;
-        }
+        for (const r of need) { r.give=Math.min(r.left,remaining); remaining-=r.give; }
+      }
+      for (const r of need) {
+        if (!r.give) continue;
+        const ins=await client.query(`
+          INSERT INTO preorder_allocations (preorder_request_id,quantity) VALUES ($1,$2)
+          ON CONFLICT (preorder_request_id) DO UPDATE SET quantity=preorder_allocations.quantity+EXCLUDED.quantity
+          WHERE preorder_allocations.status='ALLOCATED' RETURNING *
+        `,[r.id,r.give]);
+        if (!ins.rows[0]) throw new Error('Allocation is no longer open.');
+        await client.query('UPDATE preorder_requests SET status=$1 WHERE id=$2',['ALLOCATED',r.id]);
+        created.push({...ins.rows[0],added_quantity:r.give});
       }
 
       await client.query('COMMIT');
-      res.json({ method, available, newlyAllocated:created.reduce((s,x)=>s+Number(x.quantity),0), remaining, allocations:created });
+      res.json({ method, available, newlyAllocated:created.reduce((s,x)=>s+Number(x.added_quantity),0), remaining, allocations:created });
     } catch (error) {
       await client.query('ROLLBACK');
       res.status(400).json({ error:error.message });
