@@ -5,6 +5,7 @@ export function createJanuaryCatalogLookup(snapshot) {
  const scopeKeys=['tenant','environment','location','sourceRef','revision'];
  if(!snapshot||!scopeKeys.every(k=>text(snapshot[k]))||!Array.isArray(snapshot.records))throw new TypeError('Trusted scoped snapshot required');
  const scope=Object.freeze(Object.fromEntries(scopeKeys.map(k=>[k,snapshot[k]])));
+ const targetComplete=snapshot.coverage?.TARGET===true;
  const coverage=new Set(kinds.filter(k=>snapshot.coverage?.[k]===true)), nameComplete=snapshot.coverage?.NAME===true;
  const index=new Map(), targets=new Map(), uncertain=new Set(); let malformed=false;
  for(const row of snapshot.records){
@@ -32,5 +33,13 @@ export function createJanuaryCatalogLookup(snapshot) {
   const complete=nameComplete&&!malformed&&matches.length<=q.limit;
   return result(!complete?'INCOMPLETE':matches.length?'CANDIDATES':'NO_MATCH',complete,matches.slice(0,q.limit));
  }
- return Object.freeze({resolve,searchName});
+ // Exact selected target, not an identifier or name search. TARGET coverage is
+ // independent proof of complete canonical member mapping for this snapshot.
+ function verifySelection(q){
+  if(!scoped(q)||!text(q.productId)||!Object.hasOwn(q,'variantId')||!(q.variantId===null||text(q.variantId)))throw new TypeError('Exact selected target and snapshot scope required');
+  const target=targets.get(JSON.stringify([q.productId,q.variantId]));
+  const complete=targetComplete&&!malformed;
+  return result(!complete?'INCOMPLETE':target?'EXACT_UNIQUE':'NO_MATCH',complete,target?[target]:[]);
+ }
+ return Object.freeze({resolve,searchName,verifySelection});
 }

@@ -30,3 +30,19 @@ function januaryLookupChecks(create,assert){
  check('snapshot and output mutation isolated',()=>{const s=snapshot([row('p',[id('SKU','001')])]);const lookup=create(s);s.records[0].name='changed';const a=lookup.resolve({...scope,value:'001'});a.candidates[0].name='tamper';assert(lookup.resolve({...scope,value:'001'}).candidates[0].name==='Fictional model kit')});
 }
 test('January exact lookup contract: 18 named cases',()=>januaryLookupChecks(createJanuaryCatalogLookup,(v,label)=>assert.ok(v,label)));
+
+test('exact selected target requires independent TARGET coverage',()=>{
+ const scope={tenant:'fictional',environment:'test',location:'outlet-001',sourceRef:'fixture',revision:'r1'};
+ const row={productId:'000701',variantId:null,variantVerified:true,name:'Fictional model kit',active:true,identifiers:[]};
+ const snapshot={...scope,coverage:{TARGET:true,NAME:true},records:[row,{...row,variantId:'blue',name:'Blue kit'}]};
+ const q={...scope,productId:'000701',variantId:null},lookup=createJanuaryCatalogLookup(snapshot);
+ assert.equal(lookup.verifySelection(q).status,'EXACT_UNIQUE');
+ assert.equal(lookup.verifySelection({...q,variantId:'blue'}).candidates[0].name,'Blue kit');
+ assert.equal(lookup.verifySelection({...q,variantId:'missing'}).status,'NO_MATCH');
+ assert.equal(createJanuaryCatalogLookup({...snapshot,coverage:{NAME:true}}).verifySelection(q).status,'INCOMPLETE');
+ assert.equal(createJanuaryCatalogLookup({...snapshot,records:[row,{...row,name:'conflict'}]}).verifySelection(q).status,'INCOMPLETE');
+ assert.equal(lookup.searchName({...scope,name:'kit',limit:10}).status,'CANDIDATES');
+ assert.throws(()=>lookup.verifySelection({...q,revision:'r2'}));
+ assert.throws(()=>lookup.verifySelection({...scope,productId:'000701'}));
+ assert.throws(()=>lookup.verifySelection({...q,productId:701}));
+});
