@@ -216,7 +216,6 @@ export function createOrderSplitRouter({ domain, token }) {
         ? 'Unavailable'
         : 'USD ' + storeCreditBalance.toFixed(2);
       const paymentTotalDisplay = 'USD ' + paymentTotal.toFixed(2);
-      const paymentTotalValue = paymentTotal.toFixed(2);
 
       const rows = lines.map((line) => {
         const price = line.unit_price ?? line.price ?? 0;
@@ -232,10 +231,7 @@ export function createOrderSplitRouter({ domain, token }) {
             <td style="padding:8px;border-bottom:1px solid #ddd;">${qty}</td>
             <td style="padding:8px;border-bottom:1px solid #ddd;"><input type="number" min="1" max="${qty}" value="1" class="split-qty" data-line-id="${line.id}" style="width:70px;padding:4px;"></td>
             <td style="padding:8px;border-bottom:1px solid #ddd;">${Number(price).toFixed(2)}</td>
-            <td style="padding:8px;border-bottom:1px solid #ddd;">
-              <button onclick="createCopy('${line.id}', ${qty})">Create parked copy</button>
-              <button style="margin-left:6px;" onclick="removeOriginal('${line.id}')">Remove from original</button>
-            </td>
+
           </tr>`;
       }).join('');
 
@@ -248,11 +244,7 @@ export function createOrderSplitRouter({ domain, token }) {
 <div style="margin:16px 0;padding:12px;border:1px solid #ddd;background:#fafafa;">
   <div><strong>Current store credit:</strong> ${storeCreditDisplay}</div>
   <div><strong>Current payment/deposit total:</strong> ${paymentTotalDisplay}</div>
-  <div style="margin-top:8px;">
-    <label><strong>Amount to move to store credit:</strong>
-      <input id="convert-amount" type="number" min="0.01" max="${paymentTotalValue}" step="0.01" value="${paymentTotalValue}" style="width:90px;padding:4px;margin-left:6px;">
-    </label>
-  </div>
+  <p>Payments and customer credit are handled in Lightspeed Register. Payment and credit amounts shown here are read-only.</p>
   <div style="margin-top:10px;">
     <label><strong>Destination:</strong>
       <select id="split-destination" style="padding:5px;margin-left:6px;min-width:260px;">
@@ -263,59 +255,13 @@ export function createOrderSplitRouter({ domain, token }) {
   </div>
 </div>
 <table style="border-collapse:collapse;width:100%;">
-<thead><tr><th>Select</th><th>Product</th><th>SKU</th><th>Qty</th><th>Split Qty</th><th>Price</th><th>Action</th></tr></thead>
+<thead><tr><th>Select</th><th>Product</th><th>SKU</th><th>Qty</th><th>Split Qty</th><th>Price</th></tr></thead>
 <tbody>${rows}</tbody>
 </table>
 <button id="pickup-selected-btn" onclick="splitSelected(true)" style="margin-top:16px;padding:11px 18px;font-weight:800;background:#16a34a;color:#fff;border:2px solid #14532d;border-radius:6px;">Pick Up Selected → Register</button>
 <button id="split-selected-btn" onclick="splitSelected(false)" style="margin-top:16px;margin-left:8px;padding:10px 16px;font-weight:bold;">Split Selected Only</button>
-<button onclick="repairPickup()" style="margin-top:16px;margin-left:8px;padding:10px 16px;">Repair pickup metadata</button>
-<button id="convert-deposit-btn" onclick="convertDeposit()" style="margin-top:16px;margin-left:8px;padding:10px 16px;">Convert deposit to store credit</button>
 <pre id="result" style="margin-top:20px;background:#f5f5f5;padding:15px;white-space:pre-wrap;"></pre>
 <script>
-async function convertDeposit() {
-  const amountInput = document.getElementById('convert-amount');
-  const amount = Number(amountInput && amountInput.value ? amountInput.value : 0);
-  if (!(amount > 0)) {
-    alert('Enter an amount greater than zero.');
-    return;
-  }
-  if (!confirm('Move ' + amount.toFixed(2) + ' from this sale payment/deposit into customer store credit?')) return;
-  const out = document.getElementById('result');
-  const btn = document.getElementById('convert-deposit-btn');
-  btn.disabled = true;
-  out.textContent = 'Converting deposit to store credit...';
-  try {
-    const response = await fetch('/api/order-split/sales/${encodeURIComponent(saleRef)}/convert-deposit', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ amount })
-    });
-    const data = await response.json();
-    out.textContent = JSON.stringify(data, null, 2);
-  } catch (error) {
-    out.textContent = String(error);
-  } finally {
-    btn.disabled = false;
-  }
-}
-
-async function repairPickup() {
-  if (!confirm('Restore pickup metadata on this sale?')) return;
-  const out = document.getElementById('result');
-  out.textContent = 'Repairing pickup metadata...';
-  try {
-    const response = await fetch('/api/order-split/sales/${encodeURIComponent(saleRef)}/repair-pickup', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({})
-    });
-    const data = await response.json();
-    out.textContent = JSON.stringify(data, null, 2);
-  } catch (error) {
-    out.textContent = String(error);
-  }
-}
-
 async function loadDestinations() {
   const select = document.getElementById('split-destination');
   const note = document.getElementById('destination-note');
@@ -340,7 +286,9 @@ async function loadDestinations() {
   }
 }
 
+let splitSubmitted = false;
 async function splitSelected(loadRegister = false) {
+  if (splitSubmitted) return;
   const selected = [...document.querySelectorAll('.split-select:checked')];
   if (!selected.length) {
     alert('Select at least one item to split.');
@@ -361,8 +309,9 @@ async function splitSelected(loadRegister = false) {
         : 'Create a new split order for the selected items and remove them from the original sale?');
   if (!confirm(destinationMessage)) return;
   const out = document.getElementById('result');
-  const btn = document.getElementById(loadRegister ? 'pickup-selected-btn' : 'split-selected-btn');
-  btn.disabled = true;
+  splitSubmitted = true;
+  document.getElementById('pickup-selected-btn').disabled = true;
+  document.getElementById('split-selected-btn').disabled = true;
   out.textContent = loadRegister ? 'Preparing selected pickup...' : 'Running combined split...';
   try {
     const response = await fetch('/api/order-split/sales/${encodeURIComponent(saleRef)}/split', {
@@ -386,28 +335,11 @@ async function splitSelected(loadRegister = false) {
           destinationInvoiceNumber: data.destinationSale?.invoiceNumber || data.newSale?.invoiceNumber || null
         }, '*');
       }, loadRegister ? 300 : 900);
+    } else {
+      out.textContent = 'Split not verified. Check the original and destination orders before attempting another split. ' + JSON.stringify(data, null, 2);
     }
   } catch (error) {
-    out.textContent = String(error);
-  } finally {
-    btn.disabled = false;
-  }
-}
-
-async function removeOriginal(lineItemId) {
-  if (!confirm('Remove this line from the original sale?')) return;
-  const out = document.getElementById('result');
-  out.textContent = 'Updating original sale...';
-  try {
-    const response = await fetch('/api/order-split/sales/${encodeURIComponent(saleRef)}/remove-from-original', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ lineItemId })
-    });
-    const data = await response.json();
-    out.textContent = JSON.stringify(data, null, 2);
-  } catch (error) {
-    out.textContent = String(error);
+    out.textContent = 'Split outcome unknown. Check both orders before retrying. ' + String(error);
   }
 }
 
