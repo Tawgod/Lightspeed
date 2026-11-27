@@ -321,7 +321,7 @@ async function splitSelected(loadRegister = false) {
     });
     const data = await response.json();
     out.textContent = JSON.stringify(data, null, 2);
-    if (response.ok && data.splitCompleted === true && data.recoveryRequired !== true && data.fulfillmentIntegrity?.consistent === true && data.paymentIntegrity?.consistent === true) {
+    if (response.ok && data.splitCompleted === true && data.recoveryRequired !== true && data.fulfillmentIntegrity?.consistent === true && data.paymentIntegrity?.consistent === true && (!loadRegister || Boolean(data.destinationSale?.id || data.newSale?.id))) {
       const destinationSaleId = data.destinationSale?.id || data.newSale?.id || null;
       setTimeout(() => {
         window.parent.postMessage(loadRegister ? {
@@ -345,22 +345,6 @@ async function splitSelected(loadRegister = false) {
 
 loadDestinations();
 
-async function createCopy(lineItemId, quantity) {
-  if (!confirm('Create a new parked test sale from this line?')) return;
-  const out = document.getElementById('result');
-  out.textContent = 'Creating parked test sale...';
-  try {
-    const response = await fetch('/api/order-split/sales/${encodeURIComponent(saleRef)}/create-test-copy', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ lineItemId, quantity: 1 })
-    });
-    const data = await response.json();
-    out.textContent = JSON.stringify(data, null, 2);
-  } catch (error) {
-    out.textContent = String(error);
-  }
-}
 </script>
 </body></html>`);
     } catch (error) {
