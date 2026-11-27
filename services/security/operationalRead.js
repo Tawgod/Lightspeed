@@ -1,6 +1,7 @@
 // Server-only composition. No routes, fixture imports, identity discovery or grants.
 import {createScannerSessions} from '../scannerSessions.js';
 import {withAuthorityFence} from './authorityFence.js';
+import {verifyOperationalPrivileges} from './operationalPrivileges.js';
 import {randomUUID} from 'node:crypto';
 const V='HC-SECURE-READ/0.1';
 const ident=x=>typeof x==='string'&&/^[A-Za-z0-9_.:-]{1,150}$/.test(x)&&x!=='unknown';
@@ -13,8 +14,9 @@ const fields=['productId','variantId','name'];
 const one=async(c,q,p=[])=>{const r=await c.query(q,p);return r.rowCount===1?r.rows[0]:null};
 // Adapters are injected only at trusted server composition, never from a request.
 // Disabled by default; actual Timeclock/factor/site adapters require separate approval.
-export function createOperationalRead({pool,secret,tenant,environment,audience,operation,identity,throttle,verifyAssurance,admitSource,evaluatePolicy,enabled=false,clock=Date.now}={}){
+export async function createOperationalRead({pool,runtimeRole,secret,tenant,environment,audience,operation,identity,throttle,verifyAssurance,admitSource,evaluatePolicy,enabled=false,clock=Date.now}={}){
  if(![tenant,environment,audience,operation].every(ident)||!pool?.connect)throw TypeError('Exact configuration required');
+ if(enabled===true)await verifyOperationalPrivileges({pool,runtimeRole});
  const tokens=createScannerSessions({secret,now:clock,ttlSeconds:900});
  const handles=new WeakMap();
  const ready=()=>{if(enabled!==true||![identity?.verifyPin,identity?.authorize,throttle?.reserve,verifyAssurance,admitSource,evaluatePolicy].every(x=>typeof x==='function'))throw unavailable()};
@@ -64,7 +66,7 @@ export function createOperationalRead({pool,secret,tenant,environment,audience,o
  const d=source.data;if(!exact(d,fields)||d.productId!==q.resourceId||d.variantId!==q.variantId||typeof d.name!=='string'||!d.name.trim()||d.name.length>300)return reply('unavailable');
  const out={productId:d.productId,variantId:d.variantId,name:d.name};
  const end=await current(c,h.token,h.transport);if(!same(s,end)||!await permitted(end))return reply('stale');
- await audit(c,s.employeeId,requestId,'read');if(clock()>=end.expiresAt)return reply('stale');return reply('ok',out);
+ await audit(c,s.employeeId,requestId,'read');if(clock()>=end.expiresAt)throw denied();return reply('ok',out);
  });
  }catch(e){return reply(e.status===401||e.status===403?'denied':'unavailable')}
  }
