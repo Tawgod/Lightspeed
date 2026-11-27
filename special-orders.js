@@ -34,13 +34,24 @@ export function orderStatusTransition(from, to) {
   return allowed[from]?.includes(to) ? 'allow' : 'deny';
 }
 
-export function preorderPickupTransition(status, action) {
-  const target = { READY:'READY', PICKED_UP:'PICKED_UP', NO_PICKUP:'RELEASED' }[action];
+export function preorderPickupTransition(status, action, releaseReason=null) {
+  const target = { READY:'READY', PICKED_UP:'PICKED_UP', NO_PICKUP:'RELEASED', CANCEL:'RELEASED' }[action];
   if (!target) return 'deny';
-  if (status === target) return 'noop';
-  if (status === 'ALLOCATED' && action === 'READY') return 'allow';
-  if (status === 'READY' && ['PICKED_UP','NO_PICKUP'].includes(action)) return 'allow';
+  if (status === target) return target !== 'RELEASED' || releaseReason === (action === 'CANCEL' ? 'CANCELLED' : 'NO_PICKUP') ? 'noop' : 'deny';
+  if (status === 'ALLOCATED' && ['READY','CANCEL'].includes(action)) return 'allow';
+  if (status === 'READY' && ['PICKED_UP','NO_PICKUP','CANCEL'].includes(action)) return 'allow';
   return 'deny';
+}
+
+// Cancellation history is informational; only explicit missed pickups affect this penalty.
+export function missedPickupPenalty(history, now=Date.now()) {
+  const missed=Number(history.no_pickups || 0);
+  const last=history.last_no_pickup ? new Date(history.last_no_pickup).getTime() : 0;
+  return Math.min(60, missed*22+(missed>0 && last && last<=now && now-last<=365*86400000 ? 12 : 0));
+}
+export function pickupDeadlinePassed(deadline, now=Date.now()) {
+  const time=deadline ? new Date(deadline).getTime() : NaN;
+  return Number.isFinite(time) && time<=now;
 }
 
 export function verifiedReceivedQuantity(line) {
@@ -727,6 +738,7 @@ export function createSpecialOrdersRouter({
         COALESCE(hist.picked_up,0)::int AS picked_up,
         COALESCE(hist.late_pickups,0)::int AS late_pickups,
         COALESCE(hist.no_pickups,0)::int AS no_pickups,
+        ((SELECT count(*) FROM preorder_requests cancelled WHERE cancelled.customer_id=pr.customer_id AND cancelled.status='CANCELLED') + (SELECT count(*) FROM special_order_items cancelled JOIN special_orders so ON so.id=cancelled.special_order_id WHERE so.customer_id=pr.customer_id AND cancelled.status='CANCELLED'))::int AS cancelled_orders,
         hist.last_no_pickup,
         COALESCE(pm.purchase_count,0)::int AS purchase_count,
         COALESCE(pm.gross_spend,0)::numeric AS gross_spend,
@@ -769,7 +781,6 @@ export function createSpecialOrdersRouter({
       const late = Number(r.late_pickups || 0);
       const missed = Number(r.no_pickups || 0);
       const lastPurchase = r.last_purchase_at ? new Date(r.last_purchase_at).getTime() : 0;
-      const lastMissed = r.last_no_pickup ? new Date(r.last_no_pickup).getTime() : 0;
 
       const spendPoints = Math.min(25, Math.log10(1 + spend) * 7);
       const purchasePoints = Math.min(15, Math.sqrt(purchases) * 2.5);
@@ -777,9 +788,7 @@ export function createSpecialOrdersRouter({
       const recencyPoints = lastPurchase && (now-lastPurchase) <= 90*86400000 ? 10 :
                             lastPurchase && (now-lastPurchase) <= 365*86400000 ? 5 : 0;
       const latePenalty = Math.min(15, late * 4);
-      let missedPenalty = missed * 22;
-      if (lastMissed && (now-lastMissed) <= 365*86400000) missedPenalty += 12;
-      missedPenalty = Math.min(60, missedPenalty);
+      const missedPenalty = missedPickupPenalty(r, now);
 
       const queueBonus = r.queue_position ? Math.max(0, 8 - Math.min(8, Number(r.queue_position)-1)) : 0;
       const score = Math.max(0, Math.min(100,
@@ -847,6 +856,7 @@ export function createSpecialOrdersRouter({
         count(*) FILTER (WHERE event_type='PICKED_UP')::int AS picked_up,
         count(*) FILTER (WHERE event_type='LATE_PICKUP')::int AS late_pickups,
         count(*) FILTER (WHERE event_type='NO_PICKUP')::int AS no_pickups,
+        ((SELECT count(*) FROM preorder_requests WHERE customer_id=$1 AND status='CANCELLED') + (SELECT count(*) FROM special_order_items i JOIN special_orders o ON o.id=i.special_order_id WHERE o.customer_id=$1 AND i.status='CANCELLED'))::int AS cancelled_orders,
         max(occurred_at) FILTER (WHERE event_type='NO_PICKUP') AS last_no_pickup
       FROM customer_pickup_events
       WHERE customer_id=$1
@@ -2325,7 +2335,7 @@ export function createSpecialOrdersRouter({
       const a=q.rows[0];
       if(!a){await client.query('ROLLBACK');return res.status(404).json({error:'Allocation not found.'})}
 
-      const decision = preorderPickupTransition(a.status, action);
+      const decision = preorderPickupTransition(a.status, action, a.release_reason);
       if (decision === 'noop') { await client.query('ROLLBACK'); return res.json(a); }
       if (decision === 'deny' || a.request_status === 'CANCELLED') {
         await client.query('ROLLBACK');
@@ -2350,7 +2360,23 @@ export function createSpecialOrdersRouter({
         `,[a.customer_id,a.preorder_request_id,late?'LATE_PICKUP':'PICKED_UP',req.body?.note||null,req.body?.changed_by||null]);
         await client.query('COMMIT');return res.json(r.rows[0]);
       }
+      if(action==='CANCEL'){
+        const r=await client.query(`
+          UPDATE preorder_allocations SET status='RELEASED',released_at=now(),release_reason='CANCELLED'
+          WHERE id=$1 RETURNING *
+        `,[a.id]);
+        await client.query("UPDATE preorder_requests SET status='CANCELLED' WHERE id=$1",[a.preorder_request_id]);
+        await client.query(`
+          INSERT INTO customer_pickup_events (customer_id,preorder_request_id,event_type,notes,created_by)
+          VALUES ($1,$2,'CANCELLED',$3,$4)
+        `,[a.customer_id,a.preorder_request_id,req.body?.note||null,req.body?.changed_by||null]);
+        await client.query('COMMIT');return res.json(r.rows[0]);
+      }
       if(action==='NO_PICKUP'){
+        if(!pickupDeadlinePassed(a.pickup_deadline_at)){
+          await client.query('ROLLBACK');
+          return res.status(409).json({error:'Pickup deadline has not passed; use cancellation for an explicit cancellation.'});
+        }
         const r=await client.query(`
           UPDATE preorder_allocations SET status='RELEASED',released_at=now(),
             release_reason='NO_PICKUP'
@@ -2364,7 +2390,7 @@ export function createSpecialOrdersRouter({
         await client.query('COMMIT');return res.json(r.rows[0]);
       }
       await client.query('ROLLBACK');
-      return res.status(400).json({error:'action must be READY, PICKED_UP, or NO_PICKUP'});
+      return res.status(400).json({error:'action must be READY, PICKED_UP, CANCEL, or NO_PICKUP'});
     } catch(error){
       await client.query('ROLLBACK');res.status(400).json({error:error.message});
     } finally {client.release()}
