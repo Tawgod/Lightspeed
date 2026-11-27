@@ -9,7 +9,7 @@ const start=source.indexOf('const VALID_STATUSES =');
 const end=source.indexOf('let pool = null;',start);
 assert.ok(start>=0 && end>start);
 const block=source.slice(start,end).replace(/^export function /gm,'function ');
-const {orderStatusTransition:status,preorderPickupTransition:pickup,verifiedReceivedQuantity:quantity,planPreorderAllocation:plan}=vm.runInNewContext(block+'\n({orderStatusTransition,preorderPickupTransition,verifiedReceivedQuantity,planPreorderAllocation})');
+const {orderStatusTransition:status,preorderPickupTransition:pickup,verifiedReceivedQuantity:quantity,planPreorderAllocation:plan,missedPickupPenalty:penalty,pickupDeadlinePassed:deadlinePassed}=vm.runInNewContext(block+'\n({orderStatusTransition,preorderPickupTransition,verifiedReceivedQuantity,planPreorderAllocation,missedPickupPenalty,pickupDeadlinePassed})');
 const rows=[{id:'1',requested_quantity:5,already_allocated:2},{id:'2',requested_quantity:4,already_allocated:0}];
 const amounts=result=>Array.from(result.need,r=>r.give);
 
@@ -47,7 +47,7 @@ test('pickup replay is a noop and invalid transitions deny',()=>{
   assert.equal(pickup('READY','READY'),'noop');
   assert.equal(pickup('READY','PICKED_UP'),'allow');
   assert.equal(pickup('PICKED_UP','PICKED_UP'),'noop');
-  assert.equal(pickup('RELEASED','NO_PICKUP'),'noop');
+  assert.equal(pickup('RELEASED','NO_PICKUP','NO_PICKUP'),'noop');
   assert.equal(pickup('PICKED_UP','NO_PICKUP'),'deny');
   assert.equal(pickup('ALLOCATED','PICKED_UP'),'deny');
   assert.equal(pickup('RELEASED','READY'),'deny');
@@ -56,4 +56,22 @@ test('zero receipt differs from unavailable, malformed and fractional evidence',
   assert.equal(quantity({received_quantity:0}),0);
   assert.equal(quantity({quantity_received:'12'}),12);
   for(const x of [undefined,null,'',true,-1,1.2,'1.2','-1',' 2',Infinity,Number.MAX_SAFE_INTEGER+1]) assert.equal(quantity({received_quantity:x}),null);
+});
+
+test('cancellations are distinct from missed pickups and do not penalize allocation',()=>{
+  const now=Date.parse('2026-11-27T15:00:00Z');
+  assert.equal(penalty({cancelled_orders:9,no_pickups:0},now),0);
+  assert.equal(penalty({cancelled_orders:9,no_pickups:1,last_no_pickup:'2026-11-26T15:00:00Z'},now),34);
+  assert.equal(penalty({no_pickups:1,last_no_pickup:'2026-11-26T15:00:00Z'},now),34);
+  assert.equal(pickup('ALLOCATED','CANCEL'),'allow');
+  assert.equal(pickup('READY','CANCEL'),'allow');
+  assert.equal(pickup('RELEASED','CANCEL','CANCELLED'),'noop');
+  assert.equal(pickup('RELEASED','NO_PICKUP','CANCELLED'),'deny');
+  assert.equal(pickup('RELEASED','CANCEL','NO_PICKUP'),'deny');
+  assert.equal(pickup('RELEASED','NO_PICKUP',null),'deny');
+  assert.equal(pickup('PICKED_UP','CANCEL'),'deny');
+  assert.equal(deadlinePassed('2026-11-27T14:59:00Z',now),true);
+  assert.equal(deadlinePassed('2026-11-27T15:01:00Z',now),false);
+  assert.equal(deadlinePassed(null,now),false);
+  assert.equal(deadlinePassed('invalid',now),false);
 });
