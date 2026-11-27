@@ -5,6 +5,17 @@ export function isCanonicalEmployeeId(value) {
   return typeof value === 'string' && /^[1-9][0-9]{0,18}$/.test(value) &&
     BigInt(value) <= 9223372036854775807n;
 }
+// Explicit enrollment scope only; never a roster, role, or permission grant.
+function eligibleEmployees(environment) {
+  const single=environment.HC_SECURE_IDENTITY_EMPLOYEE_ID;
+  const multiple=environment.HC_SECURE_IDENTITY_EMPLOYEE_IDS;
+  if (single!==undefined && multiple!==undefined) return null;
+  let ids;
+  try { ids=multiple===undefined?[single]:JSON.parse(multiple); } catch { return null; }
+  if (!Array.isArray(ids) || ids.length===0 || ids.length>100 ||
+      ids.some(id=>!isCanonicalEmployeeId(id)||id==='901') || new Set(ids).size!==ids.length) return null;
+  return new Set(ids);
+}
 const key = value => typeof value === 'string' && Buffer.byteLength(value) >= 32;
 const exact = (body, keys) => body && Object.getPrototypeOf(body) === Object.prototype &&
   Object.keys(body).length === keys.length && keys.every(k => Object.hasOwn(body, k));
@@ -19,14 +30,14 @@ const equal = (a,b) => {
 // with reviewed connection/statement/lock limits. The provider bounds response waiting;
 // an in-flight database statement may finish after denial. Never retry an unknown reservation.
 export function createHcSecureIdentityProvider({pool, pinHash, verifyTransport, environment={}}={}) {
-  const id=environment.HC_SECURE_IDENTITY_EMPLOYEE_ID;
+  const eligible=eligibleEmployees(environment);
   const secret=environment.HC_SECURE_IDENTITY_SERVICE_SECRET;
   const throttle=environment.HC_SECURE_IDENTITY_THROTTLE_SECRET;
   const audience=environment.HC_SECURE_IDENTITY_AUDIENCE;
   const legacy=['OWNER_STAGING_SERVICE_SECRET','OWNER_STAGING_THROTTLE_SECRET',
     'SCANNER_SERVICE_SECRET','TIMECLOCK_ADMIN_SECRET','TIMECLOCK_PIN_PEPPER'];
   const configured=environment.HC_SECURE_IDENTITY_ENABLED==='true' &&
-    isCanonicalEmployeeId(id) && id!=='901' && key(secret) && key(throttle) &&
+    eligible!==null && key(secret) && key(throttle) &&
     secret!==throttle && legacy.every(k=>secret!==environment[k] && throttle!==environment[k]) &&
     typeof audience==='string' && /^[A-Za-z0-9_.:-]{1,150}$/.test(audience) &&
     typeof pool?.query==='function' && typeof pinHash==='function' && typeof verifyTransport==='function';
@@ -36,8 +47,9 @@ export function createHcSecureIdentityProvider({pool, pinHash, verifyTransport, 
     const verify=operation==='verify-pin';
     if (!configured || browserOrigin!==false || actualAudience!==audience || !equal(credential,secret) ||
         (!verify && operation!=='authorize') || !exact(body,verify?['employeeId','pin']:['employeeId']) ||
-        body.employeeId!==id || (verify && (typeof body.pin!=='string' || !/^\d{4}$/.test(body.pin)))) return deny();
+        !eligible.has(body.employeeId) || (verify && (typeof body.pin!=='string' || !/^\d{4}$/.test(body.pin)))) return deny();
     // Snapshot the selected request before any asynchronous operation.
+    const id=body.employeeId;
     const pin=verify?body.pin:null;
     if (await verifyTransport({transport,audience,signal})!==true || signal.aborted) return deny();
     const limit=verify?5:120;

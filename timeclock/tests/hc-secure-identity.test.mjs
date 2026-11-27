@@ -57,3 +57,30 @@ test('deadline denies and does not begin lookup after a delayed transport result
   assert.equal((await provider.handle(request)).status,403);finish(true);
   await new Promise(resolve=>setImmediate(resolve));assert.equal(calls.length,0);
 });
+
+const multiEnv={...env,HC_SECURE_IDENTITY_EMPLOYEE_ID:undefined,HC_SECURE_IDENTITY_EMPLOYEE_IDS:JSON.stringify([id,'42'])};
+test('multiple eligible employees retain exact identity and independent reservation scope',async()=>{
+  const calls=[];
+  const provider=createHcSecureIdentityProvider({environment:multiEnv,pinHash:p=>`fixture:${p}`,verifyTransport:async()=>true,
+    pool:{query:async q=>{calls.push(q);return q.text.startsWith('INSERT')?{rowCount:1,rows:[{admitted:true}]}:{rowCount:1,rows:[{id:q.values[0],active:true}]};}}});
+  for(const selected of [id,'42'])assert.deepEqual((await provider.handle({...request,body:{employeeId:selected,pin:'1234'}})).body,{employee:{id:selected,active:true,employeeNumber:null}});
+  assert.notEqual(calls[0].values[0],calls[2].values[0]);
+  assert.deepEqual(calls[1].values,[id,'fixture:1234']);assert.deepEqual(calls[3].values,['42','fixture:1234']);
+  for(const selected of ['43',42,'042','901'])assert.equal((await provider.handle({...request,body:{employeeId:selected,pin:'1234'}})).status,403);
+  assert.equal(calls.length,4);
+});
+test('invalid or conflicting eligibility configuration denies before database',async()=>{
+  for(const value of ['[]','null','"42"','[42]','["42","42"]','["901"]','["042"]','broken',JSON.stringify(Array.from({length:101},(_,i)=>String(i+1)))]){
+    const {provider,calls}=setup({environment:{...multiEnv,HC_SECURE_IDENTITY_EMPLOYEE_IDS:value}});
+    assert.equal((await provider.handle(request)).status,403);assert.equal(calls.length,0);
+  }
+  const {provider,calls}=setup({environment:{...multiEnv,HC_SECURE_IDENTITY_EMPLOYEE_ID:id}});
+  assert.equal((await provider.handle(request)).status,403);assert.equal(calls.length,0);
+});
+test('eligible employee still needs current active exact identity and trusted transport',async()=>{
+  const selected={...request,operation:'authorize',body:{employeeId:'42'}};
+  for(const options of [{rowId:'42',active:false},{rowId:id},{rowId:'42',transport:false}]){
+    const {provider}=setup({environment:multiEnv,...options});assert.equal((await provider.handle(selected)).status,403);
+  }
+  const {provider}=setup({environment:multiEnv,rowId:'42'});assert.equal((await provider.handle(selected)).status,200);
+});
