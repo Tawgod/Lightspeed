@@ -1,0 +1,46 @@
+name: HC Timeclock focused disposable validation
+on:
+  push:
+    branches: [validation/hc-timeclock-validation-20261127]
+permissions:
+  contents: read
+jobs:
+  disposable:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      NODE_ENV: test
+      HC_SECURE_IDENTITY_DISPOSABLE: 'yes'
+      HC_SECURE_IDENTITY_TEST_DATABASE_URL: postgresql://hc_test:disposable-only@127.0.0.1:5432/hc_secure_identity_disposable
+      OWNER_STAGE_TEST_DATABASE_URL: postgresql://hc_test:disposable-only@127.0.0.1:5432/hc_secure_identity_disposable
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: hc_test
+          POSTGRES_PASSWORD: disposable-only
+          POSTGRES_DB: hc_secure_identity_disposable
+        ports:
+          - 5432:5432
+        options: --health-cmd "pg_isready -U hc_test -d hc_secure_identity_disposable" --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Exact source and dependencies
+        run: |
+          git rev-parse HEAD
+          test "$(git rev-parse HEAD^)" = d6f4d4fdcf58564615c2d26dec9098b298bd1d0f
+          test "$(git hash-object timeclock/hcSecureIdentity.js)" = b8ddd98fa699f4b3dcf19dd73b997c8c27db95b1
+          test "$(git hash-object timeclock/db/hc_secure_identity_limits.sql)" = a3232d2ac0d3d676cc93924889c449f0c99d0df2
+          test "$(git hash-object timeclock/server.js)" = 8a613136d8b10ca5419c52b66d959ada33206efe
+          npm install --ignore-scripts --no-audit --no-fund --no-save express@4.19.2 pg@8.13.1
+          node --version
+          node --check timeclock/server.js
+          node --check timeclock/hcSecureIdentity.js
+      - name: Focused provider and existing regressions
+        run: |
+          node --test timeclock/tests/hc-secure-identity.test.mjs timeclock/tests/hc-secure-identity-postgres.test.mjs timeclock/tests/owner-staging-identity.test.mjs timeclock/tests/owner-staging-throttle-postgres.test.mjs tests/scannerTimeclockAuth.test.js tests/scannerLightspeedRoles.test.js

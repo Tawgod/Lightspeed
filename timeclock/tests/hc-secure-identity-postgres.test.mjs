@@ -29,5 +29,15 @@ test('disposable PG: exact BIGINT identity and independent pool reservations', {
     assert.equal((await y.handle(auth)).status,200);
     await a.query('UPDATE employees SET active=false WHERE id=$1',[id]);assert.equal((await x.handle(auth)).status,403);
     const count=await a.query('SELECT count(*)::int AS n FROM hc_security_identity.limits');assert.equal(count.rows[0].n,2);
+
+    // Additional acceptance assertions on disposable fictional records only.
+    await a.query("UPDATE hc_security_identity.limits SET window_start=statement_timestamp()-interval '16 minutes'");
+    await a.query('UPDATE employees SET active=true WHERE id=$1',[id]);
+    assert.equal((await x.handle({...request,body:{employeeId:id,pin:'4321'}})).status,403);
+    assert.equal((await y.handle(request)).status,200);
+    await a.query('DELETE FROM employees WHERE id=$1',[id]);
+    assert.equal((await x.handle(auth)).status,403);
+    await a.query('DROP TABLE hc_security_identity.limits');
+    assert.equal((await y.handle(auth)).status,403);
   } finally {await a.end();await b.end();}
 });
