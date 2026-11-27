@@ -11,6 +11,8 @@ export function createOrderSplitExecuteRouter({ domain, token }) {
 
   router.post('/sales/:saleRef/split', async (req, res) => {
     let createdSale = null;
+    let destinationId = null;
+    let mutationAttempted = false;
     try {
       const client = createLightspeedClient({ domain, token });
       const saleId = await resolve(client, req.params.saleRef);
@@ -131,8 +133,7 @@ export function createOrderSplitExecuteRouter({ domain, token }) {
       };
 
       let destination = null;
-      let destinationId = null;
-      let destinationBefore = null;
+
 
       if (destinationSaleRef) {
         destinationId = await resolve(client, destinationSaleRef);
@@ -150,8 +151,8 @@ export function createOrderSplitExecuteRouter({ domain, token }) {
           return res.status(409).json({ error: 'Destination order must be pending or parked.' });
         }
 
-        destinationBefore = destination;
         const destinationLines = (destination.line_items || []).map(line => keepLine({ line, quantity: Number(line.quantity || 0) }));
+        mutationAttempted = true;
         await client.updateSale(destinationId, buildExistingSalePayload(destination, [
           ...destinationLines,
           ...moving.map(newLine)
@@ -162,6 +163,7 @@ export function createOrderSplitExecuteRouter({ domain, token }) {
           : (originalAttributes.includes('delivery') ? 'delivery' : null);
         const inheritedAttributes = Array.from(new Set(originalAttributes));
 
+        mutationAttempted = true;
         createdSale = unwrap(await client.createSale({
           source: { author_id: authorId, ...(registerId ? {register_id: registerId} : {}), type: 'HobbyCornerOrderSplit' },
           state: fulfillmentAttribute ? 'pending' : 'parked',
@@ -177,43 +179,21 @@ export function createOrderSplitExecuteRouter({ domain, token }) {
           line_items: moving.map(newLine)
         }));
         destinationId = createdSale?.id || null;
+        if (!destinationId) throw new Error('Destination creation returned no sale ID; reconcile before retrying.');
       }
 
       try {
         await client.updateSale(saleId, buildExistingSalePayload(original, remaining.map(keepLine)));
       } catch (e) {
-        let destinationRollback = null;
-        if (destinationSaleRef && destinationBefore && destinationId) {
-          try {
-            await client.updateSale(
-              destinationId,
-              buildExistingSalePayload(
-                destinationBefore,
-                (destinationBefore.line_items || []).map(line => keepLine({ line, quantity: Number(line.quantity || 0) }))
-              )
-            );
-            destinationRollback = { attempted: true, restored: true };
-          } catch (rollbackError) {
-            destinationRollback = {
-              attempted: true,
-              restored: false,
-              error: rollbackError.message,
-              details: rollbackError.details || null
-            };
-          }
-        }
-
+        // A failed response does not establish that the external write failed.
+        // Do not compensate or retry until the shared recovery path reconciles both sales.
         return res.status(e.status || 500).json({
           splitCompleted: false,
-          recoveryRequired: destinationSaleRef ? !destinationRollback?.restored : true,
-          error: destinationSaleRef
-            ? 'Destination order was updated, but source order update failed.'
-            : 'New parked sale was created, but original sale update failed.',
+          recoveryRequired: true,
+          error: 'Source update outcome requires reconciliation; do not retry or compensate.',
+          sourceSaleId: saleId,
           createdSaleId: createdSale?.id || null,
-          createdInvoiceNumber: createdSale?.invoice_number || null,
-          destinationSaleId: destinationId,
-          destinationRollback,
-          details: e.details || null
+          destinationSaleId: destinationId
         });
       }
 
@@ -237,8 +217,10 @@ export function createOrderSplitExecuteRouter({ domain, token }) {
 
       const verifiedPaymentTotal = (verifiedOriginal.payments || []).reduce((sum, p) => sum + Number(p.amount || 0), 0);
 
-      res.status(201).json({
-        splitCompleted: true,
+      const verifiedIntegrity = orphaned.length === 0 && Math.abs(verifiedPaymentTotal - paymentTotal) < 0.0001;
+      res.status(verifiedIntegrity ? 201 : 409).json({
+        splitCompleted: verifiedIntegrity,
+        recoveryRequired: !verifiedIntegrity,
         originalSale: { id:saleId, invoiceNumber:verifiedOriginal.invoice_number, lineItems:verifiedOriginal.line_items || [] },
         newSale: destinationSaleRef ? null : { id:verifiedNew.id || createdSale.id, invoiceNumber:verifiedNew.invoice_number || createdSale.invoice_number, state:verifiedNew.state || createdSale.state, lineItems:verifiedNew.line_items || [] },
         destinationSale: destinationSaleRef ? {
@@ -260,8 +242,9 @@ export function createOrderSplitExecuteRouter({ domain, token }) {
     } catch (e) {
       res.status(e.status || 500).json({
         splitCompleted: false,
-        recoveryRequired: Boolean(createdSale?.id),
+        recoveryRequired: mutationAttempted,
         createdSaleId: createdSale?.id || null,
+        destinationSaleId: destinationId,
         error: e.message,
         details: e.details || null
       });
