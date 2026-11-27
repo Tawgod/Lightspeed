@@ -15,7 +15,7 @@ export function buildLabelPrintRequest({sourceId='SELECTED_PRODUCTS',templateId=
     if (!item.qty) continue;
     if (!string(item.sku)||!item.sku.trim()||item.sku==='UNKNOWN') fail('Missing exact SKU');
     if (!string(item.name)||!item.name.trim()) fail('Missing product name');
-    if (!string(item.price)||!/^\\$[0-9]+\\.[0-9]{2}$/.test(item.price)) fail('Current formatted retail price required');
+    if (!string(item.price)||!/^\$[0-9]+\.[0-9]{2}$/.test(item.price)) fail('Current formatted retail price required');
     const customerName=item.customerName??'';
     if (!string(customerName)||((item.soQty??0)>0&&!customerName.trim())) fail('Special order customer required');
     count+=item.qty;
