@@ -51,6 +51,33 @@ export function verifiedReceivedQuantity(line) {
   return Number.isSafeInteger(quantity) && quantity >= 0 ? quantity : null;
 }
 
+export function planPreorderAllocation(rows, capacity, method, manual=[]) {
+  if (!Number.isSafeInteger(capacity) || capacity < 0) throw new Error('Invalid capacity.');
+  const need=rows.map(r=>({...r,left:Number(r.requested_quantity)-Number(r.already_allocated),give:0}));
+  if(need.some(r=>!Number.isSafeInteger(r.left)||r.left<=0)) throw new Error('Invalid outstanding quantity.');
+  let remaining=capacity;
+  if (method === 'MANUAL') {
+    const seen=new Set();
+    for (const a of manual) {
+      const r=need.find(x=>String(x.id)===String(a.request_id));
+      const qty=verifiedReceivedQuantity({received_quantity:a.quantity});
+      if(!r || !qty || seen.has(String(r.id)) || qty>r.left || qty>remaining) throw new Error('Invalid manual allocation.');
+      seen.add(String(r.id)); r.give=qty; remaining-=qty;
+    }
+  } else if (method === 'FAIR_SHARE') {
+    while(remaining>0 && need.some(r=>r.left>0)) {
+      for(const r of need) {
+        if(remaining<=0) break;
+        if(r.left<=0) continue;
+        r.left--; r.give++; remaining--;
+      }
+    }
+  } else if (method === 'QUEUE') {
+    for(const r of need) { r.give=Math.min(r.left,remaining); remaining-=r.give; }
+  } else throw new Error('Invalid allocation method.');
+  return {need,remaining};
+}
+
 let pool = null;
 
 export async function initializeSpecialOrdersDb() {
@@ -2259,26 +2286,9 @@ export function createSpecialOrdersRouter({
         FOR UPDATE OF pr
       `,[req.params.id]);
       const created = [];
-      const need = requests.rows.map(r=>({...r,left:Number(r.requested_quantity)-Number(r.already_allocated),give:0}));
-      if (method === 'MANUAL') {
-        const seen = new Set();
-        for (const a of Array.isArray(req.body?.allocations)?req.body.allocations:[]) {
-          const r=need.find(x=>String(x.id)===String(a.request_id));
-          const qty=verifiedReceivedQuantity({received_quantity:a.quantity});
-          if (!r || !qty || seen.has(String(r.id)) || qty>r.left || qty>remaining) throw new Error('Invalid manual allocation.');
-          seen.add(String(r.id)); r.give=qty; remaining-=qty;
-        }
-      } else if (method === 'FAIR_SHARE') {
-        while (remaining>0 && need.some(r=>r.left>0)) {
-          for (const r of need) {
-            if (remaining<=0) break;
-            if (r.left<=0) continue;
-            r.left--; r.give++; remaining--;
-          }
-        }
-      } else {
-        for (const r of need) { r.give=Math.min(r.left,remaining); remaining-=r.give; }
-      }
+      const planned=planPreorderAllocation(requests.rows,remaining,method,Array.isArray(req.body?.allocations)?req.body.allocations:[]);
+      const need=planned.need;
+      remaining=planned.remaining;
       for (const r of need) {
         if (!r.give) continue;
         const ins=await client.query(`
@@ -2799,6 +2809,13 @@ export function createSpecialOrdersRouter({
         await client.query('ROLLBACK');
         if (decision === 'noop') return res.json(old);
         return res.status(409).json({error:'Invalid order status transition.'});
+      }
+      if (newStatus === 'CANCELLED') {
+        const allocated = await client.query('SELECT id FROM inventory_allocations WHERE special_order_item_id=$1 AND released_at IS NULL LIMIT 1',[req.params.id]);
+        if (allocated.rows.length) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({error:'Resolve existing allocations before cancellation.'});
+        }
       }
       const stamps = {
         ORDERED: 'ordered_at = COALESCE(ordered_at, now())',
