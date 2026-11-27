@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {createJanuaryCatalogLookup} from '../services/lightspeed/catalogJanuaryLookup.js';
 function januaryLookupChecks(create,assert){
- const kinds=['STORE_TAG','SKU','UPC','EAN','ISBN','GTIN','SUPPLIER_SKU','MANUFACTURER_PART','ALIAS'];
+ const kinds=['STORE_TAG','SKU','UPC','EAN','ISBN','GTIN','SUPPLIER_SKU','MANUFACTURER_PART','ALIAS','CUSTOM','ITF','JAN'];
  const scope={tenant:'fictional',environment:'test',location:'outlet-001',sourceRef:'catalog-fictional',revision:'r1'};
  const id=(kind,value,extra={})=>({kind,value,provenance:'fictional-verified-map',verified:true,...extra});
  const row=(productId,identifiers,extra={})=>({productId,variantId:null,variantVerified:true,name:'Fictional model kit',active:true,identifiers,...extra});
@@ -10,7 +10,7 @@ function januaryLookupChecks(create,assert){
  const snapshot=(records=[original],coverage=Object.fromEntries([...kinds,'NAME'].map(k=>[k,true])))=>({...scope,records,coverage});
  const resolve=(s,value,extra={})=>create(s).resolve({...scope,value,...extra});
  const check=(label,fn)=>{fn();assert(true,label)};
- check('all nine exact kinds',()=>{for(let i=0;i<kinds.length;i++)assert(resolve(snapshot(),i===0?'000701':`000${i}`).candidates[0]?.productId==='000701',kinds[i])});
+ check('all twelve exact kinds',()=>{for(let i=0;i<kinds.length;i++)assert(resolve(snapshot(),i===0?'000701':`000${i}`).candidates[0]?.productId==='000701',kinds[i])});
  check('leading zeros preserved',()=>assert(resolve(snapshot(),'701').status==='NO_MATCH'));
  check('same target across kinds deduplicates',()=>assert(resolve(snapshot([row('p',[id('SKU','001'),id('UPC','001')])]),'001').candidates.length===1));
  check('cross-kind collision',()=>assert(resolve(snapshot([row('p',[id('SKU','001')]),row('q',[id('UPC','001')])]),'001').status==='AMBIGUOUS'));
@@ -45,4 +45,36 @@ test('exact selected target requires independent TARGET coverage',()=>{
  assert.throws(()=>lookup.verifySelection({...q,revision:'r2'}));
  assert.throws(()=>lookup.verifySelection({...scope,productId:'000701'}));
  assert.throws(()=>lookup.verifySelection({...q,productId:701}));
+});
+
+test('native product codes are distinct, repeated and exact',()=>{
+ const scope={tenant:'fictional',environment:'test',location:'outlet-001',sourceRef:'fixture',revision:'r2'};
+ const kinds=['STORE_TAG','SKU','UPC','EAN','ISBN','GTIN','SUPPLIER_SKU','MANUFACTURER_PART','ALIAS','CUSTOM','ITF','JAN'];
+ const coverage=Object.fromEntries([...kinds,'TARGET','NAME'].map(k=>[k,true]));
+ const id=(kind,value,verified=true)=>({kind,value,verified,provenance:'fictional-native-code'});
+ const row=(productId,identifiers,variantId=null)=>({productId,variantId,variantVerified:true,name:'Fixture kit',active:true,identifiers});
+ const codes=[id('CUSTOM','000123'),id('CUSTOM',' 000124 '),id('UPC','000000000001'),id('UPC','000000000002'),id('EAN','0000000000003'),id('EAN','0000000000004'),id('ISBN','0000000000005'),id('ISBN','0000000000006'),id('ITF','00000000000007'),id('JAN','0000000000008'),id('ALIAS','LOCAL-1')];
+ const snapshot={...scope,coverage,records:[row('p',codes)]};
+ const lookup=createJanuaryCatalogLookup(snapshot);
+ for(const code of codes) {
+  const result=lookup.resolve({...scope,value:code.value,kind:code.kind});
+  assert.equal(result.status,'EXACT_UNIQUE');assert.equal(result.candidates[0].productId,'p');
+  assert.equal(lookup.resolve({...scope,value:code.value}).status,'EXACT_UNIQUE');
+ }
+ assert.equal(lookup.resolve({...scope,value:'000123',kind:'ALIAS'}).status,'NO_MATCH');
+ assert.equal(lookup.resolve({...scope,value:'000123',kind:'SKU'}).status,'NO_MATCH');
+ assert.equal(lookup.resolve({...scope,value:'123'}).status,'NO_MATCH');
+ assert.equal(lookup.resolve({...scope,value:'000124'}).status,'NO_MATCH');
+ const legacy={...coverage};delete legacy.CUSTOM;delete legacy.ITF;delete legacy.JAN;
+ const old=createJanuaryCatalogLookup({...snapshot,coverage:legacy});
+ assert.equal(old.resolve({...scope,value:'000123'}).status,'INCOMPLETE');
+ assert.equal(old.resolve({...scope,value:'000000000001',kind:'UPC'}).status,'EXACT_UNIQUE');
+ assert.equal(old.resolve({...scope,value:'missing'}).status,'INCOMPLETE');
+ assert.equal(createJanuaryCatalogLookup({...snapshot,records:[row('p',codes),row('q',[id('ALIAS','000123')])]}).resolve({...scope,value:'000123'}).status,'AMBIGUOUS');
+ assert.equal(createJanuaryCatalogLookup({...snapshot,records:[row('p',codes),row('p',[id('CUSTOM','000123')],'blue')]}).resolve({...scope,value:'000123'}).status,'AMBIGUOUS');
+ assert.equal(createJanuaryCatalogLookup({...snapshot,records:[row('p',[...codes,id('ALIAS','000123')])]}).resolve({...scope,value:'000123'}).candidates.length,1);
+ assert.equal(createJanuaryCatalogLookup({...snapshot,records:[row('p',codes),row('q',[id('CUSTOM','000123',false)])]}).resolve({...scope,value:'000123'}).status,'INCOMPLETE');
+ assert.equal(lookup.verifySelection({...scope,productId:'p',variantId:null}).status,'EXACT_UNIQUE');
+ assert.throws(()=>lookup.resolve({...scope,value:123}));
+ assert.throws(()=>lookup.verifySelection({...scope,revision:'r1',productId:'p',variantId:null}));
 });

@@ -1,6 +1,6 @@
 // Offline trusted normalized evidence only. No authority, vendor I/O, writes or routes.
 export function createJanuaryCatalogLookup(snapshot) {
- const kinds=['STORE_TAG','SKU','UPC','EAN','ISBN','GTIN','SUPPLIER_SKU','MANUFACTURER_PART','ALIAS'];
+ const kinds=['STORE_TAG','SKU','UPC','EAN','ISBN','GTIN','SUPPLIER_SKU','MANUFACTURER_PART','ALIAS','CUSTOM','ITF','JAN'];
  const text=v=>typeof v==='string'&&v.length<=256&&v.trim().length>0&&!/[\u0000-\u001f\u007f]/u.test(v);
  const scopeKeys=['tenant','environment','location','sourceRef','revision'];
  if(!snapshot||!scopeKeys.every(k=>text(snapshot[k]))||!Array.isArray(snapshot.records))throw new TypeError('Trusted scoped snapshot required');
