@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hobby Corner Product Manager — UI beta</title>
+<link rel="stylesheet" href="../shared-ui/hc.css"><link rel="stylesheet" href="./ui.css"></head>
+<body class="hc-ui"><div class="hc-shell">
+<nav class="hc-sidebar" aria-label="Product Manager navigation">
+<div class="hc-brand"><div><strong>HOBBY CORNER</strong><div class="hc-small">Product Manager</div></div></div>
+<a href="#products" aria-current="page">Products</a><a href="#changes">Review changes</a>
+<p class="hc-small hc-sidebar-note">Read-only demonstration. No Lightspeed connection or write permissions.</p></nav>
+<div class="hc-workspace"><header class="hc-topbar">
+<img src="../shared-ui/assets/hc-wordmark.webp" class="hc-wordmark" alt="The Hobby Corner">
+<span class="hc-title">Product Manager</span><span class="hc-spacer"></span><span class="hc-badge hc-badge--warning">Demo · preview only</span></header>
+<nav class="hc-operations-nav pm-operations-nav" aria-label="Hobby Corner tools">
+<span class="hc-operations-brand">Hobby Corner <small>Store Operations</small></span>
+<div class="hc-operations-links">
+<a href="https://special-orders-test-production.up.railway.app/special-orders" target="_blank" rel="noopener noreferrer">Special Orders</a>
+<a href="https://special-orders-test-production.up.railway.app/ordering" target="_blank" rel="noopener noreferrer">Ordering</a>
+<a href="https://special-orders-test-production.up.railway.app/preorders" target="_blank" rel="noopener noreferrer">Preorder Campaigns</a>
+<a href="https://special-orders-test-production.up.railway.app/gw-preorders" target="_blank" rel="noopener noreferrer">GW Preorders</a>
+<a href="#products" aria-current="page">Product Manager</a>
+<details class="pm-more"><summary>More tools</summary><div class="pm-more-list">
+<a href="https://consignment-beta-test.up.railway.app/consignment" target="_blank" rel="noopener noreferrer">Consignment Manager (Beta)</a>
+<a href="https://lightspeed-api-production-c087.up.railway.app/extension" target="_blank" rel="noopener noreferrer">Lightspeed Toolkit</a>
+<span>Timeclock — launcher unverified</span><span>Product Scanner — launcher unverified</span>
+<span>Purchase Order Companion — launcher unverified</span><span>Split / Recall — inside Toolkit</span>
+</div></details></div></nav><main class="hc-page" id="products">
+<section class="hc-panel pm-auth" aria-labelledby="pm-auth-title"><div class="hc-panel-header"><h2 id="pm-auth-title">Employee session</h2><span id="pm-auth-state" class="hc-badge hc-badge--warning">Not signed in</span></div>
+<div class="hc-panel-body"><form id="pm-sign-in" class="hc-row"><label for="pm-pin">Timeclock PIN</label><input class="hc-input pm-pin" id="pm-pin" type="password" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" autocomplete="off" required>
+<button class="hc-button" id="pm-login" type="submit">Sign in</button><button class="hc-button hc-button--secondary" id="pm-sign-out" type="button" hidden>Sign out</button>
+<span id="pm-employee" role="status" aria-live="polite">Sign in to load or save your personal layouts. Sample catalog preview remains available.</span></form><div class="hc-row pm-backup-actions">
+<button id="pm-save-work" type="button" class="hc-button hc-button--secondary" disabled>Save work backup</button>
+<button id="pm-restore-work" type="button" class="hc-button hc-button--secondary" disabled>Review saved backup</button>
+<span id="pm-backup-status" role="status" aria-live="polite">No work backup loaded. Automatic backups every five minutes while signed in.</span></div>
+<div id="pm-restore-panel" class="hc-inset" hidden><strong>Saved work available</strong>
+<p id="pm-restore-summary"></p><button id="pm-confirm-restore" class="hc-button" type="button">Restore for review</button>
+<button id="pm-cancel-restore" class="hc-button hc-button--secondary" type="button">Keep current work</button></div></div></section><div class="hc-page-heading"><div><h1>Product catalog</h1><p>Search, review and stage changes; never applies live product edits.</p></div><button class="hc-button" type="button" id="review-top">Review changes <span id="change-count">0</span></button></div>
+<p class="hc-alert hc-alert--warning" role="status">Sample data only. Editing adds a local draft, not a Lightspeed update.</p>
+<div class="pm-layout">
+<section class="hc-panel" aria-labelledby="grid-title"><div class="hc-panel-header"><h2 id="grid-title">Products</h2>
+<div class="hc-row"><label class="hc-small" for="profile">Layout</label><select id="profile" class="hc-select pm-select"><option>Default</option><option>Profile 1</option><option>Profile 2</option><option>Profile 3</option></select><button id="pm-layout-settings" class="hc-button hc-button--secondary" type="button">Columns</button><button id="pm-save-profile" class="hc-button hc-button--secondary" type="button" disabled>Save layout</button></div></div>
+<div class="hc-panel-body"><div class="hc-row"><div class="hc-field hc-grow"><label for="query">Find product / SKU / UPC</label><input class="hc-input" id="query" autocomplete="off"></div>
+<label class="hc-small"><input type="checkbox" id="hide-inactive" checked> Hide inactive</label><button class="hc-button hc-button--secondary" type="button" id="reset">Reset drafts</button></div>
+<div id="pm-layout-panel" class="hc-inset" hidden><strong>Column layout</strong><p class="hc-small">Show/hide columns, move them up/down, or adjust widths. Save to your selected employee profile.</p><div id="pm-layout-columns"></div></div><div class="hc-table-scroll pm-scroll"><table class="hc-table"><thead><tr><th scope="col">SKU</th><th scope="col">Product</th><th scope="col">Retail</th><th scope="col">Online (X)</th><th scope="col">Status</th></tr></thead><tbody id="rows"></tbody></table></div><p id="empty" class="hc-empty" hidden>No matching products.</p></div></section>
+<aside class="hc-panel hc-panel--drawer" aria-labelledby="detail-title"><div class="hc-panel-header"><h2 id="detail-title">Product details</h2><label for="view">Screen <select id="view" class="hc-select pm-select"><option value="summary">Summary</option><option value="edit">Edit fields</option><option value="images">Pictures</option></select></label></div><div class="hc-panel-body" id="detail" aria-live="polite"></div></aside>
+</div>
+<section id="changes" class="hc-panel pm-review" aria-labelledby="review-title"><div class="hc-panel-header"><h2 id="review-title">Pending changes</h2><span class="hc-badge hc-badge--neutral">Approval required in future integration</span></div><div class="hc-panel-body"><div id="review-list" class="hc-stack"></div><p class="hc-small hc-muted">This demonstration does not offer an Apply to Lightspeed action.</p></div></section>
+<div id="feedback" role="status" aria-live="polite" class="pm-feedback hc-alert">No live records loaded.</div>
+</main></div></div><script type="module" src="./ui.mjs"></script></body></html>
