@@ -37,6 +37,7 @@ function entry(row,s,t,source,result){
  require(exact(row,['entryId','identifier','selection','quantity','observedAt'])&&str(row.entryId)&&instant(row.observedAt)&&row.observedAt<=t.at&&row.observedAt>=s.openedAt);
  require((str(row.identifier)&&row.selection===null)||(row.identifier===null&&identity(row.selection)&&exact(row.selection,['productId','variantId'])));
  const quantity=qty(row.quantity),resolution=resolve(result,s,t.catalogScope,row.selection);
+ if(result!==null) require(t.lookupBinding===hash([row.entryId,row.identifier,row.selection,t.catalogScope]),'LOOKUP_BINDING');
  return {entryId:row.entryId,revision:1,original:{...copy(row),quantity,resolution:copy(resolution),actorId:t.actorId,recordedAt:t.at,source},current:{quantity,resolution,removed:false},corrections:[]};
 }
 // Must execute under Core-owned atomic session transaction; state is trusted persisted JSON.
@@ -56,23 +57,25 @@ export function transition(s,c,t){
   require(exact(d,['sourceId','batchId','fileDigest','rows'])&&str(d.sourceId)&&d.sourceId===t.sourceId&&t.sourceKind==='csv'&&str(d.batchId)&&/^[a-f0-9]{64}$/.test(d.fileDigest)&&d.fileDigest===t.fileDigest&&Array.isArray(d.rows)&&d.rows.length>0&&d.rows.length<=500,'IMPORT');
   require(Array.isArray(t.resolutions)&&t.resolutions.length===d.rows.length,'IMPORT');
   const semantic=hash(d.rows.map(r=>[r.identifier,r.selection,qty(r.quantity)]));
-  require(!s.imports.some(x=>x.batchId===d.batchId||x.fileDigest===d.fileDigest||x.semantic===semantic),'DUPLICATE_IMPORT');
-  d.rows.forEach((r,i)=>insert(entry(r,s,t,{kind:'csv',sourceId:t.sourceId,batchId:d.batchId,fileDigest:d.fileDigest,row:i+1},t.resolutions[i])));
+  require(!s.imports.some(x=>x.batchId===d.batchId||(x.sourceId===t.sourceId&&(x.fileDigest===d.fileDigest||x.semantic===semantic))),'DUPLICATE_IMPORT');
+  d.rows.forEach((r,i)=>insert(entry(r,s,{...t,lookupBinding:t.lookupBindings?.[i]},{kind:'csv',sourceId:t.sourceId,batchId:d.batchId,fileDigest:d.fileDigest,row:i+1},t.resolutions[i])));
   next.imports.push({batchId:d.batchId,fileDigest:d.fileDigest,semantic,entryIds:copy(affected),actorId:t.actorId,sourceId:t.sourceId,recordedAt:t.at});
  }else if(c.type==='correct'){
   require(exact(d,['entryId','expectedRevision','action','quantity','reason'])&&str(d.entryId)&&str(d.reason)&&Number.isSafeInteger(d.expectedRevision)&&['quantity','remove','resolve'].includes(d.action));
   const e=next.entries.find(x=>x.entryId===d.entryId);require(e&&e.revision===d.expectedRevision&&!e.current.removed,'STALE_ENTRY');
   const before=copy(e.current);
-  if(d.action==='quantity')e.current.quantity=qty(d.quantity);
+  if(d.action==='quantity'){require(d.quantity!==null,'INVALID_QUANTITY');e.current.quantity=qty(d.quantity)}
   else if(d.action==='remove'){require(d.quantity===null);e.current.removed=true}
-  else {require(d.quantity===null&&e.current.resolution.status!=='EXACT_UNIQUE','RESOLUTION_NOT_PENDING');const r=resolve(t.resolution,s,t.catalogScope);require(r.status==='EXACT_UNIQUE','UNRESOLVED');e.current.resolution=r}
+  else {require(d.quantity===null&&e.current.resolution.status!=='EXACT_UNIQUE','RESOLUTION_NOT_PENDING');require(t.lookupBinding===hash([e.entryId,e.original.identifier,e.original.selection,t.catalogScope]),'LOOKUP_BINDING');const r=resolve(t.resolution,s,t.catalogScope,e.original.selection);require(r.status==='EXACT_UNIQUE','UNRESOLVED');e.current.resolution=r}
   require(hash(before)!==hash(e.current),'NO_CHANGE');e.revision++;
   e.corrections.push({requestId:c.requestId,revision:e.revision,action:d.action,reason:d.reason,actorId:t.actorId,recordedAt:t.at,before,after:copy(e.current)});affected=[e.entryId];
  }else{
   require(exact(d,['confirmed','expectedRevision'])&&d.confirmed===true,'CONFIRMATION');
   require(d.expectedRevision===s.revision,'STALE_SESSION');
   require(next.entries.some(e=>!e.current.removed)&&next.entries.every(e=>e.current.removed||e.current.resolution.status==='EXACT_UNIQUE'),'UNRESOLVED_OR_EMPTY');
-  next.state='finalized';next.finalization={actorId:t.actorId,recordedAt:t.at,revision:s.revision+1,requestId:c.requestId};
+  const items=consolidate(next).items.map(({productId,variantId,counted})=>({productId,variantId,counted})).sort((a,b)=>key(a)<key(b)?-1:key(a)>key(b)?1:0);
+  const manifest={tenant:s.tenant,sessionId:s.sessionId,outletId:s.outletId,revision:s.revision+1,items};
+  next.state='finalized';next.finalization={actorId:t.actorId,recordedAt:t.at,revision:s.revision+1,requestId:c.requestId,manifest,digest:hash(manifest)};
  }
  next.revision++;
  const receipt={sessionId:s.sessionId,revision:next.revision,requestId:c.requestId,state:next.state,affected};
@@ -102,7 +105,7 @@ export function report(s,b,{valuation='none',retail=false,uncounted='pending'}={
   const a=expected.get(k),c=counts.get(k),p=c||a,counted=c?.counted??(uncounted==='zero'?'0':null),exp=a?.expected??null;
   const diff=counted===null||exp===null?null:n(counted)-n(exp,true),cost=valuation==='wholesale'?money(a?.wholesale):null,price=retail?money(a?.retail):null;
   const value=diff===null||cost===null?null:fmt(diff*n(cost.amount),12);
-  rows.push({productId:p.productId,variantId:p.variantId,name:p.name,sku:a?.sku??null,expected:exp,counted,difference:diff===null?null:fmt(diff),direction:diff===null?'unknown':diff>0n?'over':diff<0n?'under':'equal',wholesale:cost,retail:price,value,retailValue:diff===null||price===null?null:fmt(diff*n(price.amount),12),uncounted:!c,excluded:!c&&uncounted==='exclude',unvalued:value===null});
+  rows.push({productId:p.productId,variantId:p.variantId,name:p.name,sku:typeof a?.sku==='string'?a.sku:null,expected:exp,counted,difference:diff===null?null:fmt(diff),direction:diff===null?'unknown':diff>0n?'over':diff<0n?'under':'equal',wholesale:cost,retail:price,value,retailValue:diff===null||price===null?null:fmt(diff*n(price.amount),12),uncounted:!c,excluded:!c&&uncounted==='exclude',unvalued:value===null});
  }
  return {sessionId:s.sessionId,sessionRevision:s.revision,outletId:s.outletId,state:s.state,baseline:{snapshotId:b.snapshotId,source:b.source,asOf:b.asOf,complete:b.complete},valuation,uncounted,rows,unresolved};
 }
@@ -117,15 +120,22 @@ export function view(snapshot,{direction='all',unvalued=false,query='',sort='qua
  const unresolved=(direction==='all'||direction==='unknown')?snapshot.unresolved.filter(e=>!q||matches(e)):[];
  return {...copy(snapshot),rows:copy(rows),unresolved:copy(unresolved),filter:{direction,unvalued,query,sort,descending},overallTotals:totals(snapshot.rows),filteredTotals:totals(rows)};
 }
-// CSV is a projection of the exact report view. Use text-column import for identifiers.
+// Exact column mapping, including totals when all valuations are unknown.
 export function csv(v){
- const cell=x=>{if(x==null)return '""';let s=String(x);if(/^[\s]*[=+@-]/.test(s)||/^[\t\r\n]/.test(s))s="'"+s;return '"'+s.replaceAll('"','""')+'"'};
- const numeric=x=>x==null?'':String(x);
- const columns=['kind','session','revision','baseline','source','asOf','product','variant','sku','name','expected','counted','difference','direction','wholesale','currency','basis','costAsOf','value','retail','retailCurrency','retailValue','status','identifier','entry','quantity'];
- const meta=[cell(v.sessionId),v.sessionRevision,cell(v.baseline.snapshotId),cell(v.baseline.source),cell(v.baseline.asOf)];
- const lines=[columns.join(',')];
- for(const r of v.rows)lines.push(['product',...meta,cell(r.productId),cell(r.variantId),cell(r.sku),cell(r.name),numeric(r.expected),numeric(r.counted),numeric(r.difference),cell(r.direction),numeric(r.wholesale?.amount),cell(r.wholesale?.currency),cell(r.wholesale?.basis),cell(r.wholesale?.asOf),numeric(r.value),numeric(r.retail?.amount),cell(r.retail?.currency),numeric(r.retailValue),cell(r.excluded?'excluded':r.unvalued?'unvalued':'valued'),'','',''].join(','));
- for(const e of v.unresolved)lines.push(['unresolved',...meta,...Array(16).fill(''),cell(e.status),cell(e.identifier),cell(e.entryId),numeric(e.quantity)].join(','));
- for(const [label,t] of [['overall',v.overallTotals],['filtered',v.filteredTotals]])for(const g of t.currencies)for(const k of ['overage','shortage','net'])lines.push(['total',...meta,'','','',cell(label+' '+k),'','','','', '',cell(g.currency),'','',numeric(g[k]),'','','',cell('unknown value rows: '+t.unknownValueRows),'','',''].join(','));
+ const cols=['kind','session','revision','baseline','source','asOf','product','variant','sku','name','expected','counted','difference','direction','wholesale','currency','basis','costAsOf','value','retail','retailCurrency','retailValue','status','identifier','entry','quantity','scope','unknownValueRows','filter'];
+ const numeric=new Set(['revision','expected','counted','difference','wholesale','value','retail','retailValue','quantity','unknownValueRows']);
+ const cell=(x,k)=>{if(x==null)return '';let s=String(x);if(numeric.has(k)){require(/^-?\d+(?:\.\d+)?$/.test(s),'CSV_NUMBER');return s}if(/^[\s]*[=+@-]/.test(s)||/^[\t\r\n]/.test(s))s="'"+s;return '"'+s.replaceAll('"','""')+'"'};
+ const meta={session:v.sessionId,revision:v.sessionRevision,baseline:v.baseline.snapshotId,source:v.baseline.source,asOf:v.baseline.asOf,filter:JSON.stringify(v.filter)};
+ const lines=[cols.join(',')],emit=r=>lines.push(cols.map(k=>cell({...meta,...r}[k],k)).join(','));
+ for(const r of v.rows)emit({kind:'product',product:r.productId,variant:r.variantId,sku:r.sku,name:r.name,expected:r.expected,counted:r.counted,difference:r.difference,direction:r.direction,wholesale:r.wholesale?.amount,currency:r.wholesale?.currency,basis:r.wholesale?.basis,costAsOf:r.wholesale?.asOf,value:r.value,retail:r.retail?.amount,retailCurrency:r.retail?.currency,retailValue:r.retailValue,status:r.excluded?'excluded':r.unvalued?'unvalued':'valued'});
+ for(const e of v.unresolved)emit({kind:'unresolved',status:e.status,identifier:e.identifier,entry:e.entryId,quantity:e.quantity});
+ for(const [scope,t] of [['overall',v.overallTotals],['filtered',v.filteredTotals]]){emit({kind:'summary',scope,unknownValueRows:t.unknownValueRows});for(const g of t.currencies)for(const k of ['overage','shortage','net'])emit({kind:'total',scope,direction:k,currency:g.currency,value:g[k]})}
  return lines.join('\r\n')+'\r\n';
+}
+export function applicationManifest(s){
+ require(s.state==='finalized'&&s.finalization?.revision===s.revision,'FINALIZATION_REQUIRED');
+ const f=s.finalization,m=f.manifest;require(hash(m)===f.digest,'MANIFEST_MISMATCH');
+ const items=consolidate(s).items.map(({productId,variantId,counted})=>({productId,variantId,counted})).sort((a,b)=>key(a)<key(b)?-1:key(a)>key(b)?1:0);
+ require(hash({tenant:s.tenant,sessionId:s.sessionId,outletId:s.outletId,revision:s.revision,items})===f.digest,'MANIFEST_MISMATCH');
+ return {manifest:copy(m),digest:f.digest,executable:false,retryAllowed:false};
 }
