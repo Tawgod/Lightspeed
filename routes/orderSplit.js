@@ -161,7 +161,7 @@ export function createOrderSplitRouter({ domain, token }) {
         },
         depositPlan: {
           proposedAction: totalPayments > 0
-            ? 'Convert the full existing payment/deposit into customer store credit before executing a split.'
+            ? 'Review existing payment/deposit in Lightspeed Register before splitting; no credit conversion is performed here.'
             : 'No existing payment/deposit detected.',
           detectedPaymentAmount: totalPayments,
           storeCreditStatus,
