@@ -16,6 +16,41 @@ const VALID_STATUSES = new Set([
   'RECEIVED','HELD','CUSTOMER_NOTIFIED','COMPLETED','CANCELLED'
 ]);
 
+// January lifecycle guards. These do not establish employee authority.
+export function orderStatusTransition(from, to) {
+  if (!VALID_STATUSES.has(from) || !VALID_STATUSES.has(to)) return 'deny';
+  if (from === to) return 'noop';
+  if (['COMPLETED','CANCELLED'].includes(from)) return 'deny';
+  const allowed = {
+    PREORDER:['OOS','READY_TO_ORDER','ORDERED','CANCELLED'],
+    OOS:['PREORDER','READY_TO_ORDER','ORDERED','CANCELLED'],
+    READY_TO_ORDER:['OOS','ORDERED','BACKORDERED','CANCELLED'],
+    ORDERED:['BACKORDERED','RECEIVED','CANCELLED'],
+    BACKORDERED:['ORDERED','RECEIVED','CANCELLED'],
+    RECEIVED:['HELD','CUSTOMER_NOTIFIED','COMPLETED'],
+    HELD:['RECEIVED','CUSTOMER_NOTIFIED','COMPLETED'],
+    CUSTOMER_NOTIFIED:['HELD','COMPLETED']
+  };
+  return allowed[from]?.includes(to) ? 'allow' : 'deny';
+}
+
+export function preorderPickupTransition(status, action) {
+  const target = { READY:'READY', PICKED_UP:'PICKED_UP', NO_PICKUP:'RELEASED' }[action];
+  if (!target) return 'deny';
+  if (status === target) return 'noop';
+  if (status === 'ALLOCATED' && action === 'READY') return 'allow';
+  if (status === 'READY' && ['PICKED_UP','NO_PICKUP'].includes(action)) return 'allow';
+  return 'deny';
+}
+
+export function verifiedReceivedQuantity(line) {
+  const raw = line.received_quantity ?? line.quantity_received ?? line.received_count ?? line.received;
+  if (typeof raw !== 'number' && typeof raw !== 'string') return null;
+  if (typeof raw === 'string' && !/^\d+$/.test(raw)) return null;
+  const quantity = Number(raw);
+  return Number.isSafeInteger(quantity) && quantity >= 0 ? quantity : null;
+}
+
 let pool = null;
 
 export async function initializeSpecialOrdersDb() {
@@ -2287,7 +2322,7 @@ export function createSpecialOrdersRouter({
     try {
       await client.query('BEGIN');
       const q=await client.query(`
-        SELECT pa.*, pr.customer_id, pp.item_description, pc.pickup_window_days
+        SELECT pa.*, pr.customer_id, pr.status AS request_status, pp.item_description, pc.pickup_window_days
         FROM preorder_allocations pa
         JOIN preorder_requests pr ON pr.id=pa.preorder_request_id
         JOIN preorder_products pp ON pp.id=pr.preorder_product_id
@@ -2297,6 +2332,12 @@ export function createSpecialOrdersRouter({
       const a=q.rows[0];
       if(!a){await client.query('ROLLBACK');return res.status(404).json({error:'Allocation not found.'})}
 
+      const decision = preorderPickupTransition(a.status, action);
+      if (decision === 'noop') { await client.query('ROLLBACK'); return res.json(a); }
+      if (decision === 'deny' || a.request_status === 'CANCELLED') {
+        await client.query('ROLLBACK');
+        return res.status(409).json({error:'Invalid preorder pickup transition.'});
+      }
       if(action==='READY'){
         const r=await client.query(`
           UPDATE preorder_allocations SET status='READY',ready_at=now(),
@@ -2668,7 +2709,7 @@ export function createSpecialOrdersRouter({
         await client.query('ROLLBACK');
         return res.status(404).json({ error:'Order item not found.' });
       }
-      if (['RECEIVED','HELD','COMPLETED'].includes(current.rows[0].status)) {
+      if (['RECEIVED','HELD','CUSTOMER_NOTIFIED','COMPLETED'].includes(current.rows[0].status)) {
         await client.query('ROLLBACK');
         return res.status(409).json({ error:'Received/held/completed items cannot be removed.' });
       }
@@ -2684,7 +2725,19 @@ export function createSpecialOrdersRouter({
         return res.status(409).json({ error:'This item is already attached to a supplier order. Remove or adjust that supplier-order line first.' });
       }
 
-      await client.query('DELETE FROM special_order_items WHERE id=$1', [req.params.id]);
+      const item = current.rows[0];
+      if (item.status === 'CANCELLED') {
+        await client.query('ROLLBACK');
+        return res.json({ok:true, cancelled:true});
+      }
+      const allocations = await client.query('SELECT id FROM inventory_allocations WHERE special_order_item_id=$1 AND released_at IS NULL LIMIT 1', [req.params.id]);
+      if (allocations.rows.length) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({error:'Resolve existing allocations before cancellation.'});
+      }
+      await client.query("UPDATE special_order_items SET status='CANCELLED',cancelled_at=COALESCE(cancelled_at,now()),updated_at=now() WHERE id=$1", [req.params.id]);
+      await client.query("INSERT INTO order_status_history (special_order_item_id,old_status,new_status,note) VALUES ($1,$2,'CANCELLED','Removed from active order list; history retained')", [req.params.id,item.status]);
+      await client.query("UPDATE notifications SET status='SUPPRESSED',suppression_reason='Order cancelled',suppressed_at=now() WHERE special_order_item_id=$1 AND status IN ('PENDING','QUEUED')", [req.params.id]);
       await client.query('COMMIT');
       res.json({ ok:true });
     } catch (error) {
@@ -2758,6 +2811,12 @@ export function createSpecialOrdersRouter({
         return res.status(404).json({ error: 'Order item not found.' });
       }
       const old = oldResult.rows[0];
+      const decision = orderStatusTransition(old.status, newStatus);
+      if (decision !== 'allow') {
+        await client.query('ROLLBACK');
+        if (decision === 'noop') return res.json(old);
+        return res.status(409).json({error:'Invalid order status transition.'});
+      }
       const stamps = {
         ORDERED: 'ordered_at = COALESCE(ordered_at, now())',
         RECEIVED: 'received_at = COALESCE(received_at, now())',
@@ -3744,18 +3803,23 @@ export function createSpecialOrdersRouter({
     for(const line of po.line_items||[]){
       const pid=lightspeedProductId(line);
       if(!pid)continue;
-      const received=Number(line.received_quantity ?? line.quantity_received ?? line.received_count ?? line.received ?? 0)||0;
-      poReceivedByProduct.set(String(pid),Math.max(Number(poReceivedByProduct.get(String(pid))||0),received));
+      const received=verifiedReceivedQuantity(line);
+      // Duplicate product lines require authoritative line-level reconciliation.
+      poReceivedByProduct.set(String(pid),poReceivedByProduct.has(String(pid)) ? null : received);
     }
     const db=await pool.connect();
     try{
       await db.query('BEGIN');
+      // Serialize this PO across all customer lines before checking cumulative limits.
+      await db.query('SELECT pg_advisory_xact_lock(hashtext($1))',['hc-order-receipt:'+String(po.id)]);
       const outcomes=[];
+      const seenItems=new Set();
       const proposedProductTotals=new Map();
       for(const a of allocations){
-        const itemId=Number(a.special_order_item_id);
-        const target=Math.max(0,Math.floor(Number(a.target_allocated_quantity)||0));
-        if(!Number.isFinite(itemId)||itemId<=0)continue;
+        const itemId=String(a.special_order_item_id ?? '');
+        const target=verifiedReceivedQuantity({received_quantity:a.target_allocated_quantity});
+        if(!/^[1-9]\d*$/.test(itemId)||target===null||seenItems.has(itemId))throw new Error('Invalid or duplicate receiving allocation.');
+        seenItems.add(itemId);
         const itemResult=await db.query(
           "SELECT i.id,i.product_id,i.quantity,i.status,i.requested_name,p.lightspeed_product_id,"+
           "o.customer_id,c.name AS customer_name,c.phone,c.email,c.discord_user_id,c.facebook_messenger_id,c.whatsapp_number "+
@@ -3765,6 +3829,7 @@ export function createSpecialOrdersRouter({
           [itemId]
         );
         const item=itemResult.rows[0];
+        if(item && ['CANCELLED','COMPLETED'].includes(item.status))throw new Error('Terminal order cannot receive allocations.');
         if(!item)throw new Error('Special Order line '+itemId+' was not found.');
         if(!item.lightspeed_product_id||!poProductIds.has(String(item.lightspeed_product_id)))throw new Error('Special Order line '+itemId+' is not a product on Lightspeed PO '+poRef+'.');
         const prior=await db.query('SELECT * FROM lightspeed_po_receipt_allocations WHERE lightspeed_purchase_order_id=$1 AND special_order_item_id=$2 FOR UPDATE',[String(po.id),itemId]);
@@ -3781,8 +3846,9 @@ export function createSpecialOrdersRouter({
         }
         const currentProductTotal=Number(proposedProductTotals.get(productKey)||0);
         const proposedProductTotal=currentProductTotal-previous+target;
-        const reportedReceived=Number(poReceivedByProduct.get(productKey)||0);
-        if(reportedReceived>0 && proposedProductTotal>reportedReceived){
+        const reportedReceived=poReceivedByProduct.get(productKey);
+        if(reportedReceived===null || reportedReceived===undefined)throw new Error('Verified received quantity unavailable or ambiguous.');
+        if(proposedProductTotal>reportedReceived){
           throw new Error(
             'Receiving allocation for '+item.requested_name+' would allocate '+proposedProductTotal+
             ' unit(s) from PO '+poRef+' but Lightspeed reports only '+reportedReceived+' received for that product.'
@@ -3793,7 +3859,8 @@ export function createSpecialOrdersRouter({
         const allAllocated=await db.query('SELECT COALESCE(sum(quantity),0)::int AS qty FROM inventory_allocations WHERE special_order_item_id=$1 AND released_at IS NULL',[itemId]);
         const currentlyAllocated=Number(allAllocated.rows[0].qty||0);
         const remainingBefore=Math.max(0,Number(item.quantity||0)-currentlyAllocated);
-        const delta=Math.min(target-previous,remainingBefore);
+        if(target-previous>remainingBefore)throw new Error('Allocation exceeds outstanding order quantity.');
+        const delta=target-previous;
         if(prior.rows[0]){
           await db.query(
             "UPDATE lightspeed_po_receipt_allocations SET allocated_quantity=$1,received_by=$2,"+
