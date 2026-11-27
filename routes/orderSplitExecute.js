@@ -1,4 +1,5 @@
 import express from 'express';
+import { resolveExactSplitSale } from './orderSplit.js';
 import { createLightspeedClient } from '../services/lightspeedApi.js';
 
 const unwrap = (x) => x && Object.prototype.hasOwnProperty.call(x,'data') ? x.data : x;
@@ -6,18 +7,7 @@ const unwrap = (x) => x && Object.prototype.hasOwnProperty.call(x,'data') ? x.da
 export function createOrderSplitExecuteRouter({ domain, token }) {
   const router = express.Router();
 
-  async function resolve(client, ref) {
-    if (/^[0-9a-f-]{36}$/i.test(ref)) return ref;
-    const found = unwrap(await client.searchSalesByInvoiceNumber(ref)) || [];
-    const rows = Array.isArray(found) ? found : (found.sales || found.results || []);
-    const sale = rows.find(s => String(s.invoice_number) === String(ref)) || rows[0];
-    if (!sale?.id) {
-      const e = new Error('Sale not found.');
-      e.status = 404;
-      throw e;
-    }
-    return sale.id;
-  }
+  const resolve = async (client, ref) => (await resolveExactSplitSale(client, ref)).saleId;
 
   router.post('/sales/:saleRef/split', async (req, res) => {
     let createdSale = null;
