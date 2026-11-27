@@ -1230,7 +1230,7 @@ async function showAllocationSuggestions(id,available){
         <td>${x.customer_name||x.discord_handle||'Customer'}</td>
         <td><b>${x.allocation_score}</b></td>
         <td>${x.suggested_quantity}</td>
-        <td>${x.picked_up||0} picked up · ${x.late_pickups||0} late · ${x.no_pickups||0} missed</td>
+        <td>${x.picked_up||0} picked up · ${x.late_pickups||0} late · ${x.no_pickups||0} missed · ${x.cancelled_orders||0} cancelled lines (informational)</td>
         <td>${x.sources?((x.purchase_count||0)+' purchases · $'+Number(x.gross_spend||0).toFixed(2)+' · '+x.sources):'Not synced yet'}</td>
         <td>${(x.flags||[]).join('; ')||'—'}</td>
       </tr>`).join('')+'</table>');
