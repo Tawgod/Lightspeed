@@ -1,4 +1,5 @@
 // Disposable PostgreSQL composition, NOT a hosted entrypoint or identity issuer.
+import {withAuthorityFence} from '../../services/security/authorityFence.js';
 import {createScannerSessions} from '../../services/scannerSessions.js';
 import {createSyntheticRoleEvaluator} from '../fixtures/hc-secure-s25e-role-policy.mjs';
 import {evaluateSyntheticAssurance} from '../fixtures/hc-secure-s25g-lifecycle.mjs';
@@ -21,17 +22,14 @@ export async function createPgRuntime({pool,secret,clock=Date.now,testOnly=false
  if(p?.db!=='hc_s25m_disposable'||p.role!=='hc_s25m_runtime'||!(p.addr==='127.0.0.1'||/^172\.(1[6-9]|2[0-9]|3[01])\.[0-9]{1,3}\.[0-9]{1,3}$/.test(p.addr))||['rolsuper','rolcreatedb','rolcreaterole','rolbypassrls','rolreplication','ddl'].some(k=>p[k]!==false))throw deny();
  for(const table of ['authority','employee','session','approval','note','receipt','audit']){
  const row=await one(client,`SELECT has_table_privilege(current_user,$1,'SELECT') r,has_table_privilege(current_user,$1,'DELETE') d,has_table_privilege(current_user,$1,'TRUNCATE') t,has_table_privilege(current_user,$1,'UPDATE') u,has_table_privilege(current_user,$1,'INSERT') i`,['hc_s25m.'+table]);
- if(!row||row.r!==true||row.d||row.t||row.u!==['authority','note'].includes(table)||row.i!==['receipt','audit'].includes(table))throw deny();
+ if(!row||row.r!==true||row.d||row.t||row.u!==(table==='note')||row.i!==['receipt','audit'].includes(table))throw deny();
  }
  }finally{client.release()}
  async function transaction(fn){
- const c=await pool.connect();let committing=false;
- try{await c.query('BEGIN');await c.query("SET LOCAL lock_timeout='3s'");await c.query("SET LOCAL statement_timeout='5s'");
- // Serialize current authorization and all cooperative authority changes.
- const epoch=await one(c,'SELECT policy_revision,evidence_revision FROM hc_s25m.authority WHERE singleton=true FOR UPDATE');
- if(!epoch)throw deny();
- const out=await fn(c,epoch);committing=true;await c.query('COMMIT');return out;
- }catch(e){await c.query('ROLLBACK').catch(()=>{});if(committing)throw Object.assign(Error('Commit outcome unknown'),{status:503,unknown:true});throw e}finally{c.release()}
+ return withAuthorityFence(pool,async c=>{
+ const epoch=await one(c,'SELECT policy_revision,evidence_revision FROM hc_s25m.authority WHERE singleton=true');
+ if(!epoch)throw deny();return fn(c,epoch);
+ });
  }
  const audit=(c,e,actor,op,resource,outcome)=>c.query('INSERT INTO hc_s25m.audit VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[randomUUID(),actor,op,resource,outcome,e.policy_revision,e.evidence_revision,clock()]);
  async function authenticate(c,e,header){
