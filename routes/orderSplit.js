@@ -32,38 +32,28 @@ function amountFromPayment(payment) {
   return 0;
 }
 
+export async function resolveExactSplitSale(client, saleRef) {
+  const ref = String(saleRef ?? '').trim();
+  const fail = (status, message) => { throw Object.assign(new Error(message), { status }); };
+  if (!ref) fail(400, 'Sale reference required.');
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ref)) {
+    return { saleId: ref, matchedBy: 'id' };
+  }
+  const results = unwrapData(await client.searchSalesByInvoiceNumber(ref));
+  const rows = Array.isArray(results) ? results : (results?.sales ?? results?.results);
+  if (!Array.isArray(rows)) fail(502, 'Sale search returned an invalid response.');
+  const exact = rows.filter(s => String(s?.invoice_number ?? s?.invoiceNumber ?? '') === ref);
+  if (!exact.length) fail(404, 'No exact sale reference found.');
+  if (exact.some(s => typeof s.id !== 'string' || !s.id.trim())) fail(502, 'Exact sale has no valid ID.');
+  const ids = new Set(exact.map(s => s.id));
+  if (ids.size !== 1) fail(409, 'Ambiguous sale reference; select the exact order.');
+  return { saleId: exact[0].id, matchedBy: 'invoice_number', matchedSale: exact[0] };
+}
+
 export function createOrderSplitRouter({ domain, token }) {
   const router = express.Router();
 
-  async function resolveSaleId(client, saleRef) {
-    // Lightspeed's public-facing sale number/invoice number is not the sale UUID.
-    // Accept either form so staff can enter values such as "12".
-    const looksLikeUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(saleRef);
-    if (looksLikeUuid) return { saleId: saleRef, matchedBy: 'id' };
-
-    const searchPayload = await client.searchSalesByInvoiceNumber(saleRef);
-    const results = unwrapData(searchPayload) || [];
-    const sales = Array.isArray(results)
-      ? results
-      : (results.sales || results.results || []);
-
-    if (!Array.isArray(sales) || sales.length === 0) {
-      const error = new Error(`No Lightspeed sale found for invoice/sale number "${saleRef}".`);
-      error.status = 404;
-      throw error;
-    }
-
-    const exact = sales.find(s => String(s.invoice_number ?? s.invoiceNumber ?? '') === String(saleRef));
-    const match = exact || sales[0];
-    if (!match?.id) {
-      const error = new Error('Lightspeed search returned a sale without an ID.');
-      error.status = 502;
-      error.details = match || searchPayload;
-      throw error;
-    }
-
-    return { saleId: match.id, matchedBy: 'invoice_number', matchedSale: match };
-  }
+  const resolveSaleId = resolveExactSplitSale;
 
   // Read-only proof of concept. This route does not modify a sale,
   // fulfillment, payment, or customer balance.
@@ -382,7 +372,7 @@ async function splitSelected(loadRegister = false) {
     });
     const data = await response.json();
     out.textContent = JSON.stringify(data, null, 2);
-    if (response.ok && data.splitCompleted) {
+    if (response.ok && data.splitCompleted === true && data.recoveryRequired !== true && data.fulfillmentIntegrity?.consistent === true && data.paymentIntegrity?.consistent === true) {
       const destinationSaleId = data.destinationSale?.id || data.newSale?.id || null;
       setTimeout(() => {
         window.parent.postMessage(loadRegister ? {
