@@ -59,10 +59,10 @@ export function createOrderSplitExecuteRouter({ domain, token }) {
 
       if (paymentTotal - remainingMerchandiseTotal > 0.0001) {
         return res.status(409).json({
-          error: 'Remaining payment/deposit would exceed the value left on the original sale.',
+          error: 'Remaining payment/deposit would exceed the value left on the original sale. Resolve in Lightspeed Register before splitting.',
           paymentTotal,
           remainingMerchandiseTotal,
-          additionalAmountToMoveToStoreCredit: Math.round((paymentTotal - remainingMerchandiseTotal) * 100) / 100
+          excessPaymentAmount: Math.round((paymentTotal - remainingMerchandiseTotal) * 100) / 100
         });
       }
 
