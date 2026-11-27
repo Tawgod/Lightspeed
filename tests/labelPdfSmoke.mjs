@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {buildLabelPrintRequest} from '../Templates/label-print-request.mjs';
 import { spawn } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 const port=19089, base='http://127.0.0.1:'+port;
@@ -14,8 +15,8 @@ async function awaitReady(){
  }
  throw Error('Server not ready: '+logs.slice(-1600));
 }
-async function render(name,startRow,startCol,items){
- const r=await fetch(base+'/api/labels/generate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({poId:'SYNTHETIC',startRow,startCol,templateId:'Avery_5960',customText:'TEST',items})});
+async function render(name,startRow,startCol,items,prepared){
+ const r=await fetch(base+'/api/labels/generate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(prepared ?? {poId:'SYNTHETIC',startRow,startCol,templateId:'Avery_5960',customText:'TEST',items})});
  assert.equal(r.status,200,'PDF endpoint succeeded'); // PDF only, no Lightspeed reads/writes
  assert.match(r.headers.get('content-type')||'',/application\/pdf/);
  const buffer=Buffer.from(await r.arrayBuffer());
@@ -39,5 +40,13 @@ try{
  await render('avery5960-start-row3-col2',3,2,mixed);
  const pages=await render('avery5960-multipage',1,1,[{name:'Synthetic Bulk Stock',sku:'0000054321',price:'$4.00',qty:32,soQty:0,customerName:''}]);
  assert.equal(pages,2,'32 labels create two pages');
- console.log('PASS 3 representative PDFs; exact API and backend exercised');
+ const templates=await fetch(base+'/api/templates');
+ assert.equal(templates.status,200);
+ const discovered=await templates.json();
+ assert.ok(discovered.some(t=>t.id==='Avery_5960'));
+ const selected=buildLabelPrintRequest({startRow:10,startCol:3,customText:'TEST',items:[{name:'Fictional paint',sku:'0000000123',price:'$4.99',qty:2},{name:'Skipped fixture',sku:'0000000456',price:'$8.99',qty:0}]});
+ assert.equal(selected.items.length,1);
+ assert.equal(selected.items[0].sku,'0000000123');
+ assert.equal(await render('selected-products-partial-overflow',10,3,selected.items,selected),2);
+ console.log('PASS 4 representative PDFs including selected-product adapter; exact API and backend exercised');
 } finally {child.kill('SIGTERM');}
